@@ -221,6 +221,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const planDragRef = useRef(null);
   const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs'
+  const [markupMode, setMarkupMode] = useState(null); // null | 'highlight' | 'cloud' | 'callout' | 'dimension' | 'text' | 'legend'
+  const [markups, setMarkups] = useState([]); // [{id, type, planId, points, text, color}]
+  const [activeMarkup, setActiveMarkup] = useState(null); // markup being drawn
+  const [markupColor, setMarkupColor] = useState('#FF6B6B');
 
   // ── Always-current refs: assigned synchronously each render (correct React pattern) ──
   // avoids TDZ crash that useEffect([dep]) would cause when refs precede state declarations
@@ -3857,18 +3861,41 @@ Return ONLY a valid JSON array, no markdown:
         </div>
 
         {/* ── Right Tool Bar ── */}
-        <div style={{width:48,flexShrink:0,display:'flex',flexDirection:'column',borderLeft:`1px solid ${t.border}`,background:t.bg2,alignItems:'center',paddingTop:4,gap:0}}>
+        <div style={{width:52,flexShrink:0,display:'flex',flexDirection:'column',borderLeft:`1px solid ${t.border}`,background:t.bg2,alignItems:'center',paddingTop:4,gap:0,overflowY:'auto'}}>
           {[
-            {id:'select', icon:'↖', label:'Select', color:'#71717a'},
+            {id:'select', icon:'↖', label:'Edit', color:'#666'},
             null,
-            {id:'cutout', icon:'⊘', label:'Cutout', color:'#C0504D'},
+            {id:'markup_toggle', icon:'M', label:'Markup', color:'#5B9BD5', isSection:true},
+            ...(markupMode !== null ? [
+              {id:'highlight', icon:'H', label:'Highlight', color:'#FFB347', markup:true},
+              {id:'cloud',     icon:'C', label:'Cloud',     color:'#C0504D', markup:true},
+              {id:'callout',   icon:'A', label:'Callout',   color:'#E8A317', markup:true},
+              {id:'dimension', icon:'D', label:'Dimension', color:'#5B9BD5', markup:true},
+              {id:'text',      icon:'T', label:'Text',      color:'#666',    markup:true},
+              {id:'legend',    icon:'L', label:'Legend',     color:'#7B6BA4', markup:true},
+            ] : []),
+            null,
+            {id:'takeoff_active', icon:'T', label:'Takeoff', color:'#4CAF50', isLabel:true},
+            {id:'cutout', icon:'⊘', label:'Cut Out', color:'#C0504D'},
             {id:'eraser', icon:'⌫', label:'Eraser', color:'#E8A317'},
           ].map((btn,i)=>{
-            if(!btn) return <div key={i} style={{height:1,background:t.border,width:28,margin:'3px 0'}}/>;
-            const isActive = tool===btn.id;
+            if(!btn) return <div key={i} style={{height:1,background:t.border,width:32,margin:'3px 0'}}/>;
+            const isMarkupActive = btn.markup && markupMode===btn.id;
+            const isActive = btn.markup ? isMarkupActive : btn.id==='markup_toggle' ? markupMode!==null : btn.isLabel ? (activeCondId && tool!=='select' && tool!=='eraser' && tool!=='cutout') : tool===btn.id;
             const onClick = ()=>{
+              if(btn.isLabel) return; // just a label, not clickable
+              if(btn.id==='markup_toggle'){
+                setMarkupMode(prev => prev !== null ? null : 'highlight');
+                return;
+              }
+              if(btn.markup){
+                setMarkupMode(btn.id);
+                setTool('select'); setActivePts([]); setActiveCondId(null);
+                return;
+              }
+              // Regular tools
+              setMarkupMode(null);
               if(btn.id==='cutout'){
-                // Just enter cutout mode — user clicks a shape to arm it
                 setTool('cutout'); setActivePts([]); setActiveCondId(null);
                 setScaleStep(null); setShowScalePanel(false);
                 setArchMode(false); setArchCtrlPending(false); setArcPending(false);
@@ -3881,13 +3908,15 @@ Return ONLY a valid JSON array, no markdown:
             };
             return(
               <button key={btn.id} onClick={onClick} title={btn.label}
-                style={{width:'100%',padding:'7px 0',border:'none',background:isActive?`${btn.color}12`:'none',
-                  color:isActive?btn.color:t.text4,cursor:'pointer',
+                style={{width:'100%',padding:btn.markup?'5px 0':'7px 0',border:'none',
+                  background:isActive?`${btn.color}15`:'none',
+                  color:isActive?btn.color:t.text3,cursor:btn.isLabel?'default':'pointer',
                   display:'flex',flexDirection:'column',alignItems:'center',gap:1,
                   borderRight:isActive?`2px solid ${btn.color}`:'2px solid transparent',
-                  boxSizing:'border-box',transition:'all 0.15s'}}>
-                <span style={{fontSize:14,lineHeight:1}}>{btn.icon}</span>
-                <span style={{fontSize:7,fontWeight:isActive?600:500,color:isActive?btn.color:t.text4,letterSpacing:0.3}}>{btn.label}</span>
+                  boxSizing:'border-box',transition:'all 0.1s',
+                  opacity:btn.isLabel?0.7:1}}>
+                <span style={{fontSize:btn.markup?11:14,lineHeight:1,fontWeight:btn.markup?700:400}}>{btn.icon}</span>
+                <span style={{fontSize:8,fontWeight:isActive?600:400,color:isActive?btn.color:t.text4}}>{btn.label}</span>
               </button>
             );
           })}
@@ -3954,6 +3983,15 @@ Return ONLY a valid JSON array, no markdown:
               </>
             );
           })()}
+
+          {/* Print page */}
+          <div style={{height:1,background:t.border,width:32,margin:'4px 0'}}/>
+          <button onClick={()=>window.print()} title="Print page"
+            style={{width:'100%',padding:'7px 0',border:'none',background:'none',
+              color:t.text3,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+            <span style={{fontSize:14,lineHeight:1}}>&#9113;</span>
+            <span style={{fontSize:8,color:t.text4}}>Print</span>
+          </button>
 
           <div style={{flex:1}}/>
           {/* Live measure readout at bottom of tool bar */}
