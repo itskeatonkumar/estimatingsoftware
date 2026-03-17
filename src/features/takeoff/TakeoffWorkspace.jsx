@@ -200,10 +200,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const nat={w:img.naturalWidth, h:img.naturalHeight};
     setImgNat(nat);
     setImgDisp({w:img.offsetWidth||img.naturalWidth, h:img.offsetHeight||img.naturalHeight});
-    // Cache natural dims for instant switching
-    if(selPlan?.file_url && blobCacheRef.current[selPlan.file_url]){
-      blobCacheRef.current[selPlan.file_url].nat = nat;
-    }
+    if(selPlan?.file_url) dimCacheRef.current[selPlan.file_url] = nat;
     fitZoomToContainer(nat);
   };
 
@@ -398,8 +395,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     || selPlan.file_url?.startsWith('data:application/pdf')
   ));
 
-  // Cache blob URLs so switching plans is instant
-  const blobCacheRef = useRef({});
+  // Cache natural dimensions so auto-fit doesn't re-trigger on revisit
+  const dimCacheRef = useRef({});
   const prevBlobUrlRef = useRef(null);
 
   useEffect(()=>{
@@ -411,51 +408,18 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     setPdfDoc(null);
     setPlanErr(null);
 
-    if(selPlan.file_url?.startsWith('data:')){
-      prevBlobUrlRef.current = null;
-      setImgNat({w:1,h:1});
-      setBlobUrl(selPlan.file_url);
-      return;
-    }
+    // Use public URL directly — no SDK download needed, browser caches it
+    const url = selPlan.file_url;
+    if(!url) return;
 
-    // Check cache first
-    const cacheKey = selPlan.file_url;
-    if(blobCacheRef.current[cacheKey]){
-      const cached = blobCacheRef.current[cacheKey];
-      prevBlobUrlRef.current = cached.url;
-      setImgNat(cached.nat || {w:1,h:1});
-      setBlobUrl(cached.url);
-      return;
-    }
-
-    setLoadingPlan(true);
-
-    const marker = '/object/public/attachments/';
-    const idx = selPlan.file_url?.indexOf(marker) ?? -1;
-    const storagePath = idx !== -1 ? selPlan.file_url.slice(idx + marker.length) : null;
-
-    if(storagePath){
-      supabase.storage.from('attachments').download(storagePath)
-        .then(({data, error})=>{
-          if(error || !data){
-            console.error('Supabase download failed:', error?.message, storagePath);
-            setPlanErr('Download failed: ' + (error?.message||'unknown') + ' | path: ' + storagePath);
-            setLoadingPlan(false);
-            return;
-          }
-          const url = URL.createObjectURL(data);
-          blobCacheRef.current[cacheKey] = {url};
-          prevBlobUrlRef.current = url;
-          setImgNat({w:1,h:1});
-          setBlobUrl(url);
-          setLoadingPlan(false);
-        });
+    // Restore cached dimensions if we've seen this plan before
+    const cached = dimCacheRef.current[url];
+    if(cached){
+      setImgNat(cached);
     } else {
-      prevBlobUrlRef.current = null;
       setImgNat({w:1,h:1});
-      setBlobUrl(selPlan.file_url);
-      setLoadingPlan(false);
     }
+    setBlobUrl(url);
   },[selPlan?.id, selPlan?.file_url]);
 
   useEffect(()=>{
