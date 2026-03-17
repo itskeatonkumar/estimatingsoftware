@@ -2644,7 +2644,9 @@ Return ONLY a valid JSON array, no markdown:
                   const ungrouped=visiblePlans.filter(p=>!assignedIds.has(p.id));
                   const folderEntries=Object.entries(planSets);
 
-                  const PlanRow=({p,folderId})=>{
+                  const planDragRef=useRef(null);
+                  const [planDragOver,setPlanDragOver]=useState(null);
+                  const PlanRow=({p,folderId,idx})=>{
                     const isActive=selPlan?.id===p.id;
                     const isOpen=openTabs.includes(p.id);
                     const cnt=items.filter(it=>it.plan_id===p.id).length;
@@ -2657,11 +2659,32 @@ Return ONLY a valid JSON array, no markdown:
                           else{setScale(null);setPresetScale('');}
                           setLeftTab('takeoffs');
                         }}
+                        draggable
+                        onDragStart={()=>{planDragRef.current=p.id;}}
+                        onDragOver={(e)=>{e.preventDefault();setPlanDragOver(p.id);}}
+                        onDragLeave={()=>{if(planDragOver===p.id)setPlanDragOver(null);}}
+                        onDrop={(e)=>{
+                          e.preventDefault();
+                          const fromId=planDragRef.current;
+                          if(!fromId||fromId===p.id){setPlanDragOver(null);return;}
+                          setPlans(prev=>{
+                            const next=[...prev];
+                            const fromIdx=next.findIndex(x=>x.id===fromId);
+                            const toIdx=next.findIndex(x=>x.id===p.id);
+                            if(fromIdx<0||toIdx<0) return prev;
+                            const [moved]=next.splice(fromIdx,1);
+                            next.splice(toIdx,0,moved);
+                            return next;
+                          });
+                          setPlanDragOver(null);planDragRef.current=null;
+                        }}
+                        onDragEnd={()=>{setPlanDragOver(null);planDragRef.current=null;}}
                         style={{display:'flex',alignItems:'center',gap:7,padding:'5px 6px 5px 20px',borderRadius:5,
-                          cursor:'pointer',marginBottom:1,
-                          background:isActive?'rgba(16,185,129,0.1)':'transparent',
+                          cursor:'grab',marginBottom:1,
+                          background:isActive?'rgba(16,185,129,0.1)':planDragOver===p.id?'rgba(59,130,246,0.1)':'transparent',
                           borderLeft:isActive?'2px solid #10B981':isMarked?'2px solid rgba(16,185,129,0.35)':'2px solid transparent',
-                          transition:'all 0.1s'}}>
+                          borderTop:planDragOver===p.id?'2px solid #3B82F6':'2px solid transparent',
+                          transition:'background 0.1s'}}>
                         <div style={{width:36,height:28,borderRadius:3,overflow:'hidden',flexShrink:0,background:t.bg3,border:`1px solid ${t.border}`}}>
                           <img src={p.file_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>
                         </div>
@@ -2703,7 +2726,7 @@ Return ONLY a valid JSON array, no markdown:
                               const {data:ni}=await supabase.from('takeoff_items').insert([{...rest,plan_id:newPlan.id}]).select().single();
                               if(ni) clonedItems.push(ni);
                             }
-                            setPlans(prev=>[...prev,newPlan]);
+                            setPlans(prev=>{const idx=prev.findIndex(x=>x.id===p.id);const next=[...prev];next.splice(idx+1,0,newPlan);return next;});
                             setItems(prev=>[...prev,...clonedItems]);
                           }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(59,130,246,0.3)',background:'none',color:'#3B82F6',cursor:'pointer'}} title="Duplicate plan">⧉</button>
                           <button onClick={async()=>{
