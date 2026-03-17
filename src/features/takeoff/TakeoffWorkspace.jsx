@@ -151,7 +151,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [zoom, setZoom] = useState(1);
   const [showScalePicker, setShowScalePicker] = useState(false);
   const [presetScale, setPresetScale] = useState('');
-  const [planDpi, setPlanDpi] = useState(150); // scan DPI for image plans (PDFs auto-set to 144)
+  const [planDpi, setPlanDpi] = useState(144); // DPI — PDFs render at scale 2.0 (72*2=144)
   const [showAssembly, setShowAssembly] = useState(false);
   const [showUnitCosts, setShowUnitCosts] = useState(false);
   const [showBidSummary, setShowBidSummary] = useState(false);
@@ -325,7 +325,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     if (preset) return preset;
     if (!s) return 'Not set';
     // Try to reverse-match to a construction scale
-    const dpi = planDpi || 150;
+    const dpi = planDpi || 144;
     for (const cs of CONSTRUCTION_SCALES) {
       const expected = (dpi * 12) / cs.ratio;
       if (Math.abs(expected - s) / s < 0.02) return cs.label; // within 2%
@@ -1475,7 +1475,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       for(let pageN=1; pageN<=numPages; pageN++){
         setUploading(`Rendering ${pageN} / ${numPages}…`);
         const page = await doc.getPage(pageN);
-        const viewport = page.getViewport({scale:1.8});
+        const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
         offscreen.width = viewport.width; offscreen.height = viewport.height;
         await page.render({canvasContext: offscreen.getContext('2d'), viewport}).promise;
