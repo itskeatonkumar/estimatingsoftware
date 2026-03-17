@@ -3241,8 +3241,8 @@ Return ONLY a valid JSON array, no markdown:
           </div>
 
           {/* Plan canvas + floating overlays */}
-          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
-          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
+          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0,border:'2px solid red'}}>
+          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e',border:'2px solid blue'}}>
             {!selPlan?(
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',padding:40}}>
                 <div style={{fontSize:48,marginBottom:16}}>📐</div>
