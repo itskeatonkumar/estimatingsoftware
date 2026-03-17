@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../lib/theme.jsx';
 import { ThemeToggle } from '../../lib/theme.jsx';
 import { supabase } from '../../lib/supabase.js';
@@ -14,6 +14,8 @@ const STATUS_COLORS = {
   hold: '#71717a',
 };
 
+const STATUS_OPTIONS = ['estimating', 'bid_submitted', 'awarded', 'lost', 'hold'];
+
 function ProjectList({ onSelectProject, user }) {
   const { t } = useTheme();
   const [projects, setProjects] = useState([]);
@@ -21,6 +23,8 @@ function ProjectList({ onSelectProject, user }) {
   const [newModal, setNewModal] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [selected, setSelected] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
@@ -41,6 +45,36 @@ function ProjectList({ onSelectProject, user }) {
     if (type === true) { setProjects(prev => [data, ...prev]); }
     else { setProjects(prev => prev.map(p => p.id === data.id ? data : p)); }
     setNewModal(false);
+  };
+
+  const bulkDelete = async () => {
+    if (!selected.size) return;
+    if (!window.confirm(`Delete ${selected.size} project${selected.size > 1 ? 's' : ''}? This permanently removes all takeoff data.`)) return;
+    setDeleting(true);
+    const ids = [...selected];
+    for (const id of ids) {
+      const { error } = await supabase.rpc('delete_precon_project', { p_id: id });
+      if (error) { console.error('delete failed', id, error); }
+    }
+    setProjects(prev => prev.filter(p => !selected.has(p.id)));
+    setSelected(new Set());
+    setDeleting(false);
+  };
+
+  const updateField = async (id, field, value) => {
+    const { error } = await supabase.from('precon_projects').update({ [field]: value }).eq('id', id);
+    if (error) { console.error('update failed', error); return; }
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const filtered = projects.filter(p => {
@@ -86,10 +120,24 @@ function ProjectList({ onSelectProject, user }) {
               </div>
             ))}
           </div>
-          <button onClick={() => setNewModal(true)}
-            style={{ background: '#10B981', border: 'none', color: '#fff', padding: '8px 18px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-            + New Project
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {selected.size > 0 && (
+              <button onClick={bulkDelete} disabled={deleting}
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                {deleting ? 'Deleting...' : `Delete ${selected.size}`}
+              </button>
+            )}
+            {selected.size > 0 && (
+              <button onClick={() => setSelected(new Set())}
+                style={{ background: 'none', border: `1px solid ${t.border}`, color: t.text4, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
+                Clear
+              </button>
+            )}
+            <button onClick={() => setNewModal(true)}
+              style={{ background: '#10B981', border: 'none', color: '#fff', padding: '8px 18px', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              + New Project
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -141,30 +189,45 @@ function ProjectList({ onSelectProject, user }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>
           {filtered.map(p => {
             const statusColor = STATUS_COLORS[p.status] || '#71717a';
+            const isSelected = selected.has(p.id);
             return (
               <div key={p.id} onClick={() => onSelectProject(p)}
                 style={{
-                  background: t.bg2, border: `1px solid ${t.border}`, borderRadius: 8, padding: 16,
+                  background: t.bg2, border: `1px solid ${isSelected ? '#3B82F6' : t.border}`, borderRadius: 8, padding: 16,
                   cursor: 'pointer', transition: 'border-color 0.15s, transform 0.15s',
+                  position: 'relative',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#10B981'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = t.border; e.currentTarget.style.transform = 'translateY(0)'; }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = '#10B981'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = isSelected ? '#3B82F6' : t.border; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                {/* Checkbox */}
+                <div onClick={e => toggleSelect(p.id, e)}
+                  style={{ position: 'absolute', top: 8, left: 8, width: 16, height: 16, borderRadius: 3,
+                    border: `1.5px solid ${isSelected ? '#3B82F6' : t.border}`,
+                    background: isSelected ? '#3B82F6' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+                  {isSelected && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800, lineHeight: 1 }}>✓</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8, marginLeft: 18 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                     <div style={{ fontSize: 10, color: t.text3, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {p.address || p.gc_name || ''}
                     </div>
                   </div>
-                  <span style={{
-                    fontSize: 9, padding: '3px 7px', borderRadius: 8,
-                    background: statusColor + '20', color: statusColor,
-                    fontFamily: "'DM Mono',monospace", fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap',
-                  }}>
-                    {(p.status || 'estimating').replace(/_/g, ' ').toUpperCase()}
-                  </span>
+                  {/* Inline status dropdown */}
+                  <select value={p.status || 'estimating'}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => { e.stopPropagation(); updateField(p.id, 'status', e.target.value); }}
+                    style={{
+                      fontSize: 9, padding: '3px 4px', borderRadius: 8, appearance: 'none', WebkitAppearance: 'none',
+                      background: statusColor + '20', color: statusColor, textAlign: 'center',
+                      border: `1px solid ${statusColor}40`, cursor: 'pointer',
+                      fontFamily: "'DM Mono',monospace", fontWeight: 700, flexShrink: 0,
+                    }}>
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
+                  </select>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginLeft: 18 }}>
                   <div>
                     {p.contract_value && (
                       <div style={{ fontSize: 15, fontWeight: 800, color: t.text, fontFamily: "'DM Mono',monospace" }}>
@@ -182,6 +245,20 @@ function ProjectList({ onSelectProject, user }) {
                       Bid: {fmtDate(p.bid_date)}
                     </div>
                   )}
+                </div>
+                {/* Team member */}
+                <div style={{ marginTop: 8, marginLeft: 18 }} onClick={e => e.stopPropagation()}>
+                  <input
+                    defaultValue={p.assigned_to || ''}
+                    onClick={e => e.stopPropagation()}
+                    onBlur={e => { const v = e.target.value.trim(); if (v !== (p.assigned_to || '')) updateField(p.id, 'assigned_to', v || null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                    placeholder="Assign team member…"
+                    style={{
+                      width: '100%', padding: '3px 6px', fontSize: 10, border: `1px solid ${t.border}`,
+                      borderRadius: 4, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
                 </div>
               </div>
             );
