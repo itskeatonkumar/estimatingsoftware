@@ -3332,8 +3332,8 @@ Return ONLY a valid JSON array, no markdown:
           {/* ── DEBUG overlay (remove before prod) ── */}
           <div style={{position:'absolute',bottom:8,left:8,zIndex:110,
             background:'rgba(0,0,0,0.75)',color:'#0f0',fontFamily:'monospace',
-            fontSize:10,padding:'4px 8px',borderRadius:4,pointerEvents:'none',lineHeight:1.6}}>
-            sel:{selectedShapes.size} | clip:{clipboard.length}{dragOffset?' | drag':''}{ vertexDrag?' | vtx':''} | imgNat:{imgNat.w}x{imgNat.h} | zoom:{zoom}
+            fontSize:10,padding:'4px 8px',borderRadius:4,pointerEvents:'auto',lineHeight:1.6}}>
+            imgNat:{imgNat.w}x{imgNat.h} | zoom:{zoom} | {selPlan&&<a href={selPlan.file_url} target="_blank" rel="noreferrer" style={{color:'#0ff',textDecoration:'underline'}}>open raw image</a>}
           </div>
           {/* ── Multi-select floating action bar ── */}
           {selectedShapes.size>0&&(
