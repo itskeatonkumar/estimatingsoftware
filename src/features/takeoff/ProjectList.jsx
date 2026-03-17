@@ -36,10 +36,12 @@ function ProjectList({ onSelectProject, user }) {
     // Fetch org members for team assignment dropdown
     (async () => {
       const { data: { user: u } } = await supabase.auth.getUser();
-      if (!u) return;
-      const { data: mem } = await supabase.from('memberships').select('org_id').eq('user_id', u.id).limit(1).single();
+      if (!u) { console.warn('[org-members] no user'); return; }
+      const { data: mem, error: memErr } = await supabase.from('memberships').select('org_id').eq('user_id', u.id).limit(1).single();
+      console.log('[org-members] membership lookup:', mem, memErr);
       if (!mem?.org_id) return;
-      const { data: members } = await supabase.rpc('get_org_members', { p_org_id: mem.org_id });
+      const { data: members, error: rpcErr } = await supabase.rpc('get_org_members', { p_org_id: mem.org_id });
+      console.log('[org-members] rpc result:', members, rpcErr);
       if (members) setOrgMembers(members);
     })();
   }, []);
