@@ -6,15 +6,15 @@ export const COMPANIES = [
 
 // ── Takeoff Categories ──────────────────────────────────
 export const TAKEOFF_CATS = [
-  { id: 'site_concrete',     label: 'Site Concrete',      color: '#F59E0B', unit: 'SF', defaultCost: 8.50 },
-  { id: 'building_concrete', label: 'Building Concrete',  color: '#F97316', unit: 'SF', defaultCost: 9.00 },
-  { id: 'flatwork',          label: 'Flatwork / Slabs',   color: '#EF4444', unit: 'SF', defaultCost: 7.00 },
-  { id: 'foundations',       label: 'Foundations',         color: '#8B5CF6', unit: 'CY', defaultCost: 650 },
-  { id: 'curb_gutter',       label: 'Curb & Gutter',      color: '#06B6D4', unit: 'LF', defaultCost: 28.00 },
-  { id: 'masonry',           label: 'Masonry / CMU',      color: '#10B981', unit: 'SF', defaultCost: 22.00 },
-  { id: 'asphalt',           label: 'Asphalt / Paving',   color: '#6B7280', unit: 'SF', defaultCost: 4.50 },
-  { id: 'grading',           label: 'Grading / Earthwork',color: '#84CC16', unit: 'CY', defaultCost: 18.00 },
-  { id: 'other',             label: 'Other',              color: '#94A3B8', unit: 'LS', defaultCost: 0 },
+  { id: 'site_concrete',     label: 'Site Concrete',      color: '#D4A04A', unit: 'SF', defaultCost: 8.50 },
+  { id: 'building_concrete', label: 'Building Concrete',  color: '#C87941', unit: 'SF', defaultCost: 9.00 },
+  { id: 'flatwork',          label: 'Flatwork / Slabs',   color: '#C0504D', unit: 'SF', defaultCost: 7.00 },
+  { id: 'foundations',       label: 'Foundations',         color: '#7B6BA4', unit: 'CY', defaultCost: 650 },
+  { id: 'curb_gutter',       label: 'Curb & Gutter',      color: '#4A90A4', unit: 'LF', defaultCost: 28.00 },
+  { id: 'masonry',           label: 'Masonry / CMU',      color: '#4CAF50', unit: 'SF', defaultCost: 22.00 },
+  { id: 'asphalt',           label: 'Asphalt / Paving',   color: '#808080', unit: 'SF', defaultCost: 4.50 },
+  { id: 'grading',           label: 'Grading / Earthwork',color: '#6B8E23', unit: 'CY', defaultCost: 18.00 },
+  { id: 'other',             label: 'Other',              color: '#8E9AAF', unit: 'LS', defaultCost: 0 },
 ];
 
 // ── Takeoff Types (creation wizard) ─────────────────────
@@ -27,9 +27,9 @@ export const TAKEOFF_TYPES = [
 ];
 
 export const TO_COLORS = [
-  '#10B981', '#3B82F6', '#F59E0B', '#EF4444',
-  '#8B5CF6', '#F97316', '#06B6D4', '#EC4899',
-  '#84CC16', '#A855F7', '#14B8A6', '#F43F5E',
+  '#4CAF50', '#4A90A4', '#D4A04A', '#C0504D',
+  '#7B6BA4', '#C87941', '#5B9BD5', '#A0522D',
+  '#6B8E23', '#808080', '#8E9AAF', '#B06060',
 ];
 
 // ── Construction Scales ─────────────────────────────────

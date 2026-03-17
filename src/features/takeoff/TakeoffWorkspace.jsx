@@ -43,14 +43,14 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         display: 'flex', alignItems: 'center', gap: 7, padding: '5px 6px 5px 20px', borderRadius: 5,
         cursor: 'grab', marginBottom: 1,
         background: isActive ? 'rgba(16,185,129,0.1)' : dragOverId === p.id ? 'rgba(59,130,246,0.1)' : 'transparent',
-        borderLeft: isActive ? '2px solid #10B981' : isMarked ? '2px solid rgba(16,185,129,0.35)' : '2px solid transparent',
-        borderTop: dragOverId === p.id ? '2px solid #3B82F6' : '2px solid transparent',
+        borderLeft: isActive ? '2px solid #4CAF50' : isMarked ? '2px solid rgba(16,185,129,0.35)' : '2px solid transparent',
+        borderTop: dragOverId === p.id ? '2px solid #5B9BD5' : '2px solid transparent',
         transition: 'background 0.1s'
       }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#10B981' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || 'Unnamed'}</div>
+        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#4CAF50' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || 'Unnamed'}</div>
         <div style={{ fontSize: 8, color: t.text4, display: 'flex', alignItems: 'center', gap: 3 }}>
-          {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0 }} />}
+          {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#4CAF50', flexShrink: 0 }} />}
           <span>{cnt ? `${cnt} item${cnt !== 1 ? 's' : ''}` : 'No items'}{isOpen ? ' · open' : ''}</span>
         </div>
       </div>
@@ -72,7 +72,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
             if (H.selPlan?.id === p.id) H.setSelPlan(prev => ({ ...prev, name: aiName }));
           }
           btn.textContent = '✦'; btn.disabled = false;
-        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)', color: '#a855f7', cursor: 'pointer' }} title="AI name">✦</button>
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)', color: '#7B6BA4', cursor: 'pointer' }} title="AI name">✦</button>
         <button onClick={async () => {
           if (p.id === 'preview') return;
           const { data: newPlan } = await supabase.from('precon_plans').insert([{ project_id: p.project_id, name: (p.name || 'Sheet') + ' (Copy)', file_url: p.file_url, file_type: p.file_type, scale_px_per_ft: p.scale_px_per_ft }]).select().single();
@@ -100,7 +100,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
             H.savePlanSets({ ...H.planSets, [folderId]: { ...folder, planIds: folderPlanIds } });
           }
           H.setItems(prev => [...prev, ...clonedItems]);
-        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(59,130,246,0.3)', background: 'none', color: '#3B82F6', cursor: 'pointer' }} title="Duplicate plan">⧉</button>
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(59,130,246,0.3)', background: 'none', color: '#5B9BD5', cursor: 'pointer' }} title="Duplicate plan">⧉</button>
         <button onClick={async () => {
           if (!window.confirm('Delete this sheet?')) return;
           if (p.id !== 'preview') { const { error } = await supabase.from('precon_plans').delete().eq('id', p.id).select(); if (error) { console.error('plan delete error:', error); alert('Delete failed: ' + error.message); return; } }
@@ -110,7 +110,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
           const updated = {};
           Object.entries(H.planSets).forEach(([bid, s]) => { updated[bid] = { ...s, planIds: (s.planIds || []).filter(id => id !== p.id) }; });
           H.savePlanSets(updated);
-        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(239,68,68,0.25)', background: 'none', color: '#ef4444', cursor: 'pointer' }}>✕</button>
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(239,68,68,0.25)', background: 'none', color: '#C0504D', cursor: 'pointer' }}>✕</button>
       </div>
     </div>
   );
@@ -208,7 +208,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [newTOType, setNewTOType] = useState(null);
   const [newTOName, setNewTOName] = useState('');
   const [newTODesc, setNewTODesc] = useState('');
-  const [newTOColor, setNewTOColor] = useState('#10B981');
+  const [newTOColor, setNewTOColor] = useState('#4CAF50');
   const [newTOCat, setNewTOCat] = useState('other');
   const [newTOSize, setNewTOSize] = useState('medium');
   const [creatingTO, setCreatingTO] = useState(false);
@@ -1880,7 +1880,7 @@ Return ONLY a valid JSON array, no markdown:
         if(!shapes.length) return [];
         const isActive = it.id===activeCondId;
         const isSelected = false; // resolved per-shape below using selectedShapes
-        const c = isActive ? '#F97316' : isSelected ? '#3B82F6' : (it.color||'#10B981');
+        const c = isActive ? '#E8A317' : isSelected ? '#5B9BD5' : (it.color||'#4CAF50');
         const mt = it.measurement_type;
 
         return shapes.map((pts, shapeIdx)=>{
@@ -1933,7 +1933,7 @@ Return ONLY a valid JSON array, no markdown:
             const isActiveVtx = vertexDrag && String(vertexDrag.itemId)===String(it.id) && vertexDrag.shapeIdx===shapeIdx && vertexDrag.vertexIdx===vi;
             return <circle key={`vtx-${vi}`} data-vertex="1" data-item-id={it.id} data-shape-idx={shapeIdx} data-vertex-idx={vi}
               cx={p.x} cy={p.y} r={r*1.1}
-              fill={isActiveVtx?'#3B82F6':'#fff'} stroke="#3B82F6" strokeWidth={sw*0.8}
+              fill={isActiveVtx?'#5B9BD5':'#fff'} stroke="#5B9BD5" strokeWidth={sw*0.8}
               style={{cursor:'move',pointerEvents:'all'}}/>;
           }).filter(Boolean) : null;
 
@@ -1949,7 +1949,7 @@ Return ONLY a valid JSON array, no markdown:
               const aIdx = dp.indexOf(a), bIdx = dp.indexOf(b);
               handles.push(<circle key={`mid-${ei}`} data-midpoint="true" data-item-id={it.id} data-shape-idx={shapeIdx} data-edge-idx={Math.max(aIdx,0)}
                 cx={mx} cy={my} r={rSm}
-                fill="rgba(59,130,246,0.3)" stroke="#3B82F6" strokeWidth={sw*0.5}
+                fill="rgba(59,130,246,0.3)" stroke="#5B9BD5" strokeWidth={sw*0.5}
                 style={{cursor:'copy',pointerEvents:'all'}}/>);
             }
             return handles;
@@ -1975,7 +1975,7 @@ Return ONLY a valid JSON array, no markdown:
             const cy=realPts.reduce((s,p)=>s+p.y,0)/(realPts.length||1);
             const netArea = Math.round(calcShapeNetArea(dp)*10)/10;
             const lw=38/zoom, lh=padH*1.6;
-            const strokeColor = isEraserTarget ? '#EF4444' : c;
+            const strokeColor = isEraserTarget ? '#C0504D' : c;
             const fillColor = c+'22';
             const strokeW = isEraserTarget ? sw*2 : (isActive?sw*1.5:sw);
             const clipId = `clip-${it.id}-${shapeIdx}`;
@@ -1989,9 +1989,9 @@ Return ONLY a valid JSON array, no markdown:
                 fill={fillColor} fillRule="evenodd"
                 stroke={strokeColor} strokeWidth={strokeW}
                 clipPath={hasHoles?`url(#${clipId})`:undefined}/>
-              {isSelected&&<path d={outerD} fill="none" stroke="#3B82F6" strokeWidth={sw*2} strokeDasharray={`${6/zoom},${3/zoom}`} opacity={0.6} style={{pointerEvents:'none'}}/>}
+              {isSelected&&<path d={outerD} fill="none" stroke="#5B9BD5" strokeWidth={sw*2} strokeDasharray={`${6/zoom},${3/zoom}`} opacity={0.6} style={{pointerEvents:'none'}}/>}
               <rect x={cx-lw/2} y={cy-lh/2} width={lw} height={lh} rx={2/zoom} fill="rgba(0,0,0,0.65)"/>
-              <text x={cx} y={cy+fs*0.38} fontSize={fs*0.9} fill={isActive?'#F97316':'#ddd'} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={600} style={{pointerEvents:'none'}}>{netArea} SF</text>
+              <text x={cx} y={cy+fs*0.38} fontSize={fs*0.9} fill={isActive?'#E8A317':'#ddd'} textAnchor="middle" fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>{netArea} SF</text>
               {vertexHandles}
               {midpointHandles}
             </g>);
@@ -2006,15 +2006,15 @@ Return ONLY a valid JSON array, no markdown:
               ? Math.round((calcShapeLength(dp)/scale)*10)/10
               : (()=>{ let t=0; for(let i=1;i<dp.length;i++) t+=calcLinear(dp[i-1],dp[i]); return Math.round(t*10)/10; })();
             const lw=36/zoom, lh=padH*1.5;
-            const strokeColor = isEraserTarget ? '#EF4444' : c;
+            const strokeColor = isEraserTarget ? '#C0504D' : c;
             const strokeW = isEraserTarget ? sw*2.5 : sw*1.2;
             return(<g key={key} data-shape="1" data-item-id={it.id} data-shape-idx={shapeIdx} onClick={onClick} style={{cursor:shapeCursor}} transform={dragTransform}>
               <path d={d} fill="none" stroke={strokeColor} strokeWidth={strokeW} strokeDasharray={`${6/zoom},${3/zoom}`}/>
-              {isSelected&&<path d={d} fill="none" stroke="#3B82F6" strokeWidth={sw*2.5} opacity={0.4} style={{pointerEvents:'none'}}/>}
+              {isSelected&&<path d={d} fill="none" stroke="#5B9BD5" strokeWidth={sw*2.5} opacity={0.4} style={{pointerEvents:'none'}}/>}
               {realPts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={r*0.8} fill={strokeColor} stroke="#fff" strokeWidth={sw*0.4}/>)}
               {hasArcs&&dp.filter(p=>p._ctrl).map((p,i)=><circle key={'ctrl'+i} cx={p.x} cy={p.y} r={r*0.5} fill={c} opacity={0.4}/>)}
               <rect x={mx-lw/2} y={my-lh*1.6} width={lw} height={lh} rx={2/zoom} fill="rgba(0,0,0,0.65)"/>
-              <text x={mx} y={my-lh*0.7} fontSize={fs*0.9} fill={isActive?'#F97316':'#ddd'} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={600} style={{pointerEvents:'none'}}>{dist} {scale?'LF':'px'}</text>
+              <text x={mx} y={my-lh*0.7} fontSize={fs*0.9} fill={isActive?'#E8A317':'#ddd'} textAnchor="middle" fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>{dist} {scale?'LF':'px'}</text>
               {vertexHandles}
               {midpointHandles}
             </g>);
@@ -2023,8 +2023,8 @@ Return ONLY a valid JSON array, no markdown:
             const p=dp[0];
             const isEr=isEraserTarget;
             return(<g key={key} data-shape="1" data-item-id={it.id} data-shape-idx={shapeIdx} onClick={onClick} style={{cursor:shapeCursor}} transform={dragTransform}>
-              <circle cx={p.x} cy={p.y} r={r*1.8} fill={isEr?'#EF4444':c} stroke={isSelected?'#3B82F6':'#fff'} strokeWidth={isSelected?sw*2:sw*0.5}/>
-              <text x={p.x} y={p.y+fs*0.38} fontSize={fs*0.9} fill="#fff" textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>✕</text>
+              <circle cx={p.x} cy={p.y} r={r*1.8} fill={isEr?'#C0504D':c} stroke={isSelected?'#5B9BD5':'#fff'} strokeWidth={isSelected?sw*2:sw*0.5}/>
+              <text x={p.x} y={p.y+fs*0.38} fontSize={fs*0.9} fill="#fff" textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>✕</text>
             </g>);
           }
 
@@ -2036,7 +2036,7 @@ Return ONLY a valid JSON array, no markdown:
   const renderActive=()=>{
     const pts=(tool==='scale'&&scaleStep==='picking')?scalePts:activePts;
     if(!pts.length&&!archMode) return null;
-    const c=tool==='scale'?'#10B981':tool==='cutout'?'#EF4444':archMode?'#a855f7':tool==='area'?'#F59E0B':tool==='perimeter'?'#F97316':'#06B6D4';
+    const c=tool==='scale'?'#4CAF50':tool==='cutout'?'#C0504D':archMode?'#7B6BA4':tool==='area'?'#F59E0B':tool==='perimeter'?'#E8A317':'#4A90A4';
     const sw=2.5/zoom, r0=10/zoom, r1=5/zoom, r2=4/zoom, fs=10/zoom;
     const all=hoverPt?[...pts,hoverPt]:pts;
     const activeCond = itemsRef.current.find(i=>String(i.id)===String(activeCondId));
@@ -2059,7 +2059,7 @@ Return ONLY a valid JSON array, no markdown:
         <line x1={hoverPt.x} y1={hoverPt.y} x2={pts[0].x} y2={pts[0].y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
         <line x1={hoverPt.x} y1={hoverPt.y} x2={pts[1].x} y2={pts[1].y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
         <circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.6}/>
-        {ft&&<text x={mx} y={my-8/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>{ft} LF ⌒</text>}
+        {ft&&<text x={mx} y={my-8/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>{ft} LF ⌒</text>}
       </>);
     } else if(isArchLinear && pts.length===1 && hoverPt){
       // First segment — show straight preview to p2
@@ -2084,7 +2084,7 @@ Return ONLY a valid JSON array, no markdown:
       ))}
       {hoverPt&&!isArchLinear&&<circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.5}/>}
       {/* Close hint for area */}
-      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl).length>=3&&!isArchArea&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>✦ dbl-click to close</text>}
+      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl).length>=3&&!isArchArea&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>✦ dbl-click to close</text>}
       {/* Snap indicator — small crosshair on cursor when snap is active */}
       {snapEnabled&&hoverPt&&(()=>{
         const sz=9/zoom;
@@ -2095,21 +2095,21 @@ Return ONLY a valid JSON array, no markdown:
         </>);
       })()}
       {/* dbl-click to finish hint for linear */}
-      {tool==='linear'&&!archMode&&activePts.length>=2&&hoverPt&&<text x={hoverPt.x+8/zoom} y={hoverPt.y-8/zoom} fontSize={fs*0.9} fill={c} fontFamily="'DM Mono',monospace" fontWeight={600} style={{pointerEvents:'none'}}>dbl-click to finish</text>}
+      {tool==='linear'&&!archMode&&activePts.length>=2&&hoverPt&&<text x={hoverPt.x+8/zoom} y={hoverPt.y-8/zoom} fontSize={fs*0.9} fill={c} fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>dbl-click to finish</text>}
       {/* Live LF readout — segment from last point to cursor */}
       {tool==='linear'&&!archMode&&activePts.length>=1&&scale&&hoverPt&&(()=>{
         const lastPt=activePts[activePts.length-1];
         const dist=Math.round(calcLinear(lastPt,hoverPt)*10)/10;
-        return <text x={(lastPt.x+hoverPt.x)/2} y={(lastPt.y+hoverPt.y)/2-6/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>{dist} LF</text>;
+        return <text x={(lastPt.x+hoverPt.x)/2} y={(lastPt.y+hoverPt.y)/2-6/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>{dist} LF</text>;
       })()}
       {/* Arch mode step indicator */}
       {isArchLinear&&(
-        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>
+        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>
           {arcPending ? (pts.length===0?'⌒ Arc: click start':pts.length===1?'⌒ Arc: click peak (radius bulge)':'⌒ Arc: click end') : (pts.length===0?'⌒ Click start':pts.length===1?'⌒ Click end':pts.length===2?'⌒ Click arc bulge':'')}
         </text>
       )}
       {isArchArea&&archCtrlPending&&(
-        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={700} style={{pointerEvents:'none'}}>⌒ Click arc ctrl pt</text>
+        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>⌒ Click arc ctrl pt</text>
       )}
     </>);
   };
@@ -2140,11 +2140,11 @@ Return ONLY a valid JSON array, no markdown:
   const toolCursor=(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
 
   const co = COMPANIES.find(c=>c.id===project.company)||COMPANIES[1];
-  const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#3B82F6',awarded:'#10B981',lost:'#EF4444',hold:'#555'};
+  const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#5B9BD5',awarded:'#4CAF50',lost:'#C0504D',hold:'#555'};
 
   // ── right tool icon helper
   const RightBtn = ({icon, label, active, onClick, color}) => {
-    const activeColor = color || '#10B981';
+    const activeColor = color || '#4CAF50';
     return(
     <button onClick={onClick} title={label}
       style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
@@ -2155,7 +2155,7 @@ Return ONLY a valid JSON array, no markdown:
         borderRight:active?`2px solid ${activeColor}`:'2px solid transparent',
         transition:'all 0.12s'}}>
       <span style={{fontSize:17,lineHeight:1}}>{icon}</span>
-      <span style={{fontSize:8,fontFamily:"'DM Mono',monospace",fontWeight:600,letterSpacing:0.2,color:active?activeColor:t.text4,marginTop:1}}>{label}</span>
+      <span style={{fontSize:8,fontVariantNumeric:'tabular-nums',fontWeight:600,letterSpacing:0.2,color:active?activeColor:t.text4,marginTop:1}}>{label}</span>
     </button>
     );
   };
@@ -2215,7 +2215,7 @@ Return ONLY a valid JSON array, no markdown:
     const planItemsEx = items.filter(it => it.points?.length && it.plan_id === plan.id);
     for(const it of planItemsEx){
       const shapes = normalizeShapes(it.points);
-      const c = it.color || '#10B981';
+      const c = it.color || '#4CAF50';
       const mt = it.measurement_type;
       for(const pts of shapes){
         if(!pts.length) continue;
@@ -2238,7 +2238,7 @@ Return ONLY a valid JSON array, no markdown:
           const labelStr = `${shapeQty.toLocaleString()} ${shapeUnit}`;
           const fs = Math.max(10, W/80);
           ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(cx-fs*3,cy-fs*0.9,fs*6,fs*1.8);
-          ctx.fillStyle='#eee'; ctx.font=`bold ${fs}px "DM Mono",monospace`;
+          ctx.fillStyle='#eee'; ctx.font=`bold ${fs}px monospace`;
           ctx.textAlign='center'; ctx.textBaseline='middle';
           ctx.fillText(labelStr, cx, cy);
         } else if(mt === 'linear' && realPts.length >= 2){
@@ -2255,7 +2255,7 @@ Return ONLY a valid JSON array, no markdown:
           const labelStr = `${shapeQty} ${shapeUnit}`;
           const fs = Math.max(10, W/80);
           ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(mx-fs*3,my-fs*2.4,fs*6,fs*1.6);
-          ctx.fillStyle='#eee'; ctx.font=`bold ${fs}px "DM Mono",monospace`;
+          ctx.fillStyle='#eee'; ctx.font=`bold ${fs}px monospace`;
           ctx.textAlign='center'; ctx.textBaseline='middle';
           ctx.fillText(labelStr, mx, my-fs*1.6);
         } else if(mt === 'count' && pts[0]){
@@ -2276,7 +2276,7 @@ Return ONLY a valid JSON array, no markdown:
         if(legendMap.has(key)){
           legendMap.get(key).qty += (it.quantity || 0);
         } else {
-          legendMap.set(key, { color: it.color||'#10B981', qty: it.quantity||0, unit: it.unit||'' });
+          legendMap.set(key, { color: it.color||'#4CAF50', qty: it.quantity||0, unit: it.unit||'' });
         }
       });
       const legendItems = [...legendMap.entries()]; // [desc, {color,qty,unit}]
@@ -2475,7 +2475,7 @@ Return ONLY a valid JSON array, no markdown:
         </div>
         <button onClick={()=>setShowBidSummary(true)} disabled={!items.length}
           style={{height:'100%',padding:'0 20px',border:'none',borderLeft:`1px solid ${t.border}`,
-            background:items.length?'#10B981':'transparent',color:items.length?'#fff':t.text4,
+            background:items.length?'#4CAF50':'transparent',color:items.length?'#fff':t.text4,
             cursor:items.length?'pointer':'default',fontSize:12,fontWeight:600,flexShrink:0}}>
           Bid Summary
         </button>
@@ -2509,8 +2509,8 @@ Return ONLY a valid JSON array, no markdown:
             }}
               style={{padding:'0 18px',border:'none',background:'none',cursor:'pointer',
                 fontSize:13,fontWeight:isActive?600:400,
-                color:isActive?'#10B981':t.text3,
-                borderBottom:isActive?'2px solid #10B981':'2px solid transparent',
+                color:isActive?'#4CAF50':t.text3,
+                borderBottom:isActive?'2px solid #4CAF50':'2px solid transparent',
                 boxSizing:'border-box',transition:'color 0.15s',letterSpacing:0.2}}>
               {tab.label}
             </button>
@@ -2551,34 +2551,34 @@ Return ONLY a valid JSON array, no markdown:
 
         const sortCol = (col) => setReportSort(prev=>({col,asc:prev.col===col?!prev.asc:true}));
         const sortArrow = (col) => reportSort.col===col ? (reportSort.asc?' ↑':' ↓') : '';
-        const hdrStyle = {fontSize:10,fontWeight:700,color:t.text3,cursor:'pointer',userSelect:'none',padding:'8px 10px',textAlign:'left',fontFamily:"'DM Mono',monospace",letterSpacing:0.5,whiteSpace:'nowrap',borderBottom:`2px solid ${t.border2}`};
-        const cellStyle = {fontSize:11,color:t.text,padding:'7px 10px',borderBottom:`1px solid ${t.border}`,fontFamily:"'DM Mono',monospace",whiteSpace:'nowrap'};
+        const hdrStyle = {fontSize:10,fontWeight:700,color:t.text3,cursor:'pointer',userSelect:'none',padding:'8px 10px',textAlign:'left',fontVariantNumeric:'tabular-nums',letterSpacing:0.5,whiteSpace:'nowrap',borderBottom:`2px solid ${t.border2}`};
+        const cellStyle = {fontSize:11,color:t.text,padding:'7px 10px',borderBottom:`1px solid ${t.border}`,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'};
 
         return(
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           {/* Report Header */}
           <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg,flexShrink:0}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:16,fontWeight:800,color:t.text,fontFamily:"'Syne',sans-serif"}}>Takeoff Summary</div>
-              <div style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",marginTop:2}}>Generated {new Date().toLocaleString()}</div>
+              <div style={{fontSize:16,fontWeight:800,color:t.text,fontFamily:"inherit"}}>Takeoff Summary</div>
+              <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums',marginTop:2}}>Generated {new Date().toLocaleString()}</div>
             </div>
             {/* Summary badges */}
             <div style={{display:'flex',gap:8}}>
               {totalSF>0&&<div style={{background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#F59E0B',fontWeight:700,fontFamily:"'DM Mono',monospace"}}>SQ FT</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#F59E0B',fontFamily:"'DM Mono',monospace"}}>{Math.round(totalSF).toLocaleString()}</div>
+                <div style={{fontSize:8,color:'#F59E0B',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>SQ FT</div>
+                <div style={{fontSize:13,fontWeight:700,color:'#F59E0B',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalSF).toLocaleString()}</div>
               </div>}
               {totalLF>0&&<div style={{background:'rgba(6,182,212,0.1)',border:'1px solid rgba(6,182,212,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#06B6D4',fontWeight:700,fontFamily:"'DM Mono',monospace"}}>LN FT</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#06B6D4',fontFamily:"'DM Mono',monospace"}}>{Math.round(totalLF).toLocaleString()}</div>
+                <div style={{fontSize:8,color:'#4A90A4',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>LN FT</div>
+                <div style={{fontSize:13,fontWeight:700,color:'#4A90A4',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalLF).toLocaleString()}</div>
               </div>}
               {totalEA>0&&<div style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#10B981',fontWeight:700,fontFamily:"'DM Mono',monospace"}}>EA</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>{Math.round(totalEA).toLocaleString()}</div>
+                <div style={{fontSize:8,color:'#4CAF50',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>EA</div>
+                <div style={{fontSize:13,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalEA).toLocaleString()}</div>
               </div>}
               {totalCY>0&&<div style={{background:'rgba(139,92,246,0.1)',border:'1px solid rgba(139,92,246,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#8B5CF6',fontWeight:700,fontFamily:"'DM Mono',monospace"}}>CU YD</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#8B5CF6',fontFamily:"'DM Mono',monospace"}}>{Math.round(totalCY).toLocaleString()}</div>
+                <div style={{fontSize:8,color:'#7B6BA4',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>CU YD</div>
+                <div style={{fontSize:13,fontWeight:700,color:'#7B6BA4',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalCY).toLocaleString()}</div>
               </div>}
             </div>
             <div style={{display:'flex',gap:6}}>
@@ -2606,7 +2606,7 @@ Return ONLY a valid JSON array, no markdown:
                 a.download=`${project.name}_takeoff_report.csv`;
                 a.click();
               }}
-                style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
+                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
                 ↓ Export CSV
               </button>
             </div>
@@ -2640,7 +2640,7 @@ Return ONLY a valid JSON array, no markdown:
                       <td style={{...cellStyle}}>
                         <div style={{display:'flex',alignItems:'center',gap:8}}>
                           <div style={{width:10,height:10,borderRadius:2,background:it.color||cat?.color||'#888',flexShrink:0}}/>
-                          <span style={{fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:12,color:t.text}}>{it.description||'Unnamed'}</span>
+                          <span style={{fontFamily:"inherit",fontWeight:600,fontSize:12,color:t.text}}>{it.description||'Unnamed'}</span>
                         </div>
                       </td>
                       <td style={{...cellStyle,color:cat?.color||t.text3,fontWeight:600,fontSize:10}}>{cat?.label||it.category}</td>
@@ -2648,7 +2648,7 @@ Return ONLY a valid JSON array, no markdown:
                       <td style={{...cellStyle,textAlign:'right',fontWeight:700,color:(it.quantity||0)>0?t.text:t.text4}}>{(it.quantity||0)>0?Math.round((it.quantity||0)*10)/10:'—'}</td>
                       <td style={{...cellStyle,textAlign:'center',color:t.text3,fontSize:10}}>{it.unit||'—'}</td>
                       <td style={{...cellStyle,textAlign:'right',color:t.text3}}>{(it.unit_cost||0)>0?`$${Number(it.unit_cost).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—'}</td>
-                      <td style={{...cellStyle,textAlign:'right',fontWeight:700,color:(it.total_cost||0)>0?'#10B981':t.text4}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>
+                      <td style={{...cellStyle,textAlign:'right',fontWeight:700,color:(it.total_cost||0)>0?'#4CAF50':t.text4}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>
                       <td style={{...cellStyle,textAlign:'center'}}>
                         <button onClick={()=>{setEditItem(it);setMainView('workspace');}} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',fontSize:10,opacity:0.5}} title="Edit">✎</button>
                       </td>
@@ -2668,7 +2668,7 @@ Return ONLY a valid JSON array, no markdown:
                     <td style={{...cellStyle,borderBottom:'none'}}/>
                     <td style={{...cellStyle,borderBottom:'none'}}/>
                     <td style={{...cellStyle,textAlign:'right',borderBottom:'none'}}>
-                      <span style={{fontWeight:800,color:'#10B981',fontSize:13}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</span>
+                      <span style={{fontWeight:800,color:'#4CAF50',fontSize:13}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</span>
                     </td>
                     <td style={{...cellStyle,borderBottom:'none'}}/>
                   </tr>
@@ -2697,8 +2697,8 @@ Return ONLY a valid JSON array, no markdown:
               <button key={id} onClick={()=>setLeftTab(id)}
                 style={{flex:1,height:'100%',border:'none',background:'none',cursor:'pointer',
                   fontSize:13,fontWeight:leftTab===id?600:400,
-                  color:leftTab===id?'#10B981':t.text4,
-                  borderBottom:leftTab===id?'2px solid #10B981':'2px solid transparent',
+                  color:leftTab===id?'#4CAF50':t.text4,
+                  borderBottom:leftTab===id?'2px solid #4CAF50':'2px solid transparent',
                   boxSizing:'border-box',transition:'color 0.15s'}}>
                 {lbl}
               </button>
@@ -2706,8 +2706,8 @@ Return ONLY a valid JSON array, no markdown:
             <button onClick={()=>setLeftTab('settings')}
               title="Settings"
               style={{width:38,height:'100%',border:'none',background:'none',cursor:'pointer',
-                color:leftTab==='settings'?'#10B981':t.text4,fontSize:14,flexShrink:0,
-                borderBottom:leftTab==='settings'?'2px solid #10B981':'2px solid transparent',
+                color:leftTab==='settings'?'#4CAF50':t.text4,fontSize:14,flexShrink:0,
+                borderBottom:leftTab==='settings'?'2px solid #4CAF50':'2px solid transparent',
                 boxSizing:'border-box'}}>⚙</button>
           </div>
 
@@ -2726,7 +2726,7 @@ Return ONLY a valid JSON array, no markdown:
                   📁 New
                 </button>
                 <button onClick={()=>{ setUploadTargetFolder(null); fileRef.current?.click(); }} disabled={!!uploading}
-                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}>
+                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#4CAF50':uploading?'#6B7280':'#4CAF50',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}>
                   {uploading
                     ? uploading.startsWith('✓')
                       ? <>{uploading}</>
@@ -2749,7 +2749,7 @@ Return ONLY a valid JSON array, no markdown:
                     }catch(e){ console.error('naming failed',p.id,e); }
                   }
                   setNamingAll(false);
-                }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#a855f7',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
+                }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
                   {namingAll?<span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>:'✦'}
                 </button>
                 <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>handleUpload(e.target.files[0])}/>
@@ -2762,12 +2762,12 @@ Return ONLY a valid JSON array, no markdown:
                   const active = plansFilter===val;
                   return(
                     <button key={val} onClick={()=>setPlansFilter(val)}
-                      style={{flex:1,padding:'5px 0',border:'none',borderBottom:active?`2px solid #10B981`:'2px solid transparent',
-                        background:'none',color:active?'#10B981':t.text4,cursor:'pointer',fontSize:10,fontWeight:active?700:400,
+                      style={{flex:1,padding:'5px 0',border:'none',borderBottom:active?`2px solid #4CAF50`:'2px solid transparent',
+                        background:'none',color:active?'#4CAF50':t.text4,cursor:'pointer',fontSize:10,fontWeight:active?700:400,
                         display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
                       {lbl}
-                      <span style={{fontSize:9,background:active?'rgba(16,185,129,0.15)':t.bg3,color:active?'#10B981':t.text4,
-                        borderRadius:8,padding:'1px 5px',fontFamily:"'DM Mono',monospace"}}>
+                      <span style={{fontSize:9,background:active?'rgba(16,185,129,0.15)':t.bg3,color:active?'#4CAF50':t.text4,
+                        borderRadius:8,padding:'1px 5px',fontVariantNumeric:'tabular-nums'}}>
                         {markedCount}
                       </span>
                     </button>
@@ -2832,7 +2832,7 @@ Return ONLY a valid JSON array, no markdown:
                             <button onClick={()=>{
                               setUploadTargetFolder(folderId);
                               setTimeout(()=>fileRef.current?.click(),50);
-                            }} style={{fontSize:9,padding:'2px 5px',borderRadius:3,border:`1px solid ${t.border}`,background:'none',color:'#10B981',cursor:'pointer',fontWeight:700}} title="Upload into this folder">＋</button>
+                            }} style={{fontSize:9,padding:'2px 5px',borderRadius:3,border:`1px solid ${t.border}`,background:'none',color:'#4CAF50',cursor:'pointer',fontWeight:700}} title="Upload into this folder">＋</button>
                             <button onClick={async()=>{
                               for(const p of folderPlans){
                                 if(p.id==='preview') continue;
@@ -2843,7 +2843,7 @@ Return ONLY a valid JSON array, no markdown:
                                   if(selPlan?.id===p.id) setSelPlan(prev=>({...prev,name:aiName}));
                                 }
                               }
-                            }} style={{fontSize:9,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(168,85,247,0.3)',background:'none',color:'#a855f7',cursor:'pointer'}} title="AI name all in folder">✦</button>
+                            }} style={{fontSize:9,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(168,85,247,0.3)',background:'none',color:'#7B6BA4',cursor:'pointer'}} title="AI name all in folder">✦</button>
                             <button onClick={()=>{
                               const n=window.prompt('Rename folder:',folder.name||'');
                               if(n?.trim()) savePlanSets({...planSets,[folderId]:{...folder,name:n.trim()}});
@@ -2853,7 +2853,7 @@ Return ONLY a valid JSON array, no markdown:
                               const updated={...planSets};
                               delete updated[folderId];
                               savePlanSets(updated);
-                            }} style={{fontSize:9,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(239,68,68,0.25)',background:'none',color:'#ef4444',cursor:'pointer'}}>✕</button>
+                            }} style={{fontSize:9,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(239,68,68,0.25)',background:'none',color:'#C0504D',cursor:'pointer'}}>✕</button>
                           </div>
                         </div>
                         {!collapsed&&(
@@ -2894,7 +2894,7 @@ Return ONLY a valid JSON array, no markdown:
               setActivePts([]); setEditItem(null); setTakeoffStep(null);
             };
             const disarm = () => { setActiveCondId(null); setTool('select'); setActivePts([]); };
-            const resetFlow = () => { setTakeoffStep(null); setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#10B981'); setNewTOCat('other'); setNewTOSize('medium'); };
+            const resetFlow = () => { setTakeoffStep(null); setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#4CAF50'); setNewTOCat('other'); setNewTOSize('medium'); };
 
             // ── STEP: TYPE SELECTOR ──────────────────────────────────────
             if(takeoffStep==='type') return(
@@ -2927,7 +2927,7 @@ Return ONLY a valid JSON array, no markdown:
             if(takeoffStep==='create') return(
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                 <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,flexShrink:0,display:'flex',alignItems:'center',gap:8}}>
-                  <div style={{width:22,height:22,borderRadius:4,background:newTOType?.color||'#10B981',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <div style={{width:22,height:22,borderRadius:4,background:newTOType?.color||'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                     <span style={{fontSize:newTOType?.icon?.length>1?8:12,fontWeight:800,color:'#fff'}}>{newTOType?.icon}</span>
                   </div>
                   <span style={{fontSize:13,fontWeight:700,color:t.text,flex:1}}>Create New {newTOType?.label} Takeoff</span>
@@ -2940,7 +2940,7 @@ Return ONLY a valid JSON array, no markdown:
                       style={{width:'100%',padding:'8px 10px',border:`1px solid ${t.border2}`,borderRadius:6,
                         fontSize:13,color:t.text,background:t.bg,outline:'none',boxSizing:'border-box',
                         transition:'border-color 0.15s'}}
-                      onFocus={e=>e.target.style.borderColor='#10B981'}
+                      onFocus={e=>e.target.style.borderColor='#4CAF50'}
                       onBlur={e=>e.target.style.borderColor=t.border2}
                     />
                   </div>
@@ -2950,7 +2950,7 @@ Return ONLY a valid JSON array, no markdown:
                       rows={3}
                       style={{width:'100%',padding:'8px 10px',border:`1px solid ${t.border2}`,borderRadius:6,
                         fontSize:12,color:t.text,background:t.bg,outline:'none',resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}}
-                      onFocus={e=>e.target.style.borderColor='#10B981'}
+                      onFocus={e=>e.target.style.borderColor='#4CAF50'}
                       onBlur={e=>e.target.style.borderColor=t.border2}
                     />
                   </div>
@@ -2975,7 +2975,7 @@ Return ONLY a valid JSON array, no markdown:
                     </button>
                     <button onClick={()=>newTOName.trim()&&setTakeoffStep('settings')}
                       style={{flex:2,padding:'8px 0',border:'none',
-                        background:newTOName.trim()?'#10B981':'#ccc',color:'#fff',
+                        background:newTOName.trim()?'#4CAF50':'#ccc',color:'#fff',
                         borderRadius:6,cursor:newTOName.trim()?'pointer':'not-allowed',fontSize:12,fontWeight:700}}>
                       Create Takeoff
                     </button>
@@ -3057,7 +3057,7 @@ Return ONLY a valid JSON array, no markdown:
                           else{setScale(null);setPresetScale('');}
                         }
                       }}
-                      style={{width:'100%',padding:'7px 10px',border:`1px solid ${selPlan?'#10B981':t.border2}`,borderRadius:5,
+                      style={{width:'100%',padding:'7px 10px',border:`1px solid ${selPlan?'#4CAF50':t.border2}`,borderRadius:5,
                         fontSize:12,color:t.text,background:t.bg,marginBottom:12,cursor:'pointer',outline:'none'}}>
                         <option value="">— Select a sheet —</option>
                         {plans.map(p=><option key={p.id} value={p.id}>{p.name||'Unnamed'}</option>)}
@@ -3114,19 +3114,19 @@ Return ONLY a valid JSON array, no markdown:
                         setTool(mt==='area'?'area':mt==='linear'?'linear':mt==='count'?'count':'area');
                         setActivePts([]);
                         // Reset flow state
-                        setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#10B981'); setNewTOCat('other'); setNewTOSize('medium');
+                        setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#4CAF50'); setNewTOCat('other'); setNewTOSize('medium');
                       }
                       setCreatingTO(false);
                     }}
                       style={{flex:2,padding:'8px 0',border:'none',
-                        background:newTOName.trim()&&!creatingTO?'#10B981':'#ccc',color:'#fff',
+                        background:newTOName.trim()&&!creatingTO?'#4CAF50':'#ccc',color:'#fff',
                         borderRadius:6,cursor:newTOName.trim()&&!creatingTO?'pointer':'not-allowed',fontSize:12,fontWeight:700,
                         display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
                       {creatingTO?'Creating…':'Start Measuring →'}
                     </button>
                   </div>
                   {plans.length===0&&<div style={{fontSize:10,color:'#F59E0B',textAlign:'center',marginTop:6}}>⚠ Upload a plan in the Plans tab first</div>}
-                  {!selPlan&&plans.length>0&&<div style={{fontSize:10,color:'#10B981',textAlign:'center',marginTop:6}}>✓ Will open {(openTabs.length>0?plans.find(p=>p.id===openTabs[0]):plans[0])?.name||'first plan'}</div>}
+                  {!selPlan&&plans.length>0&&<div style={{fontSize:10,color:'#4CAF50',textAlign:'center',marginTop:6}}>✓ Will open {(openTabs.length>0?plans.find(p=>p.id===openTabs[0]):plans[0])?.name||'first plan'}</div>}
                 </div>
               </div>
             );
@@ -3147,22 +3147,22 @@ Return ONLY a valid JSON array, no markdown:
             <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
               {/* Active measuring banner */}
               {tool==='cutout'&&!activeCond?(
-                <div style={{padding:'6px 12px',background:'rgba(239,68,68,0.08)',borderBottom:'2px solid #EF4444',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                  <div style={{width:6,height:6,borderRadius:'50%',background:'#EF4444',flexShrink:0}}/>
-                  <span style={{fontSize:11,fontWeight:600,color:'#EF4444',flex:1}}>⊘ Click an area shape on the plan to cut from</span>
-                  <button onClick={()=>{setTool('select');setActiveCondId(null);}} style={{background:'none',border:'1px solid rgba(239,68,68,0.4)',color:'#EF4444',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Cancel</button>
+                <div style={{padding:'6px 12px',background:'rgba(239,68,68,0.08)',borderBottom:'2px solid #C0504D',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                  <div style={{width:6,height:6,borderRadius:'50%',background:'#C0504D',flexShrink:0}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:'#C0504D',flex:1}}>⊘ Click an area shape on the plan to cut from</span>
+                  <button onClick={()=>{setTool('select');setActiveCondId(null);}} style={{background:'none',border:'1px solid rgba(239,68,68,0.4)',color:'#C0504D',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Cancel</button>
                 </div>
               ):activeCond&&tool==='cutout'?(
-                <div style={{padding:'6px 12px',background:'rgba(239,68,68,0.08)',borderBottom:'2px solid #EF4444',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                  <div style={{width:6,height:6,borderRadius:'50%',background:'#EF4444',flexShrink:0,animation:'pulse 1.2s ease-in-out infinite'}}/>
-                  <span style={{fontSize:11,fontWeight:600,color:'#EF4444',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>⊘ Drawing cutout on: {activeCond.description}</span>
-                  <button onClick={()=>{setTool('select');setActiveCondId(null);setActivePts([]);}} style={{background:'none',border:'1px solid rgba(239,68,68,0.4)',color:'#EF4444',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Done</button>
+                <div style={{padding:'6px 12px',background:'rgba(239,68,68,0.08)',borderBottom:'2px solid #C0504D',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                  <div style={{width:6,height:6,borderRadius:'50%',background:'#C0504D',flexShrink:0,animation:'pulse 1.2s ease-in-out infinite'}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:'#C0504D',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>⊘ Drawing cutout on: {activeCond.description}</span>
+                  <button onClick={()=>{setTool('select');setActiveCondId(null);setActivePts([]);}} style={{background:'none',border:'1px solid rgba(239,68,68,0.4)',color:'#C0504D',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Done</button>
                 </div>
               ):activeCond&&(
-                <div style={{padding:'6px 12px',background:'rgba(249,115,22,0.08)',borderBottom:'2px solid #F97316',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                  <div style={{width:6,height:6,borderRadius:'50%',background:'#F97316',flexShrink:0,animation:'pulse 1.2s ease-in-out infinite'}}/>
-                  <span style={{fontSize:11,fontWeight:600,color:'#F97316',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{activeCond.description}</span>
-                  <button onClick={disarm} style={{background:'none',border:'1px solid rgba(249,115,22,0.4)',color:'#F97316',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Done</button>
+                <div style={{padding:'6px 12px',background:'rgba(249,115,22,0.08)',borderBottom:'2px solid #E8A317',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                  <div style={{width:6,height:6,borderRadius:'50%',background:'#E8A317',flexShrink:0,animation:'pulse 1.2s ease-in-out infinite'}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:'#E8A317',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{activeCond.description}</span>
+                  <button onClick={disarm} style={{background:'none',border:'1px solid rgba(249,115,22,0.4)',color:'#E8A317',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:9,fontWeight:700,flexShrink:0}}>Done</button>
                 </div>
               )}
 
@@ -3176,7 +3176,7 @@ Return ONLY a valid JSON array, no markdown:
                       fontSize:12,color:t.text,background:t.bg,outline:'none',boxSizing:'border-box'}}/>
                 </div>
                 <button onClick={()=>setTakeoffStep('type')}
-                  style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 12px',borderRadius:4,
+                  style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 12px',borderRadius:4,
                     cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:3,flexShrink:0,whiteSpace:'nowrap'}}>
                   + New Takeoff
                 </button>
@@ -3220,12 +3220,12 @@ Return ONLY a valid JSON array, no markdown:
                           {cat.label}
                         </span>
                         {catItems.length>0&&(
-                          <span style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>
+                          <span style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>
                             {catItems.length} item{catItems.length!==1?'s':''}
                           </span>
                         )}
                         {catCost>0&&(
-                          <span style={{fontSize:10,fontWeight:700,color:'#10B981',fontFamily:"'DM Mono',monospace",marginLeft:6}}>
+                          <span style={{fontSize:10,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums',marginLeft:6}}>
                             ${Math.round(catCost).toLocaleString()}
                           </span>
                         )}
@@ -3254,33 +3254,33 @@ Return ONLY a valid JSON array, no markdown:
                                 style={{display:'flex',alignItems:'center',gap:7,
                                   padding:'5px 8px 5px 24px',cursor:'pointer',
                                   borderBottom:`1px solid ${t.border}`,
-                                  borderLeft:isActive?`3px solid #F97316`:`3px solid ${cat.color}`,
+                                  borderLeft:isActive?`3px solid #E8A317`:`3px solid ${cat.color}`,
                                   background:isActive?'rgba(249,115,22,0.05)':'transparent'}}
                                 onMouseEnter={e=>{if(!isActive)e.currentTarget.style.background=t.bg3;}}
                                 onMouseLeave={e=>{if(!isActive)e.currentTarget.style.background='transparent';}}>
                                 {/* Type chip */}
                                 <div style={{width:18,height:18,borderRadius:3,
-                                  background:isActive?'#F97316':itemColor,
+                                  background:isActive?'#E8A317':itemColor,
                                   display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                                   <span style={{fontSize:8,fontWeight:800,color:'#fff'}}>{typeIcon}</span>
                                 </div>
                                 {/* Name + plan badge */}
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{fontSize:11,fontWeight:isActive?600:400,
-                                    color:isActive?'#F97316':t.text,
+                                    color:isActive?'#E8A317':t.text,
                                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                                     {item.description||'Unnamed'}
                                   </div>
                                   <div style={{display:'flex',alignItems:'center',gap:4,marginTop:1}}>
                                     {item._planCount>1
-                                      ? <span style={{fontSize:8,color:'#3B82F6',fontWeight:700,background:'rgba(59,130,246,0.1)',borderRadius:3,padding:'1px 4px'}}>{item._planCount} sheets</span>
+                                      ? <span style={{fontSize:8,color:'#5B9BD5',fontWeight:700,background:'rgba(59,130,246,0.1)',borderRadius:3,padding:'1px 4px'}}>{item._planCount} sheets</span>
                                       : <span style={{fontSize:8,color:t.text4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{planMap.get(item.plan_id)?.name||''}</span>
                                     }
                                   </div>
                                 </div>
                                 {/* Qty */}
                                 <div style={{width:68,textAlign:'right',flexShrink:0}}>
-                                  <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",
+                                  <span style={{fontSize:10,fontVariantNumeric:'tabular-nums',
                                     color:qty>0?t.text:t.text4,fontWeight:qty>0?600:400}}>
                                     {qty>0?`${Math.round(qty*10)/10} ${item.unit}`:'—'}
                                   </span>
@@ -3329,10 +3329,10 @@ Return ONLY a valid JSON array, no markdown:
           {leftTab==='settings'&&(
             <div style={{flex:1,overflowY:'auto',padding:14}}>
               <div style={{fontSize:10,fontWeight:700,color:t.text4,letterSpacing:0.8,marginBottom:8}}>SCALE</div>
-              <div style={{fontSize:10,color:scale?'#10B981':t.text4,marginBottom:8,padding:'6px 10px',background:t.bg3,borderRadius:5,border:`1px solid ${t.border}`}}>
+              <div style={{fontSize:10,color:scale?'#4CAF50':t.text4,marginBottom:8,padding:'6px 10px',background:t.bg3,borderRadius:5,border:`1px solid ${t.border}`}}>
                 {scale?`✓ ${presetScale||'Calibrated'} · ${Math.round(scale*10)/10} px/ft`:'Not set for this page'}
               </div>
-              <div style={{fontSize:10,color:t.text4,marginBottom:8}}>Use the <strong style={{color:'#10B981'}}>+ Set Scale</strong> button in the lower-right of the canvas to set scale per page.</div>
+              <div style={{fontSize:10,color:t.text4,marginBottom:8}}>Use the <strong style={{color:'#4CAF50'}}>+ Set Scale</strong> button in the lower-right of the canvas to set scale per page.</div>
               {!isPdfPlan&&(
                 <div style={{marginBottom:14}}>
                   <div style={{fontSize:10,color:t.text4,marginBottom:4}}>Scan DPI</div>
@@ -3345,7 +3345,7 @@ Return ONLY a valid JSON array, no markdown:
               <div style={{fontSize:10,fontWeight:700,color:t.text4,letterSpacing:0.8,marginBottom:8}}>UNIT COSTS</div>
               <button onClick={()=>setShowUnitCosts(true)} style={{width:'100%',background:'none',border:`1px solid ${t.border2}`,color:t.text3,padding:'7px 0',borderRadius:5,cursor:'pointer',fontSize:11,marginBottom:12}}>Edit Rates</button>
               <div style={{fontSize:10,fontWeight:700,color:t.text4,letterSpacing:0.8,marginBottom:8}}>ASSEMBLIES</div>
-              <button onClick={()=>setShowAssembly(true)} style={{width:'100%',background:'none',border:`1px solid rgba(139,92,246,0.4)`,color:'#8B5CF6',padding:'7px 0',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>⬡ Assembly Library</button>
+              <button onClick={()=>setShowAssembly(true)} style={{width:'100%',background:'none',border:`1px solid rgba(139,92,246,0.4)`,color:'#7B6BA4',padding:'7px 0',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>⬡ Assembly Library</button>
             </div>
           )}
 
@@ -3355,11 +3355,11 @@ Return ONLY a valid JSON array, no markdown:
           {/* Bottom bar */}
           <div style={{borderTop:`1px solid ${t.border}`,padding:'6px 12px',background:t.bg2,flexShrink:0,display:'flex',alignItems:'center',gap:10}}>
             <div style={{flex:1,minWidth:0}}>
-              <span style={{fontSize:12,fontWeight:600,color:'#10B981'}}>${totalEst.toLocaleString()}</span>
+              <span style={{fontSize:12,fontWeight:600,color:'#4CAF50'}}>${totalEst.toLocaleString()}</span>
               <span style={{fontSize:10,color:t.text4,marginLeft:6}}>all sheets</span>
             </div>
             <button onClick={()=>{setRightTab('estimate');setEstSubTab('worksheet');}}
-              style={{background:'#10B981',border:'none',color:'#fff',padding:'5px 14px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,flexShrink:0}}>
+              style={{background:'#4CAF50',border:'none',color:'#fff',padding:'5px 14px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,flexShrink:0}}>
               Estimate →
             </button>
           </div>
@@ -3382,13 +3382,13 @@ Return ONLY a valid JSON array, no markdown:
                   style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',
                     borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,minWidth:100,maxWidth:180,
                     background:isActive?t.bg:'transparent',
-                    borderBottom:isActive?`2px solid #10B981`:'2px solid transparent',
+                    borderBottom:isActive?`2px solid #4CAF50`:'2px solid transparent',
                     boxSizing:'border-box',position:'relative'}}>
                   <span style={{fontSize:11,fontWeight:isActive?600:400,color:isActive?t.text:t.text3,
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>
                     {p.name||`Sheet ${plans.indexOf(p)+1}`}
                   </span>
-                  {cnt>0&&<span style={{fontSize:9,color:'#10B981',fontFamily:"'DM Mono',monospace",flexShrink:0}}>{cnt}</span>}
+                  {cnt>0&&<span style={{fontSize:9,color:'#4CAF50',fontVariantNumeric:'tabular-nums',flexShrink:0}}>{cnt}</span>}
                   {/* Close tab */}
                   <button onClick={e=>{
                     e.stopPropagation();
@@ -3418,7 +3418,7 @@ Return ONLY a valid JSON array, no markdown:
               <div style={{position:'relative',flexShrink:0}}>
                 <button onClick={()=>setShowExportMenu(v=>!v)} disabled={exporting}
                   style={{height:'100%',padding:'0 14px',border:'none',borderLeft:`1px solid ${t.border}`,
-                    background:'none',color:exporting?t.text4:'#3B82F6',cursor:'pointer',fontSize:11,fontWeight:700,
+                    background:'none',color:exporting?t.text4:'#5B9BD5',cursor:'pointer',fontSize:11,fontWeight:700,
                     display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap'}}>
                   {exporting?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> Exporting…</>:<>↓ Export</>}
                 </button>
@@ -3436,7 +3436,7 @@ Return ONLY a valid JSON array, no markdown:
                         style={{width:'100%',background:'none',border:'none',color:'rgba(255,255,255,0.85)',
                           padding:'10px 14px',cursor:'pointer',fontSize:11,textAlign:'left',
                           display:'flex',flexDirection:'column',gap:2,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                        <span style={{fontWeight:700,color:'#3B82F6'}}>↓ This sheet + Legend</span>
+                        <span style={{fontWeight:700,color:'#5B9BD5'}}>↓ This sheet + Legend</span>
                         <span style={{fontSize:9,color:'rgba(255,255,255,0.4)'}}>Current plan with markup &amp; legend</span>
                       </button>
                       <button onClick={()=>exportPlan(selPlan, false)}
@@ -3455,7 +3455,7 @@ Return ONLY a valid JSON array, no markdown:
                             style={{width:'100%',background:'none',border:'none',color:'rgba(255,255,255,0.85)',
                               padding:'10px 14px',cursor:'pointer',fontSize:11,textAlign:'left',
                               display:'flex',flexDirection:'column',gap:2,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                            <span style={{fontWeight:700,color:'#10B981'}}>↓ All {markedPlans.length} marked sheets + Legend</span>
+                            <span style={{fontWeight:700,color:'#4CAF50'}}>↓ All {markedPlans.length} marked sheets + Legend</span>
                             <span style={{fontSize:9,color:'rgba(255,255,255,0.4)'}}>Downloads as ZIP</span>
                           </button>
                           <button onClick={()=>exportAllMarked(false)}
@@ -3475,7 +3475,7 @@ Return ONLY a valid JSON array, no markdown:
             {/* AI Takeoff */}
             {selPlan&&<button onClick={runAITakeoff} disabled={analyzing}
               style={{marginLeft:'auto',height:'100%',padding:'0 14px',border:'none',borderLeft:`1px solid ${t.border}`,
-                background:'none',color:analyzing?t.text4:'#a855f7',cursor:'pointer',fontSize:11,fontWeight:700,
+                background:'none',color:analyzing?t.text4:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,
                 display:'flex',alignItems:'center',gap:5,flexShrink:0,whiteSpace:'nowrap'}}>
               {analyzing?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> Analyzing…</>:<>✦ AI Takeoff</>}
             </button>}
@@ -3490,7 +3490,7 @@ Return ONLY a valid JSON array, no markdown:
                 <div style={{fontSize:48,marginBottom:16}}>📐</div>
                 <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:6}}>No plan open</div>
                 <div style={{fontSize:12,color:t.text3,marginBottom:20,textAlign:'center'}}>Go to Plans panel and upload or open a plan</div>
-                <button onClick={()=>setLeftTab('plans')} style={{background:'#10B981',border:'none',color:'#fff',padding:'10px 24px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:700}}>Open Plans</button>
+                <button onClick={()=>setLeftTab('plans')} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'10px 24px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:700}}>Open Plans</button>
               </div>
             ):(()=>{
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
@@ -3498,9 +3498,9 @@ Return ONLY a valid JSON array, no markdown:
               return (
                 <div style={{width:planW*zoom, height:planH*zoom, position:'relative', flexShrink:0}}>
                   <div style={{transformOrigin:'top left', transform:`scale(${zoom})`, position:'absolute', top:0, left:0}}>
-                    {planErr&&<div style={{position:'absolute',top:10,left:10,zIndex:20,background:'#1a0505',border:'1px solid #ef4444',color:'#ef4444',padding:'10px 14px',borderRadius:8,fontSize:11,maxWidth:500,wordBreak:'break-all'}}>{planErr}</div>}
+                    {planErr&&<div style={{position:'absolute',top:10,left:10,zIndex:20,background:'#1a0505',border:'1px solid #C0504D',color:'#C0504D',padding:'10px 14px',borderRadius:8,fontSize:11,maxWidth:500,wordBreak:'break-all'}}>{planErr}</div>}
                     {loadingPlan&&(
-                      <div style={{width:800,height:600,display:'flex',alignItems:'center',justifyContent:'center',background:'#1a1a1a',color:'#aaa',fontSize:13,gap:8,fontFamily:"'DM Mono',monospace"}}>
+                      <div style={{width:800,height:600,display:'flex',alignItems:'center',justifyContent:'center',background:'#1a1a1a',color:'#aaa',fontSize:13,gap:8,fontVariantNumeric:'tabular-nums'}}>
                         <span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> Loading plan…
                       </div>
                     )}
@@ -3535,9 +3535,9 @@ Return ONLY a valid JSON array, no markdown:
                           const p1=scalePts[0];const p2=scalePts[1];
                           const sw=2/zoom;
                           return(<g>
-                            <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#10B981" strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`}/>
-                            <circle cx={p1.x} cy={p1.y} r={6/zoom} fill="#10B981"/>
-                            <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#10B981"/>
+                            <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#4CAF50" strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`}/>
+                            <circle cx={p1.x} cy={p1.y} r={6/zoom} fill="#4CAF50"/>
+                            <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#4CAF50"/>
                           </g>);
                         })()}
                         {/* Lasso selection box */}
@@ -3547,7 +3547,7 @@ Return ONLY a valid JSON array, no markdown:
                           if(lw<2&&lh<2) return null;
                           return(<g style={{pointerEvents:'none'}}>
                             <rect x={lx} y={ly} width={lw} height={lh}
-                              fill="rgba(59,130,246,0.08)" stroke="#3B82F6"
+                              fill="rgba(59,130,246,0.08)" stroke="#5B9BD5"
                               strokeWidth={1.5/zoom} strokeDasharray={`${5/zoom},${3/zoom}`}/>
                           </g>);
                         })()}
@@ -3696,7 +3696,7 @@ Return ONLY a valid JSON array, no markdown:
                           style={{padding:'5px 8px',fontSize:10,color:'#e2e8f0',cursor:'pointer',borderRadius:4,display:'flex',alignItems:'center',gap:6}}
                           onMouseEnter={e=>e.currentTarget.style.background='rgba(139,92,246,0.15)'}
                           onMouseLeave={e=>e.currentTarget.style.background='none'}>
-                          <span style={{width:8,height:8,borderRadius:2,background:tgt.color||'#10B981',flexShrink:0}}/>
+                          <span style={{width:8,height:8,borderRadius:2,background:tgt.color||'#4CAF50',flexShrink:0}}/>
                           {tgt.description||'Untitled'}
                         </div>
                       ))}
@@ -3731,7 +3731,7 @@ Return ONLY a valid JSON array, no markdown:
                     <option value="ft">ft</option>
                     <option value="in">in</option>
                   </select>
-                  <button onClick={()=>{confirmScale();setShowScalePanel(false);}} style={{background:'#10B981',border:'none',color:'#fff',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>Set</button>
+                  <button onClick={()=>{confirmScale();setShowScalePanel(false);}} style={{background:'#4CAF50',border:'none',color:'#fff',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>Set</button>
                   <button onClick={()=>{setScaleStep(null);setScalePts([]);setTool('select');}} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:14,padding:'0 2px'}}>×</button>
                 </div>
               )}
@@ -3784,7 +3784,7 @@ Return ONLY a valid JSON array, no markdown:
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false); setCustomScaleInput('');
                         }} disabled={!customScaleInput||parseFloat(customScaleInput)<=0}
-                          style={{background:'#10B981',border:'none',color:'#fff',borderRadius:4,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,opacity:customScaleInput&&parseFloat(customScaleInput)>0?1:0.4}}>
+                          style={{background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,opacity:customScaleInput&&parseFloat(customScaleInput)>0?1:0.4}}>
                           Set
                         </button>
                       </div>
@@ -3792,11 +3792,11 @@ Return ONLY a valid JSON array, no markdown:
 
                     {/* Calibrate + Auto-detect */}
                     <button onClick={()=>{setTool('scale');setScaleStep('picking');setScalePts([]);setActivePts([]);setShowScalePanel(false);}}
-                      style={{width:'100%',background:'none',border:'none',color:'#10B981',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
+                      style={{width:'100%',background:'none',border:'none',color:'#4CAF50',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
                       <span style={{fontSize:13}}>⊕</span> Calibrate — click 2 points
                     </button>
                     <button onClick={()=>{autoDetectScale();setShowScalePanel(false);}}
-                      style={{width:'100%',background:'none',border:'none',color:'#a855f7',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.1)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
+                      style={{width:'100%',background:'none',border:'none',color:'#7B6BA4',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.1)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
                       <span style={{fontSize:13}}>✦</span> Auto-Detect from drawing
                     </button>
 
@@ -3810,9 +3810,9 @@ Return ONLY a valid JSON array, no markdown:
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
-                          color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
+                          color:presetScale===s.label?'#4CAF50':'rgba(255,255,255,0.7)',
                           padding:'6px 14px',cursor:'pointer',fontSize:11,textAlign:'left',display:'flex',alignItems:'center',gap:6}}>
-                          {presetScale===s.label&&<span style={{color:'#10B981',fontSize:9}}>✓</span>}{s.label}
+                          {presetScale===s.label&&<span style={{color:'#4CAF50',fontSize:9}}>✓</span>}{s.label}
                         </button>
                       ))}
                       <div style={{padding:'6px 12px 2px',fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:0.6,position:'sticky',top:0,background:'#1a1a1a'}}>ARCHITECTURAL</div>
@@ -3823,9 +3823,9 @@ Return ONLY a valid JSON array, no markdown:
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
-                          color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
+                          color:presetScale===s.label?'#4CAF50':'rgba(255,255,255,0.7)',
                           padding:'6px 14px',cursor:'pointer',fontSize:11,textAlign:'left',display:'flex',alignItems:'center',gap:6}}>
-                          {presetScale===s.label&&<span style={{color:'#10B981',fontSize:9}}>✓</span>}{s.label}
+                          {presetScale===s.label&&<span style={{color:'#4CAF50',fontSize:9}}>✓</span>}{s.label}
                         </button>
                       ))}
                     </div>
@@ -3836,7 +3836,7 @@ Return ONLY a valid JSON array, no markdown:
               {/* Current scale chip */}
               {scale&&presetScale&&(
                 <button onClick={()=>setShowScalePanel(s=>!s)}
-                  style={{background:'rgba(0,0,0,0.7)',border:'1px solid rgba(16,185,129,0.4)',color:'#10B981',
+                  style={{background:'rgba(0,0,0,0.7)',border:'1px solid rgba(16,185,129,0.4)',color:'#4CAF50',
                     borderRadius:5,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:600,
                     display:'flex',alignItems:'center',gap:5,backdropFilter:'blur(4px)',
                     boxShadow:'0 2px 8px rgba(0,0,0,0.4)'}}>
@@ -3846,7 +3846,7 @@ Return ONLY a valid JSON array, no markdown:
 
               {/* + New Scale / Set Scale button */}
               <button onClick={()=>setShowScalePanel(s=>!s)}
-                style={{background:'#10B981',border:'none',color:'#fff',
+                style={{background:'#4CAF50',border:'none',color:'#fff',
                   borderRadius:6,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:700,
                   boxShadow:'0 2px 8px rgba(16,185,129,0.4)',display:'flex',alignItems:'center',gap:5}}>
                 {scale&&presetScale?'⇔ Change Scale':scale?`⇔ ${Math.round(scale*10)/10} px/ft`:'+ Set Scale'}
@@ -3861,8 +3861,8 @@ Return ONLY a valid JSON array, no markdown:
           {[
             {id:'select', icon:'↖', label:'Select', color:'#71717a'},
             null,
-            {id:'cutout', icon:'⊘', label:'Cutout', color:'#EF4444'},
-            {id:'eraser', icon:'⌫', label:'Eraser', color:'#F97316'},
+            {id:'cutout', icon:'⊘', label:'Cutout', color:'#C0504D'},
+            {id:'eraser', icon:'⌫', label:'Eraser', color:'#E8A317'},
           ].map((btn,i)=>{
             if(!btn) return <div key={i} style={{height:1,background:t.border,width:28,margin:'3px 0'}}/>;
             const isActive = tool===btn.id;
@@ -3922,13 +3922,13 @@ Return ONLY a valid JSON array, no markdown:
                 }}
                   title="Arc/Radius tool [A] — 3-click: start → peak → end"
                   style={{width:'100%',padding:'10px 0',border:'none',
-                    background:arcOn?'#a855f718':'none',color:arcOn?'#a855f7':t.text3,cursor:'pointer',
+                    background:arcOn?'#7B6BA418':'none',color:arcOn?'#7B6BA4':t.text3,cursor:'pointer',
                     display:'flex',flexDirection:'column',alignItems:'center',gap:2,
-                    borderRight:arcOn?'2px solid #a855f7':'2px solid transparent',
+                    borderRight:arcOn?'2px solid #7B6BA4':'2px solid transparent',
                     boxSizing:'border-box',transition:'all 0.1s'}}>
                   <span style={{fontSize:15,lineHeight:1}}>⌒</span>
-                  <span style={{fontSize:8,fontWeight:600,color:arcOn?'#a855f7':t.text4,letterSpacing:0.2}}>Arc</span>
-                  <span style={{fontSize:7,color:arcOn?'#a855f7':t.text4,opacity:0.7}}>[A]</span>
+                  <span style={{fontSize:8,fontWeight:600,color:arcOn?'#7B6BA4':t.text4,letterSpacing:0.2}}>Arc</span>
+                  <span style={{fontSize:7,color:arcOn?'#7B6BA4':t.text4,opacity:0.7}}>[A]</span>
                 </button>
               </>
             );
@@ -3943,13 +3943,13 @@ Return ONLY a valid JSON array, no markdown:
                 <button onClick={()=>{setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});setActivePts([]);}}
                   title="Arc curves for area [A]"
                   style={{width:'100%',padding:'10px 0',border:'none',
-                    background:archMode?'#a855f718':'none',color:archMode?'#a855f7':t.text3,cursor:'pointer',
+                    background:archMode?'#7B6BA418':'none',color:archMode?'#7B6BA4':t.text3,cursor:'pointer',
                     display:'flex',flexDirection:'column',alignItems:'center',gap:2,
-                    borderRight:archMode?'2px solid #a855f7':'2px solid transparent',
+                    borderRight:archMode?'2px solid #7B6BA4':'2px solid transparent',
                     boxSizing:'border-box',transition:'all 0.1s'}}>
                   <span style={{fontSize:15,lineHeight:1}}>⌒</span>
-                  <span style={{fontSize:8,fontWeight:600,color:archMode?'#a855f7':t.text4,letterSpacing:0.2}}>Arc</span>
-                  <span style={{fontSize:7,color:archMode?'#a855f7':t.text4,opacity:0.7}}>[A]</span>
+                  <span style={{fontSize:8,fontWeight:600,color:archMode?'#7B6BA4':t.text4,letterSpacing:0.2}}>Arc</span>
+                  <span style={{fontSize:7,color:archMode?'#7B6BA4':t.text4,opacity:0.7}}>[A]</span>
                 </button>
               </>
             );
@@ -3958,9 +3958,9 @@ Return ONLY a valid JSON array, no markdown:
           <div style={{flex:1}}/>
           {/* Live measure readout at bottom of tool bar */}
           {(archMode||arcPending)&&(
-            <div style={{padding:'6px 2px',textAlign:'center',borderTop:`1px solid #a855f730`,width:'100%',background:'#a855f710'}}>
-              <span style={{fontSize:9,color:'#a855f7',fontWeight:700,display:'block',lineHeight:1.4}}>⌒</span>
-              <span style={{fontSize:7,color:'#a855f7',fontWeight:600,display:'block',lineHeight:1.4}}>
+            <div style={{padding:'6px 2px',textAlign:'center',borderTop:`1px solid #7B6BA430`,width:'100%',background:'#7B6BA410'}}>
+              <span style={{fontSize:9,color:'#7B6BA4',fontWeight:700,display:'block',lineHeight:1.4}}>⌒</span>
+              <span style={{fontSize:7,color:'#7B6BA4',fontWeight:600,display:'block',lineHeight:1.4}}>
                 {arcPending
                   ? (activePts.length===0?'start':activePts.length===1?'peak':'end')
                   : tool==='linear'?(activePts.length===0?'pt 1':activePts.length===1?'pt 2':'bulge')
@@ -3984,7 +3984,7 @@ Return ONLY a valid JSON array, no markdown:
           )}
           {!archMode&&tool==='linear'&&activePts.length>=1&&hoverPt&&scale&&(
             <div style={{padding:'6px 2px',textAlign:'center',borderTop:`1px solid ${t.border}`,width:'100%'}}>
-              <span style={{fontSize:9,color:'#06B6D4',fontWeight:700,display:'block',lineHeight:1.4}}>
+              <span style={{fontSize:9,color:'#4A90A4',fontWeight:700,display:'block',lineHeight:1.4}}>
                 {Math.round(calcLinear(activePts[activePts.length-1],hoverPt)*10)/10}
               </span>
               <span style={{fontSize:8,color:t.text4}}>LF</span>
@@ -4027,16 +4027,16 @@ Return ONLY a valid JSON array, no markdown:
             {/* Key metrics — STACK style */}
             <div style={{display:'flex',gap:16,alignItems:'center'}}>
               <div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${totalEst.toLocaleString()}</div>
-                <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>DIRECT COST</div>
+                <div style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</div>
+                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>DIRECT COST</div>
               </div>
               {(GC_OVERHEAD+PROFIT)>0&&<div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#F97316',fontFamily:"'DM Mono',monospace"}}>{Math.round((GC_OVERHEAD+PROFIT)*100)}%</div>
-                <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>MARKUP</div>
+                <div style={{fontSize:14,fontWeight:800,color:'#E8A317',fontVariantNumeric:'tabular-nums'}}>{Math.round((GC_OVERHEAD+PROFIT)*100)}%</div>
+                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>MARKUP</div>
               </div>}
               <div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</div>
-                <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>BID TOTAL</div>
+                <div style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</div>
+                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>BID TOTAL</div>
               </div>
             </div>
           </div>
@@ -4047,8 +4047,8 @@ Return ONLY a valid JSON array, no markdown:
               <button key={tab.id} onClick={()=>setEstSubTab(tab.id)}
                 style={{padding:'0 16px',border:'none',background:'none',cursor:'pointer',
                   fontSize:12,fontWeight:estSubTab===tab.id?700:500,
-                  color:estSubTab===tab.id?'#10B981':t.text3,
-                  borderBottom:estSubTab===tab.id?'2px solid #10B981':'2px solid transparent',
+                  color:estSubTab===tab.id?'#4CAF50':t.text3,
+                  borderBottom:estSubTab===tab.id?'2px solid #4CAF50':'2px solid transparent',
                   boxSizing:'border-box',transition:'color 0.15s'}}>
                 {tab.label}
               </button>
@@ -4076,15 +4076,15 @@ Return ONLY a valid JSON array, no markdown:
                 a.download=`${project.name}_estimate_proposal.csv`;
                 a.click();
               }}
-                style={{background:'#3B82F6',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:5}}>
+                style={{background:'#5B9BD5',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:5}}>
                 ↓ Download Proposal
               </button>
               <button onClick={()=>setShowBidSummary(true)}
-                style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
+                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
                 📋 Print Summary
               </button>
               {project.apm_project_id&&<button onClick={pushToSOV}
-                style={{background:'#8B5CF6',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
+                style={{background:'#7B6BA4',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
                 ⇒ Push to SOV
               </button>}
             </div>
@@ -4101,13 +4101,13 @@ Return ONLY a valid JSON array, no markdown:
                   {/* Pricing card */}
                   <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
                     <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3}}>
-                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontFamily:"'DM Mono',monospace"}}>PRICING</span>
+                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums'}}>PRICING</span>
                     </div>
                     <div style={{padding:'16px 20px'}}>
                       {/* Direct cost */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
                         <span style={{fontSize:13,color:t.text}}>Direct Cost</span>
-                        <span style={{fontSize:15,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>${totalEst.toLocaleString()}</span>
+                        <span style={{fontSize:15,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
                       </div>
                       {/* Overhead — editable */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
@@ -4115,11 +4115,11 @@ Return ONLY a valid JSON array, no markdown:
                           <span style={{fontSize:13,color:t.text}}>Overhead</span>
                           <div style={{display:'flex',alignItems:'center',gap:2,background:t.bg3,borderRadius:4,border:`1px solid ${t.border}`,padding:'2px 4px'}}>
                             <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
-                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:'right',outline:'none',padding:0}}/>
-                            <span style={{fontSize:11,color:t.text4,fontFamily:"'DM Mono',monospace"}}>%</span>
+                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
+                            <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums'}}>%</span>
                           </div>
                         </div>
-                        <span style={{fontSize:13,color:t.text3,fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
+                        <span style={{fontSize:13,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
                       </div>
                       {/* Profit — editable */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
@@ -4127,16 +4127,16 @@ Return ONLY a valid JSON array, no markdown:
                           <span style={{fontSize:13,color:t.text}}>Profit</span>
                           <div style={{display:'flex',alignItems:'center',gap:2,background:t.bg3,borderRadius:4,border:`1px solid ${t.border}`,padding:'2px 4px'}}>
                             <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
-                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:'right',outline:'none',padding:0}}/>
-                            <span style={{fontSize:11,color:t.text4,fontFamily:"'DM Mono',monospace"}}>%</span>
+                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
+                            <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums'}}>%</span>
                           </div>
                         </div>
-                        <span style={{fontSize:13,color:t.text3,fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
+                        <span style={{fontSize:13,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
                       </div>
                       {/* Bid total */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 0',marginTop:4}}>
                         <span style={{fontSize:14,fontWeight:800,color:t.text}}>Bid Total</span>
-                        <span style={{fontSize:20,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
+                        <span style={{fontSize:20,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
@@ -4145,7 +4145,7 @@ Return ONLY a valid JSON array, no markdown:
                   <div style={{display:'flex',flexDirection:'column',gap:16}}>
                     <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
                       <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3}}>
-                        <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontFamily:"'DM Mono',monospace"}}>PROJECT</span>
+                        <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums'}}>PROJECT</span>
                       </div>
                       <div style={{padding:'16px 20px'}}>
                         <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:8}}>{project.name}</div>
@@ -4156,9 +4156,9 @@ Return ONLY a valid JSON array, no markdown:
                     </div>
                     {project.contract_value&&(
                       <div style={{background:totalEst>(project.contract_value||0)?'rgba(239,68,68,0.04)':'rgba(16,185,129,0.04)',borderRadius:8,border:`1px solid ${totalEst>(project.contract_value||0)?'rgba(239,68,68,0.2)':'rgba(16,185,129,0.2)'}`,padding:'16px 20px'}}>
-                        <div style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:6}}>CONTRACT</div>
-                        <div style={{fontSize:16,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace",marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:totalEst>(project.contract_value||0)?'#EF4444':'#10B981',fontFamily:"'DM Mono',monospace"}}>
+                        <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:6}}>CONTRACT</div>
+                        <div style={{fontSize:16,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums',marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:totalEst>(project.contract_value||0)?'#C0504D':'#4CAF50',fontVariantNumeric:'tabular-nums'}}>
                           {totalEst>(project.contract_value||0)?'▲ Over':'▼ Under'} by ${Math.abs(totalEst-(project.contract_value||0)).toLocaleString()}
                         </div>
                       </div>
@@ -4166,15 +4166,15 @@ Return ONLY a valid JSON array, no markdown:
                     <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,padding:'14px 20px'}}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                         <span style={{fontSize:11,color:t.text4}}>Items</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace"}}>{items.length}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{items.length}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                         <span style={{fontSize:11,color:t.text4}}>Sheets</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace"}}>{plans.length}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{plans.length}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between'}}>
                         <span style={{fontSize:11,color:t.text4}}>Categories</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace"}}>{allCatGroups.length}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{allCatGroups.length}</span>
                       </div>
                     </div>
                   </div>
@@ -4183,20 +4183,20 @@ Return ONLY a valid JSON array, no markdown:
                 {/* Category breakdown table */}
                 <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:24}}>
                   <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3,display:'flex',alignItems:'center'}}>
-                    <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontFamily:"'DM Mono',monospace",flex:1}}>BY CATEGORY</span>
-                    <span style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{allCatGroups.length} categories</span>
+                    <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums',flex:1}}>BY CATEGORY</span>
+                    <span style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{allCatGroups.length} categories</span>
                   </div>
                   {allCatGroups.map(cg=>(
                     <div key={cg.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:`1px solid ${t.border}`}}>
                       <div style={{width:10,height:10,borderRadius:2,background:cg.color,flexShrink:0,marginRight:12}}/>
                       <span style={{flex:1,fontSize:12,fontWeight:500,color:t.text}}>{cg.label}</span>
-                      <span style={{fontSize:11,color:t.text4,fontFamily:"'DM Mono',monospace",width:60,textAlign:'right'}}>{cg.items.length}</span>
-                      <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace",width:100,textAlign:'right'}}>${Math.round(cg.subtotal).toLocaleString()}</span>
+                      <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums',width:60,textAlign:'right'}}>{cg.items.length}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums',width:100,textAlign:'right'}}>${Math.round(cg.subtotal).toLocaleString()}</span>
                     </div>
                   ))}
                   <div style={{display:'flex',alignItems:'center',padding:'12px 20px',background:t.bg3}}>
                     <span style={{flex:1,fontSize:12,fontWeight:700,color:t.text}}>Total</span>
-                    <span style={{fontSize:14,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${totalEst.toLocaleString()}</span>
+                    <span style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -4204,8 +4204,8 @@ Return ONLY a valid JSON array, no markdown:
                 {sheetBreakdown.length>0&&(
                   <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
                     <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3,display:'flex',alignItems:'center'}}>
-                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontFamily:"'DM Mono',monospace",flex:1}}>BY SHEET</span>
-                      <span style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{sheetBreakdown.length} sheets</span>
+                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums',flex:1}}>BY SHEET</span>
+                      <span style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{sheetBreakdown.length} sheets</span>
                     </div>
                     {sheetBreakdown.map(({plan:p,items:pItems,total:pTotal})=>(
                       <div key={p.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:`1px solid ${t.border}`,cursor:'pointer'}}
@@ -4213,8 +4213,8 @@ Return ONLY a valid JSON array, no markdown:
                         onMouseEnter={e=>e.currentTarget.style.background=t.bg3}
                         onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                         <span style={{flex:1,fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</span>
-                        <span style={{fontSize:11,color:t.text4,fontFamily:"'DM Mono',monospace",width:60,textAlign:'right'}}>{pItems.length}</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace",width:100,textAlign:'right'}}>${Math.round(pTotal).toLocaleString()}</span>
+                        <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums',width:60,textAlign:'right'}}>{pItems.length}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums',width:100,textAlign:'right'}}>${Math.round(pTotal).toLocaleString()}</span>
                       </div>
                     ))}
                   </div>
@@ -4233,17 +4233,17 @@ Return ONLY a valid JSON array, no markdown:
               {/* Column headers */}
               <div style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',padding:'6px 8px',background:t.bg2,borderBottom:`2px solid ${t.border}`,position:'sticky',top:0,zIndex:2,flexShrink:0}}>
                 <span/>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.8}}>DESCRIPTION</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",textAlign:'right',letterSpacing:0.8}}>QTY</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",textAlign:'center',letterSpacing:0.8}}>UNIT</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",textAlign:'right',letterSpacing:0.8}}>UNIT COST</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",textAlign:'right',letterSpacing:0.8}}>CATEGORY</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",textAlign:'right',letterSpacing:0.8}}>TOTAL</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8}}>DESCRIPTION</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>QTY</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'center',letterSpacing:0.8}}>UNIT</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>UNIT COST</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>CATEGORY</span>
+                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>TOTAL</span>
                 <span/>
               </div>
 
               {allCatGroups.length===0&&(
-                <div style={{textAlign:'center',padding:'60px 0',color:t.text4,fontSize:13,fontFamily:"'DM Mono',monospace",flex:1}}>
+                <div style={{textAlign:'center',padding:'60px 0',color:t.text4,fontSize:13,fontVariantNumeric:'tabular-nums',flex:1}}>
                   No takeoff items yet
                 </div>
               )}
@@ -4259,7 +4259,7 @@ Return ONLY a valid JSON array, no markdown:
                       <span style={{fontSize:10,fontWeight:800,color:cat.color,letterSpacing:0.5}}>{cat.label.toUpperCase()}</span>
                       <span/><span/><span/>
                       <span/>
-                      <span style={{fontSize:11,fontWeight:800,color:cat.color,fontFamily:"'DM Mono',monospace",textAlign:'right'}}>${cat.subtotal.toLocaleString()}</span>
+                      <span style={{fontSize:11,fontWeight:800,color:cat.color,fontVariantNumeric:'tabular-nums',textAlign:'right'}}>${cat.subtotal.toLocaleString()}</span>
                       <span/>
                     </div>
 
@@ -4269,7 +4269,7 @@ Return ONLY a valid JSON array, no markdown:
                       // Shared cell style
                       const cellBase = {
                         background:'transparent',border:'none',outline:'none',
-                        width:'100%',fontFamily:"'DM Mono',monospace",
+                        width:'100%',fontVariantNumeric:'tabular-nums',
                         fontSize:11,color:t.text,padding:'2px 4px',
                       };
                       const saveField = async (field, val) => {
@@ -4344,7 +4344,7 @@ Return ONLY a valid JSON array, no markdown:
                           </select>
 
                           {/* Total — computed, not editable */}
-                          <span style={{fontSize:11,fontWeight:700,color:it.total_cost>0?'#10B981':t.text4,fontFamily:"'DM Mono',monospace",textAlign:'right',paddingRight:4}}>
+                          <span style={{fontSize:11,fontWeight:700,color:it.total_cost>0?'#4CAF50':t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',paddingRight:4}}>
                             {isSaving?'…':'$'+(it.total_cost||0).toLocaleString()}
                           </span>
 
@@ -4365,9 +4365,9 @@ Return ONLY a valid JSON array, no markdown:
               {/* Footer total row */}
               {allCatGroups.length>0&&(
                 <div style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',padding:'8px 8px',borderTop:`2px solid ${t.border2}`,background:t.bg2,position:'sticky',bottom:0,flexShrink:0}}>
-                  <span/><span style={{fontSize:10,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>TOTAL DIRECT COST</span>
+                  <span/><span style={{fontSize:10,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>TOTAL DIRECT COST</span>
                   <span/><span/><span/><span/>
-                  <span style={{fontSize:14,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace",textAlign:'right'}}>${totalEst.toLocaleString()}</span>
+                  <span style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums',textAlign:'right'}}>${totalEst.toLocaleString()}</span>
                   <span/>
                 </div>
               )}
@@ -4375,48 +4375,48 @@ Return ONLY a valid JSON array, no markdown:
 
             {/* Right — Summary panel */}
             <div style={{width:300,flexShrink:0,overflowY:'auto',padding:'20px 20px',background:t.bg2}}>
-              <div style={{fontSize:10,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:1,marginBottom:14}}>SUMMARY</div>
+              <div style={{fontSize:10,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:1,marginBottom:14}}>SUMMARY</div>
 
               {/* Totals card */}
               <div style={{background:t.bg3,borderRadius:8,padding:'14px 16px',marginBottom:14,border:`1px solid ${t.border}`}}>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                  <span style={{fontSize:10,color:t.text3,fontFamily:"'DM Mono',monospace"}}>DIRECT COST</span>
-                  <span style={{fontSize:13,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>${totalEst.toLocaleString()}</span>
+                  <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>DIRECT COST</span>
+                  <span style={{fontSize:13,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{fontSize:10,color:t.text3,fontFamily:"'DM Mono',monospace"}}>OVERHEAD</span>
+                    <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>OVERHEAD</span>
                     <div style={{display:'flex',alignItems:'center',background:t.bg,borderRadius:3,border:`1px solid ${t.border}`,padding:'1px 3px'}}>
                       <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
-                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontFamily:"'DM Mono',monospace",textAlign:'right',outline:'none',padding:0}}/>
+                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
                       <span style={{fontSize:9,color:t.text4}}>%</span>
                     </div>
                   </div>
-                  <span style={{fontSize:11,color:t.text3,fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
+                  <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${t.border}`}}>
                   <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{fontSize:10,color:t.text3,fontFamily:"'DM Mono',monospace"}}>PROFIT</span>
+                    <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>PROFIT</span>
                     <div style={{display:'flex',alignItems:'center',background:t.bg,borderRadius:3,border:`1px solid ${t.border}`,padding:'1px 3px'}}>
                       <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
-                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontFamily:"'DM Mono',monospace",textAlign:'right',outline:'none',padding:0}}/>
+                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
                       <span style={{fontSize:9,color:t.text4}}>%</span>
                     </div>
                   </div>
-                  <span style={{fontSize:11,color:t.text3,fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
+                  <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:"'DM Mono',monospace"}}>BID TOTAL</span>
-                  <span style={{fontSize:18,fontWeight:800,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
+                  <span style={{fontSize:11,fontWeight:800,color:t.text,fontVariantNumeric:'tabular-nums'}}>BID TOTAL</span>
+                  <span style={{fontSize:18,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
                 </div>
               </div>
 
               {/* Contract variance */}
               {project.contract_value&&(
                 <div style={{padding:'10px 14px',borderRadius:6,marginBottom:14,background:totalEst>(project.contract_value||0)?'rgba(239,68,68,0.08)':'rgba(16,185,129,0.08)',border:`1px solid ${totalEst>(project.contract_value||0)?'rgba(239,68,68,0.25)':'rgba(16,185,129,0.25)'}`}}>
-                  <div style={{fontSize:9,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>CONTRACT VALUE</div>
-                  <div style={{fontSize:13,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace",marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
-                  <div style={{fontSize:10,fontWeight:700,color:totalEst>(project.contract_value||0)?'#EF4444':'#10B981',fontFamily:"'DM Mono',monospace"}}>
+                  <div style={{fontSize:9,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>CONTRACT VALUE</div>
+                  <div style={{fontSize:13,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums',marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
+                  <div style={{fontSize:10,fontWeight:700,color:totalEst>(project.contract_value||0)?'#C0504D':'#4CAF50',fontVariantNumeric:'tabular-nums'}}>
                     {totalEst>(project.contract_value||0)?'▲ OVER CONTRACT':'▼ UNDER CONTRACT'} BY ${Math.abs(totalEst-(project.contract_value||0)).toLocaleString()}
                   </div>
                 </div>
@@ -4425,15 +4425,15 @@ Return ONLY a valid JSON array, no markdown:
               {/* Sheet breakdown */}
               {sheetBreakdown.length>0&&(
                 <div style={{marginBottom:14}}>
-                  <div style={{fontSize:9,fontWeight:700,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.8,marginBottom:8}}>BY SHEET</div>
+                  <div style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:8}}>BY SHEET</div>
                   {sheetBreakdown.map(({plan:p,total:pTotal})=>(
                     <div key={p.id} style={{display:'flex',alignItems:'center',padding:'5px 8px',borderRadius:4,marginBottom:3,background:p.id===selPlan?.id?`rgba(16,185,129,0.08)`:'none',border:`1px solid ${p.id===selPlan?.id?'rgba(16,185,129,0.25)':t.border}`,cursor:'pointer'}}
                       onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setRightTab('items');}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:9,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
-                        <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{planItemCountMap.get(p.id)||0} conditions</div>
+                        <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{planItemCountMap.get(p.id)||0} conditions</div>
                       </div>
-                      <span style={{fontSize:10,fontWeight:700,color:'#10B981',fontFamily:"'DM Mono',monospace",flexShrink:0}}>${pTotal.toLocaleString()}</span>
+                      <span style={{fontSize:10,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums',flexShrink:0}}>${pTotal.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>

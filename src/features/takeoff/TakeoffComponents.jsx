@@ -44,7 +44,7 @@ function TakeoffItemModal({ item, onSave, onClose }) {
         </APMField>
         <APMField label="Color">
           <div style={{display:'flex',flexWrap:'wrap',gap:5,padding:'4px 0'}}>
-            {['#10B981','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#F97316','#06B6D4','#EC4899','#84CC16','#A855F7','#14B8A6','#6B7280'].map(c=>(
+            {['#4CAF50','#5B9BD5','#F59E0B','#C0504D','#8B5CF6','#E8A317','#06B6D4','#EC4899','#84CC16','#A855F7','#14B8A6','#6B7280'].map(c=>(
               <button key={c} onClick={()=>set('color',c)}
                 style={{width:22,height:22,borderRadius:5,background:c,border:form.color===c?'2px solid #fff':'2px solid transparent',
                   cursor:'pointer',padding:0,flexShrink:0,boxShadow:form.color===c?`0 0 0 2px ${c}`:undefined,transition:'box-shadow 0.1s'}}/>
@@ -63,15 +63,15 @@ function TakeoffItemModal({ item, onSave, onClose }) {
           )}
         </div>
         <div style={{background:t.bg5,borderRadius:6,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:11,color:t.text3,fontFamily:"'DM Mono',monospace"}}>TOTAL</span>
-          <span style={{fontSize:15,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+          <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>TOTAL</span>
+          <span style={{fontSize:15,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
         </div>
       </div>
       <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'space-between'}}>
-        {!isNew && <button onClick={async()=>{const {error}=await supabase.from('takeoff_items').delete().eq('id',item.id).select();if(error){console.error('item delete error:',error);alert('Delete failed: '+error.message);}else{onSave(null,'delete');}}} style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.3)',color:'#ef4444',padding:'8px 14px',borderRadius:6,cursor:'pointer',fontSize:12}}>Delete</button>}
+        {!isNew && <button onClick={async()=>{const {error}=await supabase.from('takeoff_items').delete().eq('id',item.id).select();if(error){console.error('item delete error:',error);alert('Delete failed: '+error.message);}else{onSave(null,'delete');}}} style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.3)',color:'#C0504D',padding:'8px 14px',borderRadius:6,cursor:'pointer',fontSize:12}}>Delete</button>}
         <div style={{display:'flex',gap:8,marginLeft:'auto'}}>
           <button onClick={onClose} style={{background:'none',border:`1px solid ${t.border2}`,color:t.text3,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontSize:13}}>Cancel</button>
-          <button onClick={handleSave} style={{background:'#F97316',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>Save</button>
+          <button onClick={handleSave} style={{background:'#E8A317',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>Save</button>
         </div>
       </div>
     </APMModal>
@@ -90,10 +90,10 @@ function UnitCostEditor({ onClose }) {
 
   return (
     <APMModal title="Unit Cost Database" onClose={onClose} width={620}>
-      <div style={{fontSize:11,color:t.text3,marginBottom:12,fontFamily:"'DM Mono',monospace"}}>Edit your material and labor rates. Changes apply to all new estimates.</div>
+      <div style={{fontSize:11,color:t.text3,marginBottom:12,fontVariantNumeric:'tabular-nums'}}>Edit your material and labor rates. Changes apply to all new estimates.</div>
       <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:6,marginBottom:8}}>
         {['Category','Mat $/unit','Lab $/unit','Unit'].map(h=>(
-          <div key={h} style={{fontSize:9,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.5,padding:'0 4px'}}>{h}</div>
+          <div key={h} style={{fontSize:9,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.5,padding:'0 4px'}}>{h}</div>
         ))}
       </div>
       <div style={{maxHeight:340,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
@@ -114,7 +114,7 @@ function UnitCostEditor({ onClose }) {
       </div>
       <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={{background:'none',border:`1px solid ${t.border2}`,color:t.text3,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontSize:13}}>Cancel</button>
-        <button onClick={save} style={{background:'#F97316',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>Save Rates</button>
+        <button onClick={save} style={{background:'#E8A317',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>Save Rates</button>
       </div>
     </APMModal>
   );
@@ -145,9 +145,9 @@ function AssemblyPicker({ onApply, onClose }) {
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
         {ASSEMBLIES.map(asm=>(
           <div key={asm.id} onClick={()=>setSel(asm.id)}
-            style={{border:`1px solid ${sel===asm.id?'#F97316':t.border}`,borderRadius:8,padding:'10px 12px',cursor:'pointer',background:sel===asm.id?'rgba(249,115,22,0.06)':t.bg4,transition:'all 0.1s'}}>
-            <div style={{fontSize:13,fontWeight:700,color:sel===asm.id?'#F97316':t.text,marginBottom:4}}>{asm.label}</div>
-            <div style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{asm.items.map(i=>i.description).join(' · ')}</div>
+            style={{border:`1px solid ${sel===asm.id?'#E8A317':t.border}`,borderRadius:8,padding:'10px 12px',cursor:'pointer',background:sel===asm.id?'rgba(249,115,22,0.06)':t.bg4,transition:'all 0.1s'}}>
+            <div style={{fontSize:13,fontWeight:700,color:sel===asm.id?'#E8A317':t.text,marginBottom:4}}>{asm.label}</div>
+            <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{asm.items.map(i=>i.description).join(' · ')}</div>
           </div>
         ))}
       </div>
@@ -161,7 +161,7 @@ function AssemblyPicker({ onApply, onClose }) {
       )}
       <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={{background:'none',border:`1px solid ${t.border2}`,color:t.text3,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontSize:13}}>Cancel</button>
-        <button onClick={apply} disabled={!sel||!qty} style={{background:'#F97316',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700,opacity:sel&&qty?1:0.4}}>Apply Assembly</button>
+        <button onClick={apply} disabled={!sel||!qty} style={{background:'#E8A317',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700,opacity:sel&&qty?1:0.4}}>Apply Assembly</button>
       </div>
     </APMModal>
   );
@@ -192,12 +192,12 @@ function BidSummaryModal({ project, items, onClose }) {
     <style>
       body{font-family:'Arial',sans-serif;max-width:800px;margin:40px auto;color:#111;font-size:13px}
       h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;color:#333;border-bottom:1px solid #ddd;padding-bottom:4px}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #F97316}
-      .logo{font-size:18px;font-weight:800;color:#F97316}.sub{font-size:11px;color:#666;margin-top:2px}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #E8A317}
+      .logo{font-size:18px;font-weight:800;color:#E8A317}.sub{font-size:11px;color:#666;margin-top:2px}
       table{width:100%;border-collapse:collapse;margin-bottom:16px}th{text-align:left;padding:6px 8px;font-size:11px;color:#666;border-bottom:2px solid #eee;text-transform:uppercase;letter-spacing:0.5px}
       td{padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:12px}.right{text-align:right}.bold{font-weight:700}
-      .total-row{background:#f9f9f9;font-weight:700}.grand-total{background:#F97316;color:#000;font-size:15px}
-      .notes{background:#fffdf7;border:1px solid #F9731640;border-radius:6px;padding:12px;margin-top:16px;font-size:12px;color:#555}
+      .total-row{background:#f9f9f9;font-weight:700}.grand-total{background:#E8A317;color:#000;font-size:15px}
+      .notes{background:#fffdf7;border:1px solid #E8A31740;border-radius:6px;padding:12px;margin-top:16px;font-size:12px;color:#555}
       @media print{body{margin:20px}}
     </style></head><body>
     <div class="header">
@@ -244,19 +244,19 @@ function BidSummaryModal({ project, items, onClose }) {
       <div style={{display:'flex',flexDirection:'column',gap:0}}>
         {/* Cost breakdown */}
         <div style={{background:t.bg4,borderRadius:8,padding:14,marginBottom:12}}>
-          <div style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.5,marginBottom:10}}>DIVISION COSTS</div>
+          <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.5,marginBottom:10}}>DIVISION COSTS</div>
           {catGroups.map(cat=>(
             <div key={cat.id} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:`1px solid ${t.border}`}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <span style={{width:8,height:8,borderRadius:2,background:cat.color}}/>
                 <span style={{fontSize:12,color:t.text}}>{cat.label}</span>
               </div>
-              <span style={{fontSize:12,fontWeight:600,color:t.text,fontFamily:"'DM Mono',monospace"}}>${cat.subtotal.toLocaleString()}</span>
+              <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>${cat.subtotal.toLocaleString()}</span>
             </div>
           ))}
           <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:4}}>
             <span style={{fontSize:12,fontWeight:700,color:t.text}}>Direct Cost Subtotal</span>
-            <span style={{fontSize:13,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>${subtotal.toLocaleString()}</span>
+            <span style={{fontSize:13,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${subtotal.toLocaleString()}</span>
           </div>
         </div>
 
@@ -270,9 +270,9 @@ function BidSummaryModal({ project, items, onClose }) {
         </div>
 
         {/* Total */}
-        <div style={{background:'linear-gradient(135deg,#F97316,#ea580c)',borderRadius:8,padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{background:'linear-gradient(135deg,#E8A317,#ea580c)',borderRadius:8,padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
           <span style={{fontSize:13,fontWeight:700,color:'#000'}}>TOTAL BID PRICE</span>
-          <span style={{fontSize:22,fontWeight:800,color:'#000',fontFamily:"'DM Mono',monospace"}}>${total.toLocaleString('en-US',{minimumFractionDigits:0})}</span>
+          <span style={{fontSize:22,fontWeight:800,color:'#000',fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:0})}</span>
         </div>
 
         <APMField label="Clarifications / Exclusions">
@@ -348,10 +348,10 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
         )}
       </div>
       <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'space-between'}}>
-        {!isNew&&<button onClick={()=>{if(window.confirm('Delete "'+project.name+'"? This will permanently remove the project and all takeoff data.'))onSave(project,'delete');}} style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.3)',color:'#ef4444',padding:'8px 14px',borderRadius:6,cursor:'pointer',fontSize:12}}>Delete</button>}
+        {!isNew&&<button onClick={()=>{if(window.confirm('Delete "'+project.name+'"? This will permanently remove the project and all takeoff data.'))onSave(project,'delete');}} style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.3)',color:'#C0504D',padding:'8px 14px',borderRadius:6,cursor:'pointer',fontSize:12}}>Delete</button>}
         <div style={{display:'flex',gap:8,marginLeft:'auto'}}>
           <button onClick={onClose} style={{background:'none',border:`1px solid var(--bd2)`,color:'var(--tx3)',padding:'8px 18px',borderRadius:6,cursor:'pointer',fontSize:13}}>Cancel</button>
-          <button onClick={handleSave} disabled={saving||!form.name.trim()} style={{background:'#F97316',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>{saving?'Saving...':isNew?'Create':'Save'}</button>
+          <button onClick={handleSave} disabled={saving||!form.name.trim()} style={{background:'#E8A317',border:'none',color:'#000',padding:'8px 22px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:700}}>{saving?'Saving...':isNew?'Create':'Save'}</button>
         </div>
       </div>
     </APMModal>
@@ -373,7 +373,7 @@ function AddItemInline({ cat, selPlan, project, items, onCreated }) {
       <button onClick={()=>{setOpen(true);setTimeout(()=>inputRef.current?.focus(),40);}}
         style={{width:'100%',background:'none',border:`1px dashed ${cat.color}55`,color:cat.color,
           padding:'4px 0',borderRadius:4,cursor:'pointer',fontSize:9,fontWeight:700,
-          fontFamily:"'DM Mono',monospace",opacity:0.7}}>
+          fontVariantNumeric:'tabular-nums',opacity:0.7}}>
         + Add item
       </button>
     </div>
@@ -408,7 +408,7 @@ function AddItemInline({ cat, selPlan, project, items, onCreated }) {
             style={{flex:1,padding:'3px 0',border:`1px solid ${mt===m.id?cat.color:t.border}`,
               background:mt===m.id?`${cat.color}25`:'transparent',
               color:mt===m.id?cat.color:t.text4,
-              borderRadius:3,cursor:'pointer',fontSize:8,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+              borderRadius:3,cursor:'pointer',fontSize:8,fontVariantNumeric:'tabular-nums',fontWeight:700}}>
             {m.icon} {m.lbl}
           </button>
         ))}
@@ -458,37 +458,37 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
     <div style={{padding:'6px 8px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
       <button onClick={()=>{setOpen(true);setTimeout(()=>inputRef.current?.focus(),50);}}
         disabled={!selPlan?.id}
-        style={{width:'100%',background:'rgba(16,185,129,0.08)',border:'1px dashed rgba(16,185,129,0.4)',color:'#10B981',padding:'7px 0',borderRadius:5,cursor:selPlan?.id?'pointer':'not-allowed',fontSize:11,fontWeight:700,fontFamily:"'DM Mono',monospace",opacity:selPlan?.id?1:0.4}}>
+        style={{width:'100%',background:'rgba(16,185,129,0.08)',border:'1px dashed rgba(16,185,129,0.4)',color:'#4CAF50',padding:'7px 0',borderRadius:5,cursor:selPlan?.id?'pointer':'not-allowed',fontSize:11,fontWeight:700,fontVariantNumeric:'tabular-nums',opacity:selPlan?.id?1:0.4}}>
         + NEW ITEM
       </button>
     </div>
   );
 
   return(
-    <div style={{padding:'10px 8px',borderBottom:`1px solid #10B981`,background:'rgba(16,185,129,0.04)',flexShrink:0}}>
+    <div style={{padding:'10px 8px',borderBottom:`1px solid #4CAF50`,background:'rgba(16,185,129,0.04)',flexShrink:0}}>
       {/* Step 1: Name */}
-      <div style={{fontSize:8,color:'#10B981',fontFamily:"'DM Mono',monospace",letterSpacing:0.8,marginBottom:4}}>ITEM NAME</div>
+      <div style={{fontSize:8,color:'#4CAF50',fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:4}}>ITEM NAME</div>
       <input ref={inputRef} value={name} onChange={e=>setName(e.target.value)}
         placeholder="e.g. Sidewalk, Curb & Gutter, Footing..."
         onKeyDown={e=>{if(e.key==='Enter'&&name.trim()) handleCreate(); if(e.key==='Escape') setOpen(false);}}
         style={{width:'100%',background:t.bg3,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'6px 8px',fontSize:11,outline:'none',marginBottom:8,boxSizing:'border-box'}}/>
 
       {/* Step 2: Category */}
-      <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.8,marginBottom:4}}>CATEGORY</div>
+      <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:4}}>CATEGORY</div>
       <select value={cat} onChange={e=>setCat(e.target.value)}
         style={{width:'100%',background:t.bg3,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'5px 7px',fontSize:11,marginBottom:8,boxSizing:'border-box'}}>
         {TAKEOFF_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
       </select>
 
       {/* Step 3: Measure type */}
-      <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",letterSpacing:0.8,marginBottom:4}}>MEASURE AS</div>
+      <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:4}}>MEASURE AS</div>
       <div style={{display:'flex',gap:4,marginBottom:10}}>
         {[{id:'area',icon:'⬡',label:'Area (SF)'},{id:'linear',icon:'━',label:'Linear (LF)'},{id:'count',icon:'✕',label:'Count (EA)'}].map(m=>(
           <button key={m.id} onClick={()=>setMt(m.id)}
-            style={{flex:1,padding:'5px 0',border:`1px solid ${mt===m.id?'#10B981':t.border}`,
+            style={{flex:1,padding:'5px 0',border:`1px solid ${mt===m.id?'#4CAF50':t.border}`,
               background:mt===m.id?'rgba(16,185,129,0.15)':'rgba(0,0,0,0.2)',
-              color:mt===m.id?'#10B981':'#888',
-              borderRadius:4,cursor:'pointer',fontSize:9,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+              color:mt===m.id?'#4CAF50':'#888',
+              borderRadius:4,cursor:'pointer',fontSize:9,fontVariantNumeric:'tabular-nums',fontWeight:700}}>
             <div style={{fontSize:12}}>{m.icon}</div>
             <div style={{fontSize:8,marginTop:1}}>{m.label}</div>
           </button>
@@ -497,7 +497,7 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
 
       <div style={{display:'flex',gap:5}}>
         <button onClick={handleCreate} disabled={!name.trim()||saving}
-          style={{flex:1,background:'#10B981',border:'none',color:'#000',padding:'7px 0',borderRadius:4,cursor:name.trim()?'pointer':'not-allowed',fontSize:11,fontWeight:700,opacity:name.trim()?1:0.4}}>
+          style={{flex:1,background:'#4CAF50',border:'none',color:'#000',padding:'7px 0',borderRadius:4,cursor:name.trim()?'pointer':'not-allowed',fontSize:11,fontWeight:700,opacity:name.trim()?1:0.4}}>
           {saving?'Saving...':'✓ Create & Start Measuring'}
         </button>
         <button onClick={()=>setOpen(false)}
@@ -522,7 +522,7 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const total = (Number(form.quantity)||0) * (Number(form.multiplier)||1) * (Number(form.unit_cost)||0);
-  const inp = {background:t.bg5,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'4px 6px',fontSize:10,fontFamily:"'DM Mono',monospace",width:'100%',outline:'none'};
+  const inp = {background:t.bg5,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'4px 6px',fontSize:10,fontVariantNumeric:'tabular-nums',width:'100%',outline:'none'};
   return(
     <div style={{padding:'8px',background:t.bg3,borderTop:`1px solid ${cat.color}40`}}>
       {/* Description */}
@@ -540,16 +540,16 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
       {/* Qty / Unit / Rate row */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 60px 1fr',gap:4,marginBottom:6}}>
         <div>
-          <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>QTY</div>
+          <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>QTY</div>
           <input type="number" value={form.quantity} onChange={e=>set('quantity',e.target.value)}
             style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
         </div>
         <div>
-          <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>UNIT</div>
+          <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>UNIT</div>
           <input value={form.unit} onChange={e=>set('unit',e.target.value)} style={{...inp}}/>
         </div>
         <div>
-          <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>$/UNIT</div>
+          <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>$/UNIT</div>
           <input type="number" value={form.unit_cost} onChange={e=>set('unit_cost',e.target.value)}
             style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
         </div>
@@ -557,13 +557,13 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
       {/* Multiplier + Wall Height row */}
       <div style={{display:'grid',gridTemplateColumns:form.measurement_type==='linear'?'1fr 1fr':'1fr',gap:4,marginBottom:6}}>
         <div>
-          <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>MULTIPLIER</div>
+          <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>MULTIPLIER</div>
           <input type="number" value={form.multiplier} onChange={e=>set('multiplier',e.target.value)}
             style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
         </div>
         {form.measurement_type==='linear'&&(
           <div>
-            <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>WALL HT (ft)</div>
+            <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>WALL HT (ft)</div>
             <input type="number" value={form.wall_height||''} onChange={e=>set('wall_height',e.target.value)}
               placeholder="0" style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
           </div>
@@ -571,13 +571,13 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
       </div>
       {/* Total */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'4px 6px',background:t.bg5,borderRadius:4}}>
-        <span style={{fontSize:9,color:t.text4,fontFamily:"'DM Mono',monospace"}}>TOTAL</span>
-        <span style={{fontSize:12,fontWeight:700,color:'#10B981',fontFamily:"'DM Mono',monospace"}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span style={{fontSize:9,color:t.text4,fontVariantNumeric:'tabular-nums'}}>TOTAL</span>
+        <span style={{fontSize:12,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
       {/* Actions */}
       <div style={{display:'flex',gap:4}}>
-        <button onClick={()=>onSave(form)} style={{flex:1,background:'#10B981',border:'none',color:'#000',padding:'5px 0',borderRadius:4,cursor:'pointer',fontSize:10,fontWeight:700}}>✓ Save</button>
-        <button onClick={onDelete} style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#ef4444',padding:'5px 8px',borderRadius:4,cursor:'pointer',fontSize:10}}>✕</button>
+        <button onClick={()=>onSave(form)} style={{flex:1,background:'#4CAF50',border:'none',color:'#000',padding:'5px 0',borderRadius:4,cursor:'pointer',fontSize:10,fontWeight:700}}>✓ Save</button>
+        <button onClick={onDelete} style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#C0504D',padding:'5px 8px',borderRadius:4,cursor:'pointer',fontSize:10}}>✕</button>
       </div>
     </div>
   );

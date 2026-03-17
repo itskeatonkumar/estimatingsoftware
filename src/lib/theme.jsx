@@ -1,48 +1,48 @@
 import React, { useState, useEffect } from 'react';
 
-const ThemeContext = React.createContext({ dark: true, toggle: () => {} });
+const ThemeContext = React.createContext({ dark: false, toggle: () => {} });
 
 export function useTheme() { return React.useContext(ThemeContext); }
 
 function applyCSSVars(dark) {
   const r = document.documentElement;
   if (dark) {
-    r.style.setProperty('--bg',    '#0a0a0a');
-    r.style.setProperty('--bg2',   '#0d0d0d');
-    r.style.setProperty('--bg3',   '#111111');
-    r.style.setProperty('--bg4',   '#151515');
-    r.style.setProperty('--bg5',   '#1a1a1a');
-    r.style.setProperty('--bd',    '#1a1a1a');
-    r.style.setProperty('--bd2',   '#2a2a2a');
+    r.style.setProperty('--bg',    '#1a1a1a');
+    r.style.setProperty('--bg2',   '#222222');
+    r.style.setProperty('--bg3',   '#2a2a2a');
+    r.style.setProperty('--bg4',   '#252525');
+    r.style.setProperty('--bg5',   '#303030');
+    r.style.setProperty('--bd',    '#333333');
+    r.style.setProperty('--bd2',   '#444444');
     r.style.setProperty('--tx',    '#e5e5e5');
-    r.style.setProperty('--tx2',   '#888888');
-    r.style.setProperty('--tx3',   '#555555');
-    r.style.setProperty('--tx4',   '#444444');
-    r.style.setProperty('--inp',   '#0e0e0e');
-    r.style.setProperty('--inpbd', 'var(--bd)');
+    r.style.setProperty('--tx2',   '#999999');
+    r.style.setProperty('--tx3',   '#777777');
+    r.style.setProperty('--tx4',   '#666666');
+    r.style.setProperty('--inp',   '#1e1e1e');
+    r.style.setProperty('--inpbd', '#333333');
     r.style.setProperty('--inptx', '#e0e0e0');
   } else {
-    r.style.setProperty('--bg',    '#f4f4f5');
+    r.style.setProperty('--bg',    '#ffffff');
     r.style.setProperty('--bg2',   '#ffffff');
-    r.style.setProperty('--bg3',   '#ffffff');
-    r.style.setProperty('--bg4',   '#f9f9f9');
+    r.style.setProperty('--bg3',   '#f5f5f5');
+    r.style.setProperty('--bg4',   '#fafafa');
     r.style.setProperty('--bg5',   '#f0f0f0');
-    r.style.setProperty('--bd',    '#e4e4e7');
-    r.style.setProperty('--bd2',   '#d4d4d8');
-    r.style.setProperty('--tx',    '#18181b');
-    r.style.setProperty('--tx2',   '#52525b');
-    r.style.setProperty('--tx3',   '#71717a');
-    r.style.setProperty('--tx4',   '#a1a1aa');
+    r.style.setProperty('--bd',    '#e0e0e0');
+    r.style.setProperty('--bd2',   '#d0d0d0');
+    r.style.setProperty('--tx',    '#333333');
+    r.style.setProperty('--tx2',   '#666666');
+    r.style.setProperty('--tx3',   '#999999');
+    r.style.setProperty('--tx4',   '#999999');
     r.style.setProperty('--inp',   '#ffffff');
-    r.style.setProperty('--inpbd', '#d4d4d8');
-    r.style.setProperty('--inptx', '#18181b');
+    r.style.setProperty('--inpbd', '#e0e0e0');
+    r.style.setProperty('--inptx', '#333333');
   }
 }
 
 export function ThemeProvider({ children }) {
   const [dark, setDark] = useState(() => {
-    let isDark = true;
-    try { const s = localStorage.getItem("theme"); isDark = s ? s === "dark" : false; } catch {}
+    let isDark = false;
+    try { const s = localStorage.getItem("theme"); isDark = s === "dark"; } catch {}
     applyCSSVars(isDark);
     return isDark;
   });
@@ -64,9 +64,9 @@ export function ThemeProvider({ children }) {
 export function ThemeToggle() {
   const { dark, toggle } = useTheme();
   return (
-    <button onClick={toggle} title={dark ? "Switch to light mode" : "Switch to dark mode"}
-      style={{background:'none',border:'none',cursor:'pointer',fontSize:18,padding:4,color:'var(--tx3)'}}>
-      {dark ? '☀' : '☾'}
+    <button onClick={toggle} title={dark ? "Light mode" : "Dark mode"}
+      style={{background:'none',border:`1px solid var(--bd)`,cursor:'pointer',fontSize:11,padding:'4px 8px',color:'var(--tx3)',borderRadius:4}}>
+      {dark ? 'Light' : 'Dark'}
     </button>
   );
 }
@@ -83,11 +83,11 @@ export function useIsMobile() {
 
 // Shared style constants
 export const labelStyle = {
-  display: "block", fontSize: 10.5, fontFamily: "'DM Mono', monospace",
-  color: "var(--tx3)", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5
+  display: "block", fontSize: 12, fontWeight: 500,
+  color: "var(--tx2)", marginBottom: 5
 };
 export const inputStyle = {
-  width: "100%", background: "var(--bg)", border: "1px solid var(--bd)",
-  borderRadius: 6, padding: "8px 10px", color: "var(--tx)", fontSize: 13,
-  fontFamily: "'Syne', sans-serif", outline: "none", boxSizing: "border-box",
+  width: "100%", background: "var(--inp)", border: "1px solid var(--inpbd)",
+  borderRadius: 4, padding: "8px 10px", color: "var(--inptx)", fontSize: 13,
+  outline: "none", boxSizing: "border-box",
 };
