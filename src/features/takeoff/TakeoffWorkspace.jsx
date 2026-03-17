@@ -317,6 +317,22 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     try { localStorage.setItem(`planSets_${project.id}`, JSON.stringify(sets)); } catch(e){}
   };
 
+  // Human-readable scale label from px/ft value
+  const scaleLabel = (s, preset) => {
+    if (preset) return preset;
+    if (!s) return 'Not set';
+    // Try to reverse-match to a construction scale
+    const dpi = planDpi || 150;
+    for (const cs of CONSTRUCTION_SCALES) {
+      const expected = (dpi * 12) / cs.ratio;
+      if (Math.abs(expected - s) / s < 0.02) return cs.label; // within 2%
+    }
+    // Derive: 1" on paper = (dpi / scale) feet
+    const ftPerInch = dpi / s;
+    if (ftPerInch >= 1) return `1" = ${Math.round(ftPerInch)}'`;
+    return `Scale: ${Math.round(s * 10) / 10} px/ft`;
+  };
+
   // Points stored as raw SVG pixel coords — no normalization needed
   // toPx is identity: SVG coord space = image pixel space
   const toPx=(x,y)=>({x,y});
@@ -3352,7 +3368,7 @@ Return ONLY a valid JSON array, no markdown:
             <div style={{flex:1,overflowY:'auto',padding:14}}>
               <div style={{fontSize:10,fontWeight:700,color:t.text4,letterSpacing:0.8,marginBottom:8}}>SCALE</div>
               <div style={{fontSize:10,color:scale?'#4CAF50':t.text4,marginBottom:8,padding:'6px 10px',background:t.bg3,borderRadius:5,border:`1px solid ${t.border}`}}>
-                {scale?`✓ ${presetScale||'Calibrated'} · ${Math.round(scale*10)/10} px/ft`:'Not set for this page'}
+                {scale?`✓ ${scaleLabel(scale, presetScale)}`:'Not set for this page'}
               </div>
               <div style={{fontSize:10,color:t.text4,marginBottom:8}}>Use the <strong style={{color:'#4CAF50'}}>+ Set Scale</strong> button in the lower-right of the canvas to set scale per page.</div>
               {!isPdfPlan&&(
@@ -3923,7 +3939,7 @@ Return ONLY a valid JSON array, no markdown:
                 style={{background:'#4CAF50',border:'none',color:'#fff',
                   borderRadius:6,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:700,
                   boxShadow:'0 2px 8px rgba(16,185,129,0.4)',display:'flex',alignItems:'center',gap:5}}>
-                {scale&&presetScale?'⇔ Change Scale':scale?`⇔ ${Math.round(scale*10)/10} px/ft`:'+ Set Scale'}
+                {scale?`⇔ ${scaleLabel(scale, presetScale)}`:'+ Set Scale'}
               </button>
             </div>
           )}
