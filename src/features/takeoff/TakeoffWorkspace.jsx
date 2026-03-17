@@ -910,6 +910,24 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const handleSvgClick=(e)=>{
     if(!selPlan) return;
     if(e.button===2) return;
+    // ── Markup: Dimension Line — two clicks ──
+    if(markupMode==='dimension'){
+      const pos = getSvgPos(e);
+      if(!activeMarkup){
+        // First click — start point
+        setActiveMarkup({type:'dimension', p1:pos, p2:null});
+      } else if(activeMarkup.type==='dimension' && activeMarkup.p1){
+        // Second click — finish
+        const p1 = activeMarkup.p1;
+        const p2 = pos;
+        const dist = scale ? Math.sqrt((p2.x-p1.x)**2+(p2.y-p1.y)**2)/scale : Math.sqrt((p2.x-p1.x)**2+(p2.y-p1.y)**2);
+        const unit = scale ? 'ft' : 'px';
+        const label = scale ? `${Math.round(dist*100)/100} ${unit}` : `${Math.round(dist)} ${unit}`;
+        setMarkups(prev=>[...prev, {id:Date.now(), type:'dimension', planId:selPlan.id, p1, p2, label, color:markupColor}]);
+        setActiveMarkup(null);
+      }
+      return;
+    }
     // Eraser click — delete the hovered shape or full item
     if(tool==='eraser'){
       if(eraserHover){
@@ -2141,7 +2159,7 @@ Return ONLY a valid JSON array, no markdown:
     const subtotal = its.reduce((s,i)=>s+(i._totalCost||0),0);
     return {cat, items:its, subtotal};
   }).filter(Boolean);
-  const toolCursor=(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
+  const toolCursor=markupMode==='dimension'?'crosshair':(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
 
   const co = COMPANIES.find(c=>c.id===project.company)||COMPANIES[1];
   const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#5B9BD5',awarded:'#4CAF50',lost:'#C0504D',hold:'#555'};
@@ -3535,6 +3553,58 @@ Return ONLY a valid JSON array, no markdown:
                       <g clipPath="url(#planClip)">
                         {renderMeasurements()}
                         {renderActive()}
+                        {/* ── Dimension line markups ── */}
+                        {markups.filter(m=>m.type==='dimension'&&m.planId===selPlan?.id).map(m=>{
+                          const {p1,p2,label,color,id}=m;
+                          const dx=p2.x-p1.x, dy=p2.y-p1.y;
+                          const len=Math.sqrt(dx*dx+dy*dy);
+                          if(len<1) return null;
+                          const nx=-dy/len, ny=dx/len; // perpendicular
+                          const tick=8/zoom;
+                          const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+                          const fs=12/zoom;
+                          const angle=Math.atan2(dy,dx)*180/Math.PI;
+                          const flipText = angle>90||angle<-90;
+                          return(
+                            <g key={id} style={{pointerEvents:'none'}}>
+                              {/* Main line */}
+                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={color} strokeWidth={1.5/zoom}/>
+                              {/* End ticks */}
+                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={color} strokeWidth={1.5/zoom}/>
+                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={color} strokeWidth={1.5/zoom}/>
+                              {/* Label background */}
+                              <rect x={mx-label.length*fs*0.3} y={my-fs*0.8-4/zoom} width={label.length*fs*0.6} height={fs*1.4} rx={2/zoom}
+                                fill="white" fillOpacity={0.9} stroke={color} strokeWidth={0.5/zoom}/>
+                              {/* Label text */}
+                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={color} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{label}</text>
+                            </g>
+                          );
+                        })}
+                        {/* Active dimension line being drawn */}
+                        {activeMarkup?.type==='dimension'&&activeMarkup.p1&&hoverPt&&(()=>{
+                          const p1=activeMarkup.p1, p2=hoverPt;
+                          const dx=p2.x-p1.x, dy=p2.y-p1.y;
+                          const len=Math.sqrt(dx*dx+dy*dy);
+                          if(len<1) return null;
+                          const nx=-dy/len, ny=dx/len;
+                          const tick=8/zoom;
+                          const dist = scale ? Math.sqrt(dx*dx+dy*dy)/scale : Math.sqrt(dx*dx+dy*dy);
+                          const unit = scale ? 'ft' : 'px';
+                          const label = scale ? `${Math.round(dist*100)/100} ${unit}` : `${Math.round(dist)} ${unit}`;
+                          const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+                          const fs=12/zoom;
+                          return(
+                            <g style={{pointerEvents:'none'}}>
+                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={markupColor} strokeWidth={1.5/zoom} strokeDasharray={`${4/zoom},${3/zoom}`}/>
+                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={markupColor} strokeWidth={1.5/zoom}/>
+                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={markupColor} strokeWidth={1.5/zoom}/>
+                              <circle cx={p1.x} cy={p1.y} r={4/zoom} fill={markupColor}/>
+                              <rect x={mx-label.length*fs*0.3} y={my-fs*0.8-4/zoom} width={label.length*fs*0.6} height={fs*1.4} rx={2/zoom}
+                                fill="white" fillOpacity={0.85} stroke={markupColor} strokeWidth={0.5/zoom}/>
+                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={markupColor} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{label}</text>
+                            </g>
+                          );
+                        })()}
                         {scalePts.length>=2&&(()=>{
                           const p1=scalePts[0];const p2=scalePts[1];
                           const sw=2/zoom;
@@ -3890,11 +3960,12 @@ Return ONLY a valid JSON array, no markdown:
               }
               if(btn.markup){
                 setMarkupMode(btn.id);
+                setActiveMarkup(null);
                 setTool('select'); setActivePts([]); setActiveCondId(null);
                 return;
               }
               // Regular tools
-              setMarkupMode(null);
+              setMarkupMode(null); setActiveMarkup(null);
               if(btn.id==='cutout'){
                 setTool('cutout'); setActivePts([]); setActiveCondId(null);
                 setScaleStep(null); setShowScalePanel(false);
