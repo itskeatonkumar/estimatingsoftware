@@ -35,13 +35,11 @@ function ProjectList({ onSelectProject, user }) {
       });
     // Fetch org members for team assignment dropdown
     (async () => {
-      // user_org_ids() is SECURITY DEFINER so it bypasses RLS
-      const { data: orgIds, error: orgErr } = await supabase.rpc('user_org_ids');
-      console.log('[org-members] org_ids:', orgIds, orgErr);
-      if (!orgIds?.length) return;
-      const orgId = orgIds[0];
+      const { data: orgId, error: orgErr } = await supabase.rpc('get_my_org_id');
+      console.log('[org-members] org_id:', orgId, orgErr);
+      if (!orgId) return;
       const { data: members, error: rpcErr } = await supabase.rpc('get_org_members', { p_org_id: orgId });
-      console.log('[org-members] rpc result:', members, rpcErr);
+      console.log('[org-members] members:', members, rpcErr);
       if (members) setOrgMembers(members);
     })();
   }, []);
