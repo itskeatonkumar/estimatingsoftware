@@ -178,7 +178,7 @@ function ProjectList({ onSelectProject, user }) {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..."
               style={{ width: '100%', padding: '6px 8px 6px 26px', border: `1px solid ${t.border}`, borderRadius: 4, fontSize: 12, color: t.text, background: t.bg2, outline: 'none', boxSizing: 'border-box' }} />
           </div>
-          {['all', 'estimating', 'bid_submitted', 'awarded', 'lost', 'hold'].map(s => (
+          {['all', ...STATUS_OPTIONS].map(s => (
             <button key={s} onClick={() => setFilterStatus(s)}
               style={{
                 padding: '4px 10px', borderRadius: 20,
