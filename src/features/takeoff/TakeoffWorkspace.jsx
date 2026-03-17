@@ -302,7 +302,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     Promise.all([
       supabase.from('precon_plans').select('*').eq('project_id',pid).order('created_at'),
       supabase.from('takeoff_items').select('*').eq('project_id',pid).order('sort_order'),
-    ]).then(([{data:p},{data:i}])=>{
+    ]).then(([{data:p,error:e1},{data:i,error:e2}])=>{
+      if(e1) console.error('[load] plans error:', e1);
+      if(e2) console.error('[load] items error:', e2);
+      console.log('[load] plans:', (p||[]).length, 'items:', (i||[]).length);
       const pl=p||[];
       const validItems=(i||[]).filter(it=>it.plan_id!=null);
       setPlans(pl); setItems(validItems);
@@ -683,7 +686,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const total_cost = (itemData.quantity||0)*(itemData.multiplier||1)*uc;
     const pid = project.id;
     const payload = {...itemData, project_id:pid, plan_id:selPlan?.id, unit_cost:uc, total_cost, color:catDef.color, ai_generated:false, sort_order:items.length};
-    const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
+    const {data, error} = await supabase.from('takeoff_items').insert([payload]).select().single();
+    if(error) console.error('[saveItem] insert error:', error);
     if(data){
       setItems(prev=>[...prev,data]);
       // Auto-expand in sidebar for quick rename/recategorize — no floating modal
@@ -777,7 +781,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
     const total_cost = qty * (item.multiplier||1) * (item.unit_cost||0);
     const updated = {...item, points:shapes, quantity:qty, total_cost};
-    await supabase.from('takeoff_items').update({points:shapes, quantity:qty, total_cost}).eq('id', item.id);
+    const {error:updErr} = await supabase.from('takeoff_items').update({points:shapes, quantity:qty, total_cost}).eq('id', item.id);
+    if(updErr) console.error('[appendMeasurement] update error:', updErr);
     setItems(prev=>prev.map(i=>String(i.id)===String(item.id) ? updated : i));
     // Keep tool armed — stay ready for more shapes
   };
