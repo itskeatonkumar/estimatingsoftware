@@ -3253,9 +3253,10 @@ Return ONLY a valid JSON array, no markdown:
             ):(()=>{
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
               const planH = imgNat.h > 4 ? imgNat.h : (canvasRef.current?.height || 1100);
+              const dispW = Math.round(planW*zoom);
+              const dispH = Math.round(planH*zoom);
               return (
-                <div style={{width:planW*zoom, height:planH*zoom, position:'relative', flexShrink:0, overflow:'hidden'}}>
-                  <div style={{transformOrigin:'top left', transform:`scale(${zoom})`, position:'absolute', top:0, left:0, width:planW, height:planH}}>
+                <div style={{width:dispW, height:dispH, position:'relative', flexShrink:0}}>
                     {planErr&&<div style={{position:'absolute',top:10,left:10,zIndex:20,background:'#1a0505',border:'1px solid #ef4444',color:'#ef4444',padding:'10px 14px',borderRadius:8,fontSize:11,maxWidth:500,wordBreak:'break-all'}}>{planErr}</div>}
                     {loadingPlan&&(
                       <div style={{width:800,height:600,display:'flex',alignItems:'center',justifyContent:'center',background:'#1a1a1a',color:'#aaa',fontSize:13,gap:8,fontFamily:"'DM Mono',monospace"}}>
@@ -3265,11 +3266,11 @@ Return ONLY a valid JSON array, no markdown:
                     {isPdfPlan?(
                       <>
                         {rendering&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.7)',zIndex:5,color:'#fff',fontSize:13,gap:8}}><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>Rendering…</div>}
-                        <canvas ref={canvasRef} style={{display:'block',userSelect:'none'}}/>
+                        <canvas ref={canvasRef} style={{display:'block',width:dispW,height:dispH,userSelect:'none'}}/>
                       </>
                     ):(blobUrl&&(
                       <img ref={imgRef} src={blobUrl} alt=""
-                        style={{display:'block',maxWidth:'none',userSelect:'none'}}
+                        style={{display:'block',width:dispW,height:dispH,userSelect:'none'}}
                         onLoad={handleImgLoad}
                         onError={(e)=>{
                           console.error('img load failed');
@@ -3279,7 +3280,7 @@ Return ONLY a valid JSON array, no markdown:
                     ))}
                     <svg ref={svgRef}
                       viewBox={`0 0 ${planW} ${planH}`}
-                      style={{position:'absolute',top:0,left:0,width:planW+'px',height:planH+'px',cursor:toolCursor,pointerEvents:'all',userSelect:'none',overflow:'hidden'}}
+                      style={{position:'absolute',top:0,left:0,width:dispW,height:dispH,cursor:toolCursor,pointerEvents:'all',userSelect:'none',overflow:'hidden'}}
                       onMouseDown={(e)=>{ handleSvgMouseDown(e); handleSvgRightPan(e); }}
                       onClick={handleSvgClick}
                       onDoubleClick={handleSvgDoubleClick}
@@ -3311,7 +3312,6 @@ Return ONLY a valid JSON array, no markdown:
                         })()}
                       </g>
                     </svg>
-                  </div>
                 </div>
               );
             })()}
