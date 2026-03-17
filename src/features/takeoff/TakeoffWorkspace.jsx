@@ -932,6 +932,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const handleSvgClick=(e)=>{
     if(!selPlan) return;
     if(e.button===2) return;
+    // ── Markup: Legend — click to place ──
+    if(markupMode==='legend'){
+      const pos = getSvgPos(e);
+      const legendItems = items.filter(i=>i.plan_id===selPlan.id && i.points?.length).map(i=>({
+        color: i.color || '#999',
+        name: i.description || 'Unnamed',
+        qty: i.quantity || 0,
+        unit: i.unit || '',
+        type: i.measurement_type,
+      }));
+      if(!legendItems.length){ alert('No takeoffs on this plan to show in legend.'); return; }
+      setMarkups(prev=>[...prev, {id:Date.now(), type:'legend', planId:selPlan.id, pos, items:legendItems}]);
+      setMarkupMode(null);
+      return;
+    }
     // ── Markup: Dimension Line — two clicks ──
     if(markupMode==='dimension'){
       const pos = getSvgPos(e);
@@ -1124,17 +1139,24 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           }
         });
       }
-      // Also check markup dimension lines
+      // Also check markup dimension lines and legends
       if(!found){
         const mThreshold = 12/zoom;
         for(const m of markups){
-          if(m.type==='dimension' && m.planId===selPlanRef.current?.id){
+          if(m.planId!==selPlanRef.current?.id) continue;
+          if(m.type==='dimension'){
             const a=m.p1, b=m.p2;
             const dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy;
             const tt=len2===0?0:Math.max(0,Math.min(1,((rawPt.x-a.x)*dx+(rawPt.y-a.y)*dy)/len2));
             const px=a.x+tt*dx,py=a.y+tt*dy;
             const d=Math.hypot(rawPt.x-px,rawPt.y-py);
             if(d<mThreshold){ found={markupId:m.id}; break; }
+          }
+          if(m.type==='legend'){
+            const w=200/zoom, h=(11/zoom)*1.8+(8/zoom)*2+(m.items.length*(11/zoom)*1.6);
+            if(rawPt.x>=m.pos.x && rawPt.x<=m.pos.x+w && rawPt.y>=m.pos.y && rawPt.y<=m.pos.y+h){
+              found={markupId:m.id}; break;
+            }
           }
         }
       }
@@ -2200,7 +2222,7 @@ Return ONLY a valid JSON array, no markdown:
     const subtotal = its.reduce((s,i)=>s+(i._totalCost||0),0);
     return {cat, items:its, subtotal};
   }).filter(Boolean);
-  const toolCursor=markupMode==='dimension'?'crosshair':(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
+  const toolCursor=(markupMode==='dimension'||markupMode==='legend')?'crosshair':(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
 
   const co = COMPANIES.find(c=>c.id===project.company)||COMPANIES[1];
   const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#5B9BD5',awarded:'#4CAF50',lost:'#C0504D',hold:'#555'};
@@ -3647,6 +3669,46 @@ Return ONLY a valid JSON array, no markdown:
                             </g>
                           );
                         })()}
+                        {/* ── Legend markups ── */}
+                        {markups.filter(m=>m.type==='legend'&&m.planId===selPlan?.id).map(m=>{
+                          const {pos,items:legendItems,id}=m;
+                          const fs=11/zoom;
+                          const pad=8/zoom;
+                          const rowH=fs*1.6;
+                          const swatchW=fs*1.2;
+                          const swatchH=fs*0.8;
+                          const headerH=fs*1.8;
+                          const w=200/zoom;
+                          const h=headerH+pad+(legendItems.length*rowH)+pad;
+                          const isEraserTarget = eraserHover?.markupId===id;
+                          return(
+                            <g key={id} style={{pointerEvents:'none',opacity:isEraserTarget?0.5:1}}>
+                              {/* Background */}
+                              <rect x={pos.x} y={pos.y} width={w} height={h} rx={3/zoom}
+                                fill="white" fillOpacity={0.95} stroke={isEraserTarget?'#C0504D':'#e0e0e0'} strokeWidth={1/zoom}/>
+                              {/* Header */}
+                              <rect x={pos.x} y={pos.y} width={w} height={headerH} rx={3/zoom}
+                                fill="#f5f5f5" stroke="none"/>
+                              <text x={pos.x+pad} y={pos.y+headerH*0.65} fontSize={fs} fill="#333" fontWeight={700}>Legend</text>
+                              <text x={pos.x+w-pad} y={pos.y+headerH*0.65} fontSize={fs*0.75} fill="#999" textAnchor="end">
+                                {scaleLabel(scale, presetScale)}
+                              </text>
+                              {/* Items */}
+                              {legendItems.map((li,idx)=>{
+                                const ry=pos.y+headerH+pad+(idx*rowH);
+                                return(
+                                  <g key={idx}>
+                                    <rect x={pos.x+pad} y={ry} width={swatchW} height={swatchH} rx={1/zoom} fill={li.color}/>
+                                    <text x={pos.x+pad+swatchW+4/zoom} y={ry+swatchH*0.85} fontSize={fs*0.85} fill="#333">{li.name}</text>
+                                    <text x={pos.x+w-pad} y={ry+swatchH*0.85} fontSize={fs*0.8} fill="#666" textAnchor="end" fontFamily="monospace">
+                                      {li.qty>0?`${Math.round(li.qty*10)/10} ${li.unit}`:'—'}
+                                    </text>
+                                  </g>
+                                );
+                              })}
+                            </g>
+                          );
+                        })}
                         {scalePts.length>=2&&(()=>{
                           const p1=scalePts[0];const p2=scalePts[1];
                           const sw=2/zoom;
