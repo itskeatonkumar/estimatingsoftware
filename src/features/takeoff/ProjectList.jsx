@@ -8,13 +8,15 @@ const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
 
 const STATUS_COLORS = {
   estimating: '#F59E0B',
+  pending_approval: '#8B5CF6',
+  approved: '#06B6D4',
   bid_submitted: '#3B82F6',
   awarded: '#10B981',
   lost: '#EF4444',
   hold: '#71717a',
 };
 
-const STATUS_OPTIONS = ['estimating', 'bid_submitted', 'awarded', 'lost', 'hold'];
+const STATUS_OPTIONS = ['estimating', 'pending_approval', 'approved', 'bid_submitted', 'awarded', 'lost', 'hold'];
 
 function ProjectList({ onSelectProject, user }) {
   const { t } = useTheme();

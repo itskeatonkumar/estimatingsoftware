@@ -328,7 +328,7 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
           </APMField>
           <APMField label="Status">
             <select value={form.status} onChange={e=>set('status',e.target.value)} style={{...dynInput}}>
-              {['estimating','bid_submitted','awarded','lost','hold'].map(s=><option key={s} value={s}>{s.replace(/_/g,' ').toUpperCase()}</option>)}
+              {['estimating','pending_approval','approved','bid_submitted','awarded','lost','hold'].map(s=><option key={s} value={s}>{s.replace(/_/g,' ').toUpperCase()}</option>)}
             </select>
           </APMField>
         </div>
