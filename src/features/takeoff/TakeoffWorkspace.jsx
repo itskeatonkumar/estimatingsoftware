@@ -3241,8 +3241,8 @@ Return ONLY a valid JSON array, no markdown:
           </div>
 
           {/* Plan canvas + floating overlays */}
-          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0}}>
-          <div ref={containerCallbackRef} style={{position:'absolute',inset:0,overflow:'auto',background:'#1e1e1e'}}>
+          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
+          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
             {!selPlan?(
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',padding:40}}>
                 <div style={{fontSize:48,marginBottom:16}}>📐</div>
@@ -3321,7 +3321,7 @@ Return ONLY a valid JSON array, no markdown:
           <div style={{position:'absolute',bottom:8,left:8,zIndex:110,
             background:'rgba(0,0,0,0.75)',color:'#0f0',fontFamily:'monospace',
             fontSize:10,padding:'4px 8px',borderRadius:4,pointerEvents:'none',lineHeight:1.6}}>
-            sel:{selectedShapes.size} | clip:{clipboard.length}{dragOffset?' | drag':''}{ vertexDrag?' | vtx':''}
+            sel:{selectedShapes.size} | clip:{clipboard.length}{dragOffset?' | drag':''}{ vertexDrag?' | vtx':''} | imgNat:{imgNat.w}x{imgNat.h} | zoom:{zoom}
           </div>
           {/* ── Multi-select floating action bar ── */}
           {selectedShapes.size>0&&(
