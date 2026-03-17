@@ -25,6 +25,7 @@ function ProjectList({ onSelectProject, user }) {
   const [newModal, setNewModal] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterAssignee, setFilterAssignee] = useState('all');
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [orgMembers, setOrgMembers] = useState([]); // [{user_id, email, role}]
@@ -111,7 +112,8 @@ function ProjectList({ onSelectProject, user }) {
   const filtered = projects.filter(p => {
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.gc_name?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'all' || p.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchAssignee = filterAssignee === 'all' || (filterAssignee === 'unassigned' ? !p.assigned_to : p.assigned_to === filterAssignee);
+    return matchSearch && matchStatus && matchAssignee;
   });
 
   const totalBidValue = filtered.reduce((s, p) => s + (Number(p.contract_value) || 0), 0);
@@ -190,6 +192,18 @@ function ProjectList({ onSelectProject, user }) {
               {s.replace(/_/g, ' ')}
             </button>
           ))}
+          <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}
+            style={{
+              padding: '4px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, cursor: 'pointer',
+              border: filterAssignee !== 'all' ? '1px solid #8B5CF660' : `1px solid ${t.border}`,
+              background: filterAssignee !== 'all' ? '#8B5CF615' : 'transparent',
+              color: filterAssignee !== 'all' ? '#8B5CF6' : t.text4,
+              outline: 'none',
+            }}>
+            <option value="all">All estimators</option>
+            <option value="unassigned">Unassigned</option>
+            {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.email}</option>)}
+          </select>
         </div>
       </div>
 
