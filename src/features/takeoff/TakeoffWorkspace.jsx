@@ -188,10 +188,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const fitZoomToContainer=({w,h})=>{
     const c=containerRef.current;
     if(!c||w<4||h<4) return;
-    const cw=c.clientWidth, ch=c.clientHeight;
-    if(cw<1||ch<1) return;
-    const fit=Math.min(cw/w, ch/h, 1)*0.95; // 95% to leave a small margin
-    setZoom(parseFloat(fit.toFixed(2)));
+    const cw=c.clientWidth;
+    if(cw<1) return;
+    const fit=(cw/w)*0.98; // fit to width, scroll vertically
+    setZoom(parseFloat(Math.min(fit,2).toFixed(2)));
   };
 
   const handleImgLoad=()=>{
