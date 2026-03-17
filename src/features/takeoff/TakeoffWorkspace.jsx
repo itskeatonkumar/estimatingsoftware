@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTheme } from "../../lib/theme.jsx";
 import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
 import { supabase } from "../../lib/supabase.js";
@@ -6,6 +6,115 @@ import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeL
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
+
+// ── PlanRow: file-scope memo'd component (prevents unmount/remount on parent render) ──
+const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, dragOverId, handlersRef }) => {
+  const H = handlersRef.current;
+  const t = H.t;
+  return (
+    <div onClick={() => {
+        if (!H.openTabs.includes(p.id)) H.setOpenTabs(prev => [...prev, p.id]);
+        H.setSelPlan(p);
+        if (p.scale_px_per_ft) H.setScale(p.scale_px_per_ft);
+        else { H.setScale(null); H.setPresetScale(''); }
+        H.setLeftTab('takeoffs');
+      }}
+      draggable
+      onDragStart={() => { H.planDragRef.current = p.id; }}
+      onDragOver={(e) => { e.preventDefault(); H.setPlanDragOver(p.id); }}
+      onDragLeave={() => { if (H.planDragOver === p.id) H.setPlanDragOver(null); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const fromId = H.planDragRef.current;
+        if (!fromId || fromId === p.id) { H.setPlanDragOver(null); return; }
+        H.setPlans(prev => {
+          const next = [...prev];
+          const fromIdx = next.findIndex(x => x.id === fromId);
+          const toIdx = next.findIndex(x => x.id === p.id);
+          if (fromIdx < 0 || toIdx < 0) return prev;
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, moved);
+          return next;
+        });
+        H.setPlanDragOver(null); H.planDragRef.current = null;
+      }}
+      onDragEnd={() => { H.setPlanDragOver(null); H.planDragRef.current = null; }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 7, padding: '5px 6px 5px 20px', borderRadius: 5,
+        cursor: 'grab', marginBottom: 1,
+        background: isActive ? 'rgba(16,185,129,0.1)' : dragOverId === p.id ? 'rgba(59,130,246,0.1)' : 'transparent',
+        borderLeft: isActive ? '2px solid #10B981' : isMarked ? '2px solid rgba(16,185,129,0.35)' : '2px solid transparent',
+        borderTop: dragOverId === p.id ? '2px solid #3B82F6' : '2px solid transparent',
+        transition: 'background 0.1s'
+      }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#10B981' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || 'Unnamed'}</div>
+        <div style={{ fontSize: 8, color: t.text4, display: 'flex', alignItems: 'center', gap: 3 }}>
+          {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0 }} />}
+          <span>{cnt ? `${cnt} item${cnt !== 1 ? 's' : ''}` : 'No items'}{isOpen ? ' · open' : ''}</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+        <button onClick={async () => {
+          const n = window.prompt('Rename:', p.name || '');
+          if (n?.trim() && p.id !== 'preview') {
+            await supabase.from('precon_plans').update({ name: n.trim() }).eq('id', p.id);
+            H.setPlans(prev => prev.map(x => x.id === p.id ? { ...x, name: n.trim() } : x));
+            if (H.selPlan?.id === p.id) H.setSelPlan(prev => ({ ...prev, name: n.trim() }));
+          }
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: `1px solid ${t.border}`, background: 'none', color: t.text4, cursor: 'pointer' }}>✎</button>
+        <button onClick={async (e) => {
+          const btn = e.currentTarget; btn.textContent = '…'; btn.disabled = true;
+          const aiName = await H.aiNameSheet(p.file_url, p.name || 'Sheet');
+          if (aiName && aiName !== p.name && p.id !== 'preview') {
+            await supabase.from('precon_plans').update({ name: aiName }).eq('id', p.id);
+            H.setPlans(prev => prev.map(x => x.id === p.id ? { ...x, name: aiName } : x));
+            if (H.selPlan?.id === p.id) H.setSelPlan(prev => ({ ...prev, name: aiName }));
+          }
+          btn.textContent = '✦'; btn.disabled = false;
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)', color: '#a855f7', cursor: 'pointer' }} title="AI name">✦</button>
+        <button onClick={async () => {
+          if (p.id === 'preview') return;
+          const { data: newPlan } = await supabase.from('precon_plans').insert([{ project_id: p.project_id, name: (p.name || 'Sheet') + ' (Copy)', file_url: p.file_url, file_type: p.file_type, scale_px_per_ft: p.scale_px_per_ft }]).select().single();
+          if (!newPlan) return;
+          const planItemsToDup = H.items.filter(i => i.plan_id === p.id);
+          const clonedItems = [];
+          for (const it of planItemsToDup) {
+            const { id, ...rest } = it;
+            const { data: ni } = await supabase.from('takeoff_items').insert([{ ...rest, plan_id: newPlan.id }]).select().single();
+            if (ni) clonedItems.push(ni);
+          }
+          H.setPlans(prev => {
+            const idx = prev.findIndex(x => x.id === p.id);
+            const next = [...prev];
+            next.splice(idx + 1, 0, newPlan);
+            return next;
+          });
+          // Also insert into folder's planIds if this plan is in a folder
+          if (folderId && H.planSets[folderId]) {
+            const folder = H.planSets[folderId];
+            const folderPlanIds = [...(folder.planIds || [])];
+            const origIdx = folderPlanIds.indexOf(p.id);
+            if (origIdx >= 0) folderPlanIds.splice(origIdx + 1, 0, newPlan.id);
+            else folderPlanIds.push(newPlan.id);
+            H.savePlanSets({ ...H.planSets, [folderId]: { ...folder, planIds: folderPlanIds } });
+          }
+          H.setItems(prev => [...prev, ...clonedItems]);
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(59,130,246,0.3)', background: 'none', color: '#3B82F6', cursor: 'pointer' }} title="Duplicate plan">⧉</button>
+        <button onClick={async () => {
+          if (!window.confirm('Delete this sheet?')) return;
+          if (p.id !== 'preview') { const { error } = await supabase.from('precon_plans').delete().eq('id', p.id).select(); if (error) { console.error('plan delete error:', error); alert('Delete failed: ' + error.message); return; } }
+          H.setPlans(prev => prev.filter(x => x.id !== p.id));
+          H.setOpenTabs(prev => prev.filter(id => id !== p.id));
+          if (H.selPlan?.id === p.id) H.setSelPlan(null);
+          const updated = {};
+          Object.entries(H.planSets).forEach(([bid, s]) => { updated[bid] = { ...s, planIds: (s.planIds || []).filter(id => id !== p.id) }; });
+          H.savePlanSets(updated);
+        }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(239,68,68,0.25)', background: 'none', color: '#ef4444', cursor: 'pointer' }}>✕</button>
+      </div>
+    </div>
+  );
+});
 
 function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const { t } = useTheme();
@@ -123,6 +232,28 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   clipboardRef.current    = clipboard;
   dragOffsetRef.current   = dragOffset;
   vertexDragRef.current   = vertexDrag;
+
+  // ── Pre-computed lookup maps (O(n) once, O(1) per row) ─────────────────
+  const planItemCountMap = useMemo(() => {
+    const m = new Map();
+    for (const it of items) { if (it.plan_id != null) m.set(it.plan_id, (m.get(it.plan_id) || 0) + 1); }
+    return m;
+  }, [items]);
+
+  const planMarkedSet = useMemo(() => {
+    const s = new Set();
+    for (const it of items) { if (it.points?.length && it.plan_id != null) s.add(it.plan_id); }
+    return s;
+  }, [items]);
+
+  const planMap = useMemo(() => {
+    const m = new Map();
+    for (const p of plans) m.set(p.id, p);
+    return m;
+  }, [plans]);
+
+  // ── Plan search state ──────────────────────────────────────────────────
+  const [planSearch, setPlanSearch] = useState('');
 
   // ── Undo / Redo helpers ────────────────────────────────────────────────
   const pushUndo = () => {
@@ -2302,6 +2433,24 @@ Return ONLY a valid JSON array, no markdown:
     setUploading(false);
     setExporting(false);
   };
+  // ── Stable handlers ref for PlanRow (avoids re-render on every parent render) ──
+  const planHandlersRef = useRef({});
+  planHandlersRef.current = {
+    setOpenTabs, setSelPlan, setScale, setPresetScale, setLeftTab,
+    planDragRef, setPlanDragOver, setPlans, setItems, savePlanSets,
+    aiNameSheet, openTabs, selPlan, planSets, items, t, planDragOver,
+  };
+
+  // ── Memoized visible plans (replaces O(n²) IIFE computation) ──
+  const visiblePlans = useMemo(() => {
+    let filtered = plansFilter === 'marked' ? plans.filter(p => planMarkedSet.has(p.id)) : plans;
+    if (planSearch.trim()) {
+      const q = planSearch.trim().toLowerCase();
+      filtered = filtered.filter(p => (p.name || '').toLowerCase().includes(q));
+    }
+    return filtered;
+  }, [plans, plansFilter, planMarkedSet, planSearch]);
+
   // ──────────────────────────────────────────────────────────────────────────
 
   return (
@@ -2385,7 +2534,7 @@ Return ONLY a valid JSON array, no markdown:
           let av, bv;
           if(col==='description'){ av=a.description||''; bv=b.description||''; }
           else if(col==='category'){ av=TAKEOFF_CATS.find(c=>c.id===a.category)?.label||''; bv=TAKEOFF_CATS.find(c=>c.id===b.category)?.label||''; }
-          else if(col==='sheet'){ av=plans.find(p=>p.id===a.plan_id)?.name||''; bv=plans.find(p=>p.id===b.plan_id)?.name||''; }
+          else if(col==='sheet'){ av=planMap.get(a.plan_id)?.name||''; bv=planMap.get(b.plan_id)?.name||''; }
           else if(col==='quantity'){ av=a.quantity||0; bv=b.quantity||0; }
           else if(col==='unit_cost'){ av=a.unit_cost||0; bv=b.unit_cost||0; }
           else if(col==='total_cost'){ av=a.total_cost||0; bv=b.total_cost||0; }
@@ -2446,7 +2595,7 @@ Return ONLY a valid JSON array, no markdown:
                 const rows = sorted.map(it=>[
                   `"${(it.description||'').replace(/"/g,'""')}"`,
                   `"${TAKEOFF_CATS.find(c=>c.id===it.category)?.label||''}"`,
-                  `"${plans.find(p=>p.id===it.plan_id)?.name||''}"`,
+                  `"${planMap.get(it.plan_id)?.name||''}"`,
                   it.quantity||0, it.unit||'',
                   it.unit_cost||0, it.total_cost||0
                 ].join(','));
@@ -2482,7 +2631,7 @@ Return ONLY a valid JSON array, no markdown:
               <tbody>
                 {sorted.map((it,idx)=>{
                   const cat = TAKEOFF_CATS.find(c=>c.id===it.category);
-                  const sheetName = plans.find(p=>p.id===it.plan_id)?.name||'—';
+                  const sheetName = planMap.get(it.plan_id)?.name||'—';
                   return(
                     <tr key={it.id}
                       onMouseEnter={e=>e.currentTarget.style.background=t.bg3}
@@ -2609,7 +2758,7 @@ Return ONLY a valid JSON array, no markdown:
               {/* Filter strip */}
               <div style={{display:'flex',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
                 {[['all','All'],['marked','Marked']].map(([val,lbl])=>{
-                  const markedCount = val==='marked' ? plans.filter(p=>items.some(i=>i.plan_id===p.id&&i.points?.length)).length : plans.length;
+                  const markedCount = val==='marked' ? planMarkedSet.size : plans.length;
                   const active = plansFilter===val;
                   return(
                     <button key={val} onClick={()=>setPlansFilter(val)}
@@ -2626,6 +2775,17 @@ Return ONLY a valid JSON array, no markdown:
                 })}
               </div>
 
+              {/* Plan search */}
+              <div style={{padding:'4px 6px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
+                <input
+                  type="text"
+                  value={planSearch}
+                  onChange={e=>setPlanSearch(e.target.value)}
+                  placeholder="Search plans…"
+                  style={{width:'100%',padding:'4px 8px',fontSize:10,border:`1px solid ${t.border}`,borderRadius:4,background:t.bg,color:t.text,outline:'none',boxSizing:'border-box'}}
+                />
+              </div>
+
               {/* Folder tree */}
               <div style={{flex:1,overflowY:'auto',padding:'6px 4px'}}>
                 {plans.length===0&&Object.keys(planSets).length===0&&(
@@ -2633,125 +2793,34 @@ Return ONLY a valid JSON array, no markdown:
                     Create a folder and upload plans<br/>or upload directly
                   </div>
                 )}
-                {plansFilter==='marked'&&plans.length>0&&!plans.some(p=>items.some(i=>i.plan_id===p.id&&i.points?.length))&&(
+                {plansFilter==='marked'&&plans.length>0&&planMarkedSet.size===0&&(
                   <div style={{textAlign:'center',padding:'32px 12px',color:t.text4,fontSize:11,lineHeight:1.8}}>
                     No plans with takeoffs yet.<br/>
                     <span style={{fontSize:10,color:t.text4}}>Draw measurements on a plan to mark it.</span>
                   </div>
                 )}
                 {(()=>{
-                  const markedIds = new Set(items.filter(i=>i.points?.length).map(i=>i.plan_id));
-                  const visiblePlans = plansFilter==='marked' ? plans.filter(p=>markedIds.has(p.id)) : plans;
+                  const visibleSet = new Set(visiblePlans.map(p=>p.id));
                   const assignedIds=new Set(Object.values(planSets).flatMap(s=>s.planIds||[]));
                   const ungrouped=visiblePlans.filter(p=>!assignedIds.has(p.id));
                   const folderEntries=Object.entries(planSets);
 
-                  const PlanRow=({p,folderId,idx})=>{
-                    const isActive=selPlan?.id===p.id;
-                    const isOpen=openTabs.includes(p.id);
-                    const cnt=items.filter(it=>it.plan_id===p.id).length;
-                    const isMarked=items.some(i=>i.plan_id===p.id&&i.points?.length);
-                    return(
-                      <div onClick={()=>{
-                          if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
-                          setSelPlan(p);
-                          if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
-                          else{setScale(null);setPresetScale('');}
-                          setLeftTab('takeoffs');
-                        }}
-                        draggable
-                        onDragStart={()=>{planDragRef.current=p.id;}}
-                        onDragOver={(e)=>{e.preventDefault();setPlanDragOver(p.id);}}
-                        onDragLeave={()=>{if(planDragOver===p.id)setPlanDragOver(null);}}
-                        onDrop={(e)=>{
-                          e.preventDefault();
-                          const fromId=planDragRef.current;
-                          if(!fromId||fromId===p.id){setPlanDragOver(null);return;}
-                          setPlans(prev=>{
-                            const next=[...prev];
-                            const fromIdx=next.findIndex(x=>x.id===fromId);
-                            const toIdx=next.findIndex(x=>x.id===p.id);
-                            if(fromIdx<0||toIdx<0) return prev;
-                            const [moved]=next.splice(fromIdx,1);
-                            next.splice(toIdx,0,moved);
-                            return next;
-                          });
-                          setPlanDragOver(null);planDragRef.current=null;
-                        }}
-                        onDragEnd={()=>{setPlanDragOver(null);planDragRef.current=null;}}
-                        style={{display:'flex',alignItems:'center',gap:7,padding:'5px 6px 5px 20px',borderRadius:5,
-                          cursor:'grab',marginBottom:1,
-                          background:isActive?'rgba(16,185,129,0.1)':planDragOver===p.id?'rgba(59,130,246,0.1)':'transparent',
-                          borderLeft:isActive?'2px solid #10B981':isMarked?'2px solid rgba(16,185,129,0.35)':'2px solid transparent',
-                          borderTop:planDragOver===p.id?'2px solid #3B82F6':'2px solid transparent',
-                          transition:'background 0.1s'}}>
-                        <div style={{width:36,height:28,borderRadius:3,overflow:'hidden',flexShrink:0,background:t.bg3,border:`1px solid ${t.border}`}}>
-                          <img src={p.file_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>e.target.style.display='none'}/>
-                        </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:10,fontWeight:isActive?700:400,color:isActive?'#10B981':t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</div>
-                          <div style={{fontSize:8,color:t.text4,display:'flex',alignItems:'center',gap:3}}>
-                            {isMarked&&<span style={{display:'inline-block',width:5,height:5,borderRadius:'50%',background:'#10B981',flexShrink:0}}/>}
-                            <span>{cnt?`${cnt} item${cnt!==1?'s':''}`:'No items'}{isOpen?' · open':''}</span>
-                          </div>
-                        </div>
-                        <div style={{display:'flex',gap:2,flexShrink:0}} onClick={e=>e.stopPropagation()}>
-                          <button onClick={async()=>{
-                            const n=window.prompt('Rename:',p.name||'');
-                            if(n?.trim()&&p.id!=='preview'){
-                              await supabase.from('precon_plans').update({name:n.trim()}).eq('id',p.id);
-                              setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:n.trim()}:x));
-                              if(selPlan?.id===p.id) setSelPlan(prev=>({...prev,name:n.trim()}));
-                            }
-                          }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:`1px solid ${t.border}`,background:'none',color:t.text4,cursor:'pointer'}}>✎</button>
-                          <button onClick={async(e)=>{
-                            const btn=e.currentTarget; btn.textContent='…'; btn.disabled=true;
-                            const aiName=await aiNameSheet(p.file_url,p.name||'Sheet');
-                            if(aiName&&aiName!==p.name&&p.id!=='preview'){
-                              await supabase.from('precon_plans').update({name:aiName}).eq('id',p.id);
-                              setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:aiName}:x));
-                              if(selPlan?.id===p.id) setSelPlan(prev=>({...prev,name:aiName}));
-                            }
-                            btn.textContent='✦'; btn.disabled=false;
-                          }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(168,85,247,0.3)',background:'rgba(168,85,247,0.06)',color:'#a855f7',cursor:'pointer'}} title="AI name">✦</button>
-                          <button onClick={async()=>{
-                            if(p.id==='preview') return;
-                            const {data:newPlan}=await supabase.from('precon_plans').insert([{project_id:p.project_id,name:(p.name||'Sheet')+' (Copy)',file_url:p.file_url,file_type:p.file_type,scale_px_per_ft:p.scale_px_per_ft}]).select().single();
-                            if(!newPlan) return;
-                            // Clone takeoff items for this plan
-                            const planItemsToDup=items.filter(i=>i.plan_id===p.id);
-                            const clonedItems=[];
-                            for(const it of planItemsToDup){
-                              const {id,...rest}=it;
-                              const {data:ni}=await supabase.from('takeoff_items').insert([{...rest,plan_id:newPlan.id}]).select().single();
-                              if(ni) clonedItems.push(ni);
-                            }
-                            setPlans(prev=>{const idx=prev.findIndex(x=>x.id===p.id);const next=[...prev];next.splice(idx+1,0,newPlan);return next;});
-                            setItems(prev=>[...prev,...clonedItems]);
-                          }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(59,130,246,0.3)',background:'none',color:'#3B82F6',cursor:'pointer'}} title="Duplicate plan">⧉</button>
-                          <button onClick={async()=>{
-                            if(!window.confirm('Delete this sheet?')) return;
-                            if(p.id!=='preview'){ const {error}=await supabase.from('precon_plans').delete().eq('id',p.id).select(); if(error){console.error('plan delete error:',error);alert('Delete failed: '+error.message);return;} }
-                            setPlans(prev=>prev.filter(x=>x.id!==p.id));
-                            setOpenTabs(prev=>prev.filter(id=>id!==p.id));
-                            if(selPlan?.id===p.id) setSelPlan(null);
-                            const updated={};
-                            Object.entries(planSets).forEach(([bid,s])=>{updated[bid]={...s,planIds:(s.planIds||[]).filter(id=>id!==p.id)};});
-                            savePlanSets(updated);
-                          }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(239,68,68,0.25)',background:'none',color:'#ef4444',cursor:'pointer'}}>✕</button>
-                        </div>
-                      </div>
-                    );
-                  };
+                  const renderPlanRow = (p, folderId) => (
+                    <PlanRow key={p.id} p={p} folderId={folderId}
+                      cnt={planItemCountMap.get(p.id)||0}
+                      isMarked={planMarkedSet.has(p.id)}
+                      isActive={selPlan?.id===p.id}
+                      isOpen={openTabs.includes(p.id)}
+                      dragOverId={planDragOver}
+                      handlersRef={planHandlersRef}/>
+                  );
 
                   const FolderRow=([folderId,folder])=>{
-                    const folderPlans=(folder.planIds||[]).map(id=>visiblePlans.find(p=>p.id===id)).filter(Boolean);
-                    // Hide empty folders when filtering to marked only
+                    const folderPlans=(folder.planIds||[]).map(id=>visibleSet.has(id)?visiblePlans.find(p=>p.id===id):null).filter(Boolean);
                     if(plansFilter==='marked' && folderPlans.length===0) return null;
                     const collapsed=folder.collapsed;
                     return(
                       <div key={folderId} style={{marginBottom:4}}>
-                        {/* Folder header row */}
                         <div style={{display:'flex',alignItems:'center',gap:5,padding:'5px 6px',borderRadius:5,
                           background:t.bg3,border:`1px solid ${t.border}`,cursor:'pointer',userSelect:'none'}}
                           onClick={()=>savePlanSets({...planSets,[folderId]:{...folder,collapsed:!collapsed}})}>
@@ -2759,7 +2828,6 @@ Return ONLY a valid JSON array, no markdown:
                           <span style={{fontSize:13,flexShrink:0}}>📁</span>
                           <span style={{fontSize:11,fontWeight:600,color:t.text,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{folder.name||'Folder'}</span>
                           <span style={{fontSize:9,color:t.text4,flexShrink:0}}>{folderPlans.length}</span>
-                          {/* Per-folder actions */}
                           <div style={{display:'flex',gap:3,flexShrink:0}} onClick={e=>e.stopPropagation()}>
                             <button onClick={()=>{
                               setUploadTargetFolder(folderId);
@@ -2788,10 +2856,9 @@ Return ONLY a valid JSON array, no markdown:
                             }} style={{fontSize:9,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(239,68,68,0.25)',background:'none',color:'#ef4444',cursor:'pointer'}}>✕</button>
                           </div>
                         </div>
-                        {/* Sheets inside folder */}
                         {!collapsed&&(
                           <div style={{marginTop:1}}>
-                            {folderPlans.map(p=><PlanRow key={p.id} p={p} folderId={folderId}/>)}
+                            {folderPlans.map(p=>renderPlanRow(p, folderId))}
                             {folderPlans.length===0&&(
                               <div style={{padding:'8px 20px',fontSize:10,color:t.text4,fontStyle:'italic'}}>Empty — click ＋ to upload here</div>
                             )}
@@ -2806,7 +2873,7 @@ Return ONLY a valid JSON array, no markdown:
                     {ungrouped.length>0&&(
                       <div style={{marginTop:folderEntries.length?8:0}}>
                         {folderEntries.length>0&&<div style={{fontSize:9,color:t.text4,padding:'2px 4px 4px',letterSpacing:0.5}}>UNSORTED</div>}
-                        {ungrouped.map(p=><PlanRow key={p.id} p={p}/>)}
+                        {ungrouped.map(p=>renderPlanRow(p, null))}
                       </div>
                     )}
                   </>);
@@ -2982,7 +3049,7 @@ Return ONLY a valid JSON array, no markdown:
                   {plans.length===0
                     ? <div style={{fontSize:10,color:'#F59E0B',padding:'6px 10px',background:'#FEF3C7',borderRadius:5,border:'1px solid #FDE68A',marginBottom:12}}>⚠ Upload plans in the Plans tab first</div>
                     : <select value={selPlan?.id||''} onChange={e=>{
-                        const p=plans.find(x=>x.id===Number(e.target.value));
+                        const p=planMap.get(Number(e.target.value));
                         if(p){
                           if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
                           setSelPlan(p);
@@ -3009,7 +3076,7 @@ Return ONLY a valid JSON array, no markdown:
                       // Auto-select a plan if none is open
                       let activePlan = selPlan;
                       if(!activePlan && plans.length>0){
-                        const firstPlan = openTabs.length>0 ? plans.find(p=>p.id===openTabs[0]) : plans[0];
+                        const firstPlan = openTabs.length>0 ? planMap.get(openTabs[0]) : plans[0];
                         activePlan = firstPlan || plans[0];
                         if(!openTabs.includes(activePlan.id)) setOpenTabs(prev=>[...prev, activePlan.id]);
                         setSelPlan(activePlan);
@@ -3180,7 +3247,7 @@ Return ONLY a valid JSON array, no markdown:
                             const qty = item.quantity||0;
                             const itemColor = item.color||cat.color;
                             const typeIcon = {area:'⬟',linear:'╱',count:'✓'}[item.measurement_type]||'✎';
-                            const planName = plans.find(p=>p.id===item.plan_id)?.name||'';
+                            const planName = planMap.get(item.plan_id)?.name||'';
                             return(
                               <div key={item.id}
                                 onClick={()=>isActive?disarm():armItem(item)}
@@ -3207,7 +3274,7 @@ Return ONLY a valid JSON array, no markdown:
                                   <div style={{display:'flex',alignItems:'center',gap:4,marginTop:1}}>
                                     {item._planCount>1
                                       ? <span style={{fontSize:8,color:'#3B82F6',fontWeight:700,background:'rgba(59,130,246,0.1)',borderRadius:3,padding:'1px 4px'}}>{item._planCount} sheets</span>
-                                      : <span style={{fontSize:8,color:t.text4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{plans.find(p=>p.id===item.plan_id)?.name||''}</span>
+                                      : <span style={{fontSize:8,color:t.text4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{planMap.get(item.plan_id)?.name||''}</span>
                                     }
                                   </div>
                                 </div>
@@ -3230,7 +3297,7 @@ Return ONLY a valid JSON array, no markdown:
                                 {/* → jump to plan */}
                                 <button onClick={e=>{
                                   e.stopPropagation();
-                                  const p=plans.find(x=>x.id===item.plan_id);
+                                  const p=planMap.get(item.plan_id);
                                   if(p){
                                     if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
                                     setSelPlan(p);
@@ -3305,10 +3372,10 @@ Return ONLY a valid JSON array, no markdown:
           <div style={{display:'flex',alignItems:'stretch',height:32,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,position:'relative'}}>
             <div style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden'}}>
             {openTabs.map(tabId=>{
-              const p = plans.find(x=>x.id===tabId);
+              const p = planMap.get(tabId);
               if(!p) return null;
               const isActive = selPlan?.id===tabId;
-              const cnt = items.filter(it=>it.plan_id===tabId).length;
+              const cnt = planItemCountMap.get(tabId)||0;
               return(
                 <div key={tabId}
                   onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else{setScale(null);setPresetScale('');}}}
@@ -3328,7 +3395,7 @@ Return ONLY a valid JSON array, no markdown:
                     const newTabs = openTabs.filter(id=>id!==tabId);
                     setOpenTabs(newTabs);
                     if(isActive){
-                      const next = newTabs.length>0 ? plans.find(x=>x.id===newTabs[newTabs.length-1]) : null;
+                      const next = newTabs.length>0 ? planMap.get(newTabs[newTabs.length-1]) : null;
                       setSelPlan(next);
                       if(next?.scale_px_per_ft) setScale(next.scale_px_per_ft);
                       else { setScale(null); setPresetScale(''); }
@@ -4364,7 +4431,7 @@ Return ONLY a valid JSON array, no markdown:
                       onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setRightTab('items');}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:9,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
-                        <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{items.filter(i=>i.plan_id===p.id).length} conditions</div>
+                        <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace"}}>{planItemCountMap.get(p.id)||0} conditions</div>
                       </div>
                       <span style={{fontSize:10,fontWeight:700,color:'#10B981',fontFamily:"'DM Mono',monospace",flexShrink:0}}>${pTotal.toLocaleString()}</span>
                     </div>
