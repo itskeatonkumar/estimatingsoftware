@@ -222,9 +222,16 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs'
   const [markupMode, setMarkupMode] = useState(null); // null | 'highlight' | 'cloud' | 'callout' | 'dimension' | 'text' | 'legend'
-  const [markups, setMarkups] = useState([]); // [{id, type, planId, points, text, color}]
+  const [markups, setMarkups] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`markups_${project.id}`)||'[]'); } catch { return []; }
+  });
   const [activeMarkup, setActiveMarkup] = useState(null); // markup being drawn
   const [markupColor, setMarkupColor] = useState('#FF6B6B');
+
+  // Persist markups to localStorage
+  useEffect(() => {
+    try { localStorage.setItem(`markups_${project.id}`, JSON.stringify(markups)); } catch {}
+  }, [markups, project.id]);
 
   // ── Always-current refs: assigned synchronously each render (correct React pattern) ──
   // avoids TDZ crash that useEffect([dep]) would cause when refs precede state declarations
