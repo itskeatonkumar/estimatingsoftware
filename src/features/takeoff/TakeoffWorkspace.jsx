@@ -185,12 +185,22 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     return Math.sqrt((p2.x-p1.x)**2+(p2.y-p1.y)**2)/scale; // px → ft
   };
 
+  const fitZoomToContainer=({w,h})=>{
+    const c=containerRef.current;
+    if(!c||w<4||h<4) return;
+    const cw=c.clientWidth, ch=c.clientHeight;
+    if(cw<1||ch<1) return;
+    const fit=Math.min(cw/w, ch/h, 1)*0.95; // 95% to leave a small margin
+    setZoom(parseFloat(fit.toFixed(2)));
+  };
+
   const handleImgLoad=()=>{
     const img=imgRef.current;
     if(!img) return;
-    setImgNat({w:img.naturalWidth, h:img.naturalHeight});
+    const nat={w:img.naturalWidth, h:img.naturalHeight};
+    setImgNat(nat);
     setImgDisp({w:img.offsetWidth||img.naturalWidth, h:img.offsetHeight||img.naturalHeight});
-    // Image plans: DPI stays at user-set value (planDpi)
+    fitZoomToContainer(nat);
   };
 
   const renderPdfPage = async (doc, pageN=1) => {
@@ -212,9 +222,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       canvas.style.width = viewport.width + 'px';
       canvas.style.height = viewport.height + 'px';
       await page.render({canvasContext: ctx, viewport}).promise;
-      setImgNat({w:viewport.width, h:viewport.height});
+      const nat={w:viewport.width, h:viewport.height};
+      setImgNat(nat);
       setImgDisp({w:viewport.width, h:viewport.height});
       setPlanDpi(144); // PDF.js at scale:2 × 72pt/in = 144px/in
+      fitZoomToContainer(nat);
     } catch(e){ console.error('renderPdfPage error', e); }
     setRendering(false);
   };
@@ -3241,8 +3253,8 @@ Return ONLY a valid JSON array, no markdown:
           </div>
 
           {/* Plan canvas + floating overlays */}
-          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0,border:'2px solid red'}}>
-          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e',border:'2px solid blue'}}>
+          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
+          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
             {!selPlan?(
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',padding:40}}>
                 <div style={{fontSize:48,marginBottom:16}}>📐</div>
