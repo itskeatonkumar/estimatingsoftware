@@ -3919,7 +3919,7 @@ Return ONLY a valid JSON array, no markdown:
                     {/* Scrollable preset list */}
                     <div style={{overflowY:'auto',flex:1}}>
                       <div style={{padding:'6px 12px 2px',fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:0.6,position:'sticky',top:0,background:'#1a1a1a'}}>CIVIL / ENGINEERING</div>
-                      {CONSTRUCTION_SCALES.filter(s=>s.group==='civil').map(s=>(
+                      {CONSTRUCTION_SCALES.filter(s=>s.group==='Engineering').map(s=>(
                         <button key={s.label} onClick={async()=>{
                           const pxPerFt=(planDpi*12)/s.ratio;
                           setScale(pxPerFt); setPresetScale(s.label);
@@ -3932,7 +3932,7 @@ Return ONLY a valid JSON array, no markdown:
                         </button>
                       ))}
                       <div style={{padding:'6px 12px 2px',fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:0.6,position:'sticky',top:0,background:'#1a1a1a'}}>ARCHITECTURAL</div>
-                      {CONSTRUCTION_SCALES.filter(s=>s.group==='arch').map(s=>(
+                      {CONSTRUCTION_SCALES.filter(s=>s.group==='Architectural').map(s=>(
                         <button key={s.label} onClick={async()=>{
                           const pxPerFt=(planDpi*12)/s.ratio;
                           setScale(pxPerFt); setPresetScale(s.label);
