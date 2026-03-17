@@ -109,6 +109,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [showScalePanel, setShowScalePanel] = useState(false);
   const [customScaleInput, setCustomScaleInput] = useState('');
   const [openTabs, setOpenTabs] = useState([]); // plan IDs open as browser tabs
+  const planDragRef = useRef(null);
+  const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs'
 
   // ── Always-current refs: assigned synchronously each render (correct React pattern) ──
@@ -2644,8 +2646,6 @@ Return ONLY a valid JSON array, no markdown:
                   const ungrouped=visiblePlans.filter(p=>!assignedIds.has(p.id));
                   const folderEntries=Object.entries(planSets);
 
-                  const planDragRef=useRef(null);
-                  const [planDragOver,setPlanDragOver]=useState(null);
                   const PlanRow=({p,folderId,idx})=>{
                     const isActive=selPlan?.id===p.id;
                     const isOpen=openTabs.includes(p.id);
