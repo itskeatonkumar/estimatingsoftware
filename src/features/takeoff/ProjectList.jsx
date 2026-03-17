@@ -25,6 +25,7 @@ function ProjectList({ onSelectProject, user }) {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [orgMembers, setOrgMembers] = useState([]); // [{user_id, email, role}]
 
   useEffect(() => {
     supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
@@ -32,6 +33,15 @@ function ProjectList({ onSelectProject, user }) {
         setProjects(data || []);
         setLoading(false);
       });
+    // Fetch org members for team assignment dropdown
+    (async () => {
+      const { data: { user: u } } = await supabase.auth.getUser();
+      if (!u) return;
+      const { data: mem } = await supabase.from('memberships').select('org_id').eq('user_id', u.id).limit(1).single();
+      if (!mem?.org_id) return;
+      const { data: members } = await supabase.rpc('get_org_members', { p_org_id: mem.org_id });
+      if (members) setOrgMembers(members);
+    })();
   }, []);
 
   const handleSave = async (data, type) => {
@@ -248,17 +258,18 @@ function ProjectList({ onSelectProject, user }) {
                 </div>
                 {/* Team member */}
                 <div style={{ marginTop: 8, marginLeft: 18 }} onClick={e => e.stopPropagation()}>
-                  <input
-                    defaultValue={p.assigned_to || ''}
+                  <select
+                    value={p.assigned_to || ''}
                     onClick={e => e.stopPropagation()}
-                    onBlur={e => { const v = e.target.value.trim(); if (v !== (p.assigned_to || '')) updateField(p.id, 'assigned_to', v || null); }}
-                    onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-                    placeholder="Assign team member…"
+                    onChange={e => { e.stopPropagation(); updateField(p.id, 'assigned_to', e.target.value || null); }}
                     style={{
                       width: '100%', padding: '3px 6px', fontSize: 10, border: `1px solid ${t.border}`,
-                      borderRadius: 4, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
+                      borderRadius: 4, background: t.bg, color: p.assigned_to ? t.text : t.text4, outline: 'none', boxSizing: 'border-box',
+                      cursor: 'pointer',
+                    }}>
+                    <option value="">Unassigned</option>
+                    {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.email}</option>)}
+                  </select>
                 </div>
               </div>
             );
