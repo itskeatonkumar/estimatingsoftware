@@ -227,6 +227,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   });
   const [activeMarkup, setActiveMarkup] = useState(null); // markup being drawn
   const [markupColor, setMarkupColor] = useState('#FF6B6B');
+  const [markupDrag, setMarkupDrag] = useState(null); // {id, startMouse, startPos, resize?}
+  const markupDragRef = useRef(null);
 
   // Persist markups to localStorage
   useEffect(() => {
@@ -243,6 +245,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   clipboardRef.current    = clipboard;
   dragOffsetRef.current   = dragOffset;
   vertexDragRef.current   = vertexDrag;
+  markupDragRef.current   = markupDrag;
 
   // ── Pre-computed lookup maps (O(n) once, O(1) per row) ─────────────────
   const planItemCountMap = useMemo(() => {
@@ -1117,6 +1120,28 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       return;
     }
     const rawPt = getSvgPos(e);
+    // ── Markup drag in progress ──
+    if(markupDragRef.current){
+      const md = markupDragRef.current;
+      const dx = rawPt.x - md.startMouse.x;
+      const dy = rawPt.y - md.startMouse.y;
+      if(md.resize){
+        // Resize: adjust scale
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        const sign = (dx+dy)>0?1:-1;
+        const newScale = Math.max(0.4, Math.min(3, md.startScale + sign*dist*0.002));
+        setMarkups(prev=>prev.map(m=>m.id===md.id?{...m,scale:newScale}:m));
+      } else {
+        // Move
+        setMarkups(prev=>prev.map(m=>{
+          if(m.id!==md.id) return m;
+          if(m.type==='legend') return {...m, pos:{x:md.startPos.x+dx, y:md.startPos.y+dy}};
+          if(m.type==='dimension') return {...m, p1:{x:md.startP1.x+dx,y:md.startP1.y+dy}, p2:{x:md.startP2.x+dx,y:md.startP2.y+dy}};
+          return m;
+        }));
+      }
+      return;
+    }
     // Apply snap to the hover cursor position for preview
     const lastPlaced = activePtsRef.current.length ? activePtsRef.current[activePtsRef.current.length-1] : null;
     const snapped = snapToAngle(lastPlaced, rawPt);
@@ -3641,13 +3666,22 @@ Return ONLY a valid JSON array, no markdown:
                           const isEraserTarget = eraserHover?.markupId===id;
                           const drawColor = isEraserTarget ? '#C0504D' : color;
                           return(
-                            <g key={id} style={{pointerEvents:'none',opacity:isEraserTarget?0.5:1}}>
-                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={drawColor} strokeWidth={1.5/zoom}/>
-                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom}/>
-                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom}/>
+                            <g key={id} style={{cursor:tool==='select'?'grab':'default',opacity:isEraserTarget?0.5:1}}
+                              onMouseDown={tool==='select'?(ev)=>{
+                                ev.stopPropagation();
+                                const pt=getSvgPos(ev);
+                                setMarkupDrag({id,startMouse:pt,startP1:{...p1},startP2:{...p2}});
+                                const onUp=()=>{setMarkupDrag(null);window.removeEventListener('mouseup',onUp);};
+                                window.addEventListener('mouseup',onUp);
+                              }:undefined}>
+                              {/* Invisible fat hit area */}
+                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={12/zoom}/>
+                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={drawColor} strokeWidth={1.5/zoom} style={{pointerEvents:'none'}}/>
+                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom} style={{pointerEvents:'none'}}/>
+                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom} style={{pointerEvents:'none'}}/>
                               <rect x={mx-label.length*fs*0.3} y={my-fs*0.8-4/zoom} width={label.length*fs*0.6} height={fs*1.4} rx={2/zoom}
-                                fill="white" fillOpacity={0.9} stroke={drawColor} strokeWidth={0.5/zoom}/>
-                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={drawColor} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{label}</text>
+                                fill="white" fillOpacity={0.9} stroke={drawColor} strokeWidth={0.5/zoom} style={{pointerEvents:'none'}}/>
+                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={drawColor} textAnchor="middle" fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>{label}</text>
                             </g>
                           );
                         })}
@@ -3679,32 +3713,40 @@ Return ONLY a valid JSON array, no markdown:
                         {/* ── Legend markups ── */}
                         {markups.filter(m=>m.type==='legend'&&m.planId===selPlan?.id).map(m=>{
                           const {pos,items:legendItems,id}=m;
-                          const fs=11/zoom;
-                          const pad=8/zoom;
+                          const sc = m.scale || 1;
+                          const fs=(11*sc)/zoom;
+                          const pad=(8*sc)/zoom;
                           const rowH=fs*1.6;
                           const swatchW=fs*1.2;
                           const swatchH=fs*0.8;
                           const headerH=fs*1.8;
-                          const w=200/zoom;
+                          const w=(200*sc)/zoom;
                           const h=headerH+pad+(legendItems.length*rowH)+pad;
                           const isEraserTarget = eraserHover?.markupId===id;
                           return(
-                            <g key={id} style={{pointerEvents:'none',opacity:isEraserTarget?0.5:1}}>
+                            <g key={id} style={{cursor:tool==='select'?'grab':'default',opacity:isEraserTarget?0.5:1}}
+                              onMouseDown={tool==='select'?(ev)=>{
+                                ev.stopPropagation();
+                                const pt=getSvgPos(ev);
+                                setMarkupDrag({id,startMouse:pt,startPos:{...pos}});
+                                const onUp=()=>{setMarkupDrag(null);window.removeEventListener('mouseup',onUp);};
+                                window.addEventListener('mouseup',onUp);
+                              }:undefined}>
                               {/* Background */}
                               <rect x={pos.x} y={pos.y} width={w} height={h} rx={3/zoom}
                                 fill="white" fillOpacity={0.95} stroke={isEraserTarget?'#C0504D':'#e0e0e0'} strokeWidth={1/zoom}/>
-                              {/* Header */}
+                              {/* Header — drag handle */}
                               <rect x={pos.x} y={pos.y} width={w} height={headerH} rx={3/zoom}
                                 fill="#f5f5f5" stroke="none"/>
-                              <text x={pos.x+pad} y={pos.y+headerH*0.65} fontSize={fs} fill="#333" fontWeight={700}>Legend</text>
-                              <text x={pos.x+w-pad} y={pos.y+headerH*0.65} fontSize={fs*0.75} fill="#999" textAnchor="end">
+                              <text x={pos.x+pad} y={pos.y+headerH*0.65} fontSize={fs} fill="#333" fontWeight={700} style={{pointerEvents:'none'}}>Legend</text>
+                              <text x={pos.x+w-pad} y={pos.y+headerH*0.65} fontSize={fs*0.75} fill="#999" textAnchor="end" style={{pointerEvents:'none'}}>
                                 {scaleLabel(scale, presetScale)}
                               </text>
                               {/* Items */}
                               {legendItems.map((li,idx)=>{
                                 const ry=pos.y+headerH+pad+(idx*rowH);
                                 return(
-                                  <g key={idx}>
+                                  <g key={idx} style={{pointerEvents:'none'}}>
                                     <rect x={pos.x+pad} y={ry} width={swatchW} height={swatchH} rx={1/zoom} fill={li.color}/>
                                     <text x={pos.x+pad+swatchW+4/zoom} y={ry+swatchH*0.85} fontSize={fs*0.85} fill="#333">{li.name}</text>
                                     <text x={pos.x+w-pad} y={ry+swatchH*0.85} fontSize={fs*0.8} fill="#666" textAnchor="end" fontFamily="monospace">
@@ -3713,6 +3755,21 @@ Return ONLY a valid JSON array, no markdown:
                                   </g>
                                 );
                               })}
+                              {/* Resize handle — bottom-right corner */}
+                              <rect x={pos.x+w-12/zoom} y={pos.y+h-12/zoom} width={12/zoom} height={12/zoom}
+                                fill="transparent" style={{cursor:'nwse-resize'}}
+                                onMouseDown={tool==='select'?(ev)=>{
+                                  ev.stopPropagation();
+                                  const pt=getSvgPos(ev);
+                                  setMarkupDrag({id,startMouse:pt,startScale:sc,resize:true});
+                                  const onUp=()=>{setMarkupDrag(null);window.removeEventListener('mouseup',onUp);};
+                                  window.addEventListener('mouseup',onUp);
+                                }:undefined}/>
+                              {/* Resize grip visual */}
+                              <line x1={pos.x+w-2/zoom} y1={pos.y+h-8/zoom} x2={pos.x+w-8/zoom} y2={pos.y+h-2/zoom}
+                                stroke="#ccc" strokeWidth={1/zoom} style={{pointerEvents:'none'}}/>
+                              <line x1={pos.x+w-2/zoom} y1={pos.y+h-4/zoom} x2={pos.x+w-4/zoom} y2={pos.y+h-2/zoom}
+                                stroke="#ccc" strokeWidth={1/zoom} style={{pointerEvents:'none'}}/>
                             </g>
                           );
                         })}
