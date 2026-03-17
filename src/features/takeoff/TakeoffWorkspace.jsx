@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme } from "../../lib/theme.jsx";
-import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES } from "../../lib/constants.js";
+import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
 import { supabase } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
@@ -200,6 +200,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const nat={w:img.naturalWidth, h:img.naturalHeight};
     setImgNat(nat);
     setImgDisp({w:img.offsetWidth||img.naturalWidth, h:img.offsetHeight||img.naturalHeight});
+    // Cache natural dims for instant switching
+    if(selPlan?.file_url && blobCacheRef.current[selPlan.file_url]){
+      blobCacheRef.current[selPlan.file_url].nat = nat;
+    }
     fitZoomToContainer(nat);
   };
 
@@ -394,7 +398,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     || selPlan.file_url?.startsWith('data:application/pdf')
   ));
 
-  // prevBlobUrl ref — used to revoke the old URL only after the new one is set
+  // Cache blob URLs so switching plans is instant
+  const blobCacheRef = useRef({});
   const prevBlobUrlRef = useRef(null);
 
   useEffect(()=>{
@@ -405,15 +410,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     pdfDocRef.current = null;
     setPdfDoc(null);
     setPlanErr(null);
-    // NOTE: do NOT reset blobUrl/imgNat here — keep the previous plan visible
-    // while the new one downloads. We swap atomically when ready.
 
     if(selPlan.file_url?.startsWith('data:')){
-      // Revoke old blob if any
-      if(prevBlobUrlRef.current?.startsWith('blob:')) URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = null;
       setImgNat({w:1,h:1});
       setBlobUrl(selPlan.file_url);
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = selPlan.file_url;
+    if(blobCacheRef.current[cacheKey]){
+      const cached = blobCacheRef.current[cacheKey];
+      prevBlobUrlRef.current = cached.url;
+      setImgNat(cached.nat || {w:1,h:1});
+      setBlobUrl(cached.url);
       return;
     }
 
@@ -432,16 +443,14 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             setLoadingPlan(false);
             return;
           }
-          // Revoke old blob URL now that we have the new one
-          if(prevBlobUrlRef.current?.startsWith('blob:')) URL.revokeObjectURL(prevBlobUrlRef.current);
           const url = URL.createObjectURL(data);
+          blobCacheRef.current[cacheKey] = {url};
           prevBlobUrlRef.current = url;
-          setImgNat({w:1,h:1}); // reset dims only now, right before new img loads
+          setImgNat({w:1,h:1});
           setBlobUrl(url);
           setLoadingPlan(false);
         });
     } else {
-      if(prevBlobUrlRef.current?.startsWith('blob:')) URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = null;
       setImgNat({w:1,h:1});
       setBlobUrl(selPlan.file_url);
@@ -1123,7 +1132,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         const b64 = out.toDataURL('image/jpeg', 0.88).split(',')[1];
         const resp = await fetch('/api/claude', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ model:AI_MODEL, max_tokens:60,
+          body: JSON.stringify({ model:AI_MODEL_FAST, max_tokens:60,
             messages:[{role:'user',content:[
               {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
               {type:'text',text:'Find the title block on this construction drawing (usually bottom-right corner) and extract the sheet number and title.\nReply with ONLY this format: SHEET_NUMBER - SHEET_TITLE\nExamples: C3.01 - SITE PLAN  /  A-101 - FLOOR PLAN  /  M-201 - MECHANICAL PLAN\nIf unreadable reply: UNKNOWN'}
@@ -1250,7 +1259,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             const resp = await fetch('/api/claude', {
               method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({
-                model:AI_MODEL, max_tokens:60,
+                model:AI_MODEL_FAST, max_tokens:60,
                 messages:[{role:'user', content:[
                   {type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},
                   {type:'text', text:'This is the bottom-right corner of a construction drawing showing the title block. Extract the sheet number and sheet title.\nReply with ONLY this format: SHEET_NUMBER - SHEET_TITLE\nExamples:\n  C3.01 - SITE PLAN\n  A-101 - FLOOR PLAN\n  S2.0 - FOUNDATION PLAN\n  E-201 - ELECTRICAL PLAN\nIf you cannot clearly read a sheet number and title, reply: UNKNOWN'}
