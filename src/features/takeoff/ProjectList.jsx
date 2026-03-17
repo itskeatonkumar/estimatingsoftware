@@ -35,12 +35,31 @@ function ProjectList({ onSelectProject, user }) {
       });
     // Fetch org members for team assignment dropdown
     (async () => {
-      const { data: orgId, error: orgErr } = await supabase.rpc('get_my_org_id');
-      console.log('[org-members] org_id:', orgId, orgErr);
+      // Try RPC first, fall back to direct table query
+      let orgId = null;
+      const { data: rpcOrgId, error: rpcErr } = await supabase.rpc('get_my_org_id');
+      if (!rpcErr && rpcOrgId) {
+        orgId = rpcOrgId;
+      } else {
+        // Fallback: query organizations table (RLS-protected, only returns user's orgs)
+        const { data: orgs } = await supabase.from('organizations').select('id').limit(1).single();
+        orgId = orgs?.id;
+      }
+      console.log('[org-members] org_id:', orgId);
       if (!orgId) return;
-      const { data: members, error: rpcErr } = await supabase.rpc('get_org_members', { p_org_id: orgId });
-      console.log('[org-members] members:', members, rpcErr);
-      if (members) setOrgMembers(members);
+      // Try RPC for members, fall back to memberships table
+      const { data: members, error: memErr } = await supabase.rpc('get_org_members', { p_org_id: orgId });
+      if (!memErr && members?.length) {
+        setOrgMembers(members);
+      } else {
+        // Fallback: query memberships directly (only has user_id, no email)
+        const { data: mems } = await supabase.from('memberships').select('user_id, role').eq('org_id', orgId);
+        if (mems?.length) {
+          // Use user_id as display — not ideal but functional
+          const { data: { user: me } } = await supabase.auth.getUser();
+          setOrgMembers(mems.map(m => ({ user_id: m.user_id, email: m.user_id === me?.id ? me.email : m.user_id, role: m.role })));
+        }
+      }
     })();
   }, []);
 
