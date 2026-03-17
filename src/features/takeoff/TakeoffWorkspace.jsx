@@ -89,9 +89,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [vertexDrag, setVertexDrag]       = useState(null);  // {itemId,shapeIdx,vertexIdx,point:{x,y}}
   const dragOffsetRef                     = useRef(null);
   const vertexDragRef                     = useRef(null);
+  const undoStackRef                    = useRef([]);
+  const redoStackRef                    = useRef([]);
   const pasteOffsetRef                  = useRef(0);        // accumulates per paste
   const lassoStartRef                   = useRef(null);     // lasso drag start
   const suppressNextClickRef            = useRef(false);    // suppress SVG click after lasso drag
+  const [showMoveMenu, setShowMoveMenu] = useState(null);
   const [takeoffStep, setTakeoffStep] = useState(null); // null | 'type' | 'create' | 'settings'
   const [newTOType, setNewTOType] = useState(null);
   const [newTOName, setNewTOName] = useState('');
@@ -119,6 +122,38 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   dragOffsetRef.current   = dragOffset;
   vertexDragRef.current   = vertexDrag;
 
+  // ── Undo / Redo helpers ────────────────────────────────────────────────
+  const pushUndo = () => {
+    const snap = JSON.parse(JSON.stringify(itemsRef.current));
+    undoStackRef.current = [...undoStackRef.current.slice(-29), snap];
+    redoStackRef.current = [];
+  };
+
+  const syncAllItemsToSupabase = (its) => {
+    const planId = selPlanRef.current?.id;
+    if(!planId) return;
+    its.filter(i=>i.plan_id===planId).forEach(i=>{
+      supabase.from('takeoff_items').update({points:i.points,quantity:i.quantity,total_cost:i.total_cost}).eq('id',i.id);
+    });
+  };
+
+  const undo = () => {
+    if(!undoStackRef.current.length) return;
+    const prev = undoStackRef.current[undoStackRef.current.length-1];
+    undoStackRef.current = undoStackRef.current.slice(0,-1);
+    redoStackRef.current = [...redoStackRef.current, JSON.parse(JSON.stringify(itemsRef.current))];
+    setItems(prev);
+    syncAllItemsToSupabase(prev);
+  };
+
+  const redo = () => {
+    if(!redoStackRef.current.length) return;
+    const next = redoStackRef.current[redoStackRef.current.length-1];
+    redoStackRef.current = redoStackRef.current.slice(0,-1);
+    undoStackRef.current = [...undoStackRef.current, JSON.parse(JSON.stringify(itemsRef.current))];
+    setItems(next);
+    syncAllItemsToSupabase(next);
+  };
 
   useEffect(()=>{
     const pid = project.id;
@@ -309,6 +344,15 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         }
       }
 
+      // Ctrl+Z — undo
+      if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')&&!e.shiftKey){
+        e.preventDefault(); undo(); return;
+      }
+      // Ctrl+Y or Ctrl+Shift+Z — redo
+      if((e.ctrlKey||e.metaKey)&&((e.key==='y'||e.key==='Y')||((e.key==='z'||e.key==='Z')&&e.shiftKey))){
+        e.preventDefault(); redo(); return;
+      }
+
       // Delete / Backspace — delete selected shapes
       if(e.key==='Delete'||e.key==='Backspace'){
         if(!selectedShapesRef.current.size) return;
@@ -326,6 +370,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       if((e.ctrlKey||e.metaKey)&&(e.key==='v'||e.key==='V')){
         const src = clipboardRef.current;
         if(!src.length) return;
+        pushUndo();
         pasteOffsetRef.current = (pasteOffsetRef.current || 0) + 40;
         const OFF = pasteOffsetRef.current;
         const shift = (sh) => sh.map(p=>({...p, x:p.x+OFF, y:p.y+OFF}));
@@ -341,10 +386,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           const mt = existing.measurement_type;
           let qty = 0;
           if(mt==='area') qty = newPoints.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-          else if(mt==='linear') qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0);
+          else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(existing.wall_height>0) qty=qty*existing.wall_height; }
           else if(mt==='count') qty = newPoints.length;
           qty = Math.round(qty*10)/10;
-          const total_cost = qty*(existing.unit_cost||0);
+          const total_cost = qty*(existing.multiplier||1)*(existing.unit_cost||0);
           setItems(prev=>prev.map(i=>String(i.id)===String(item.id)?{...i,points:newPoints,quantity:qty,total_cost}:i));
           supabase.from('takeoff_items').update({points:newPoints,quantity:qty,total_cost}).eq('id',item.id);
           // Select the newly pasted shapes
@@ -482,7 +527,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const catDef = TAKEOFF_CATS.find(c=>c.id===itemData.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
     const costs = getUnitCosts();
     const uc = itemData.unit_cost ?? ((costs[itemData.category]?.mat||0)+(costs[itemData.category]?.lab||0));
-    const total_cost = (itemData.quantity||0)*uc;
+    const total_cost = (itemData.quantity||0)*(itemData.multiplier||1)*uc;
     const pid = project.id;
     const payload = {...itemData, project_id:pid, plan_id:selPlan?.id, unit_cost:uc, total_cost, color:catDef.color, ai_generated:false, sort_order:items.length};
     const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
@@ -498,6 +543,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // points stored as array-of-shapes: [ [{x,y},...], [{x,y},...] ]
   // qty = sum of all shapes (area, linear, perimeter) or count of shapes (count)
   const appendMeasurement = async (condId, newShape) => {
+    pushUndo();
     let item = itemsRef.current.find(i=>String(i.id)===String(condId));
     if(!item){ console.warn('appendMeasurement: item not found', condId); return; }
 
@@ -570,12 +616,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         for(let i=1;i<sh.length;i++) seg+=calcLinear(sh[i-1],sh[i]);
         return s+seg;
       },0);
+      if(item.wall_height > 0) qty = qty * item.wall_height;
       qty = Math.round(qty*10)/10;
     } else if(item.measurement_type==='count'){
       qty = shapes.length;
     }
 
-    const total_cost = qty * (item.unit_cost||0);
+    const total_cost = qty * (item.multiplier||1) * (item.unit_cost||0);
     const updated = {...item, points:shapes, quantity:qty, total_cost};
     await supabase.from('takeoff_items').update({points:shapes, quantity:qty, total_cost}).eq('id', item.id);
     setItems(prev=>prev.map(i=>String(i.id)===String(item.id) ? updated : i));
@@ -596,6 +643,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
   // appendMeasurementHole: embed a cutout into the target shape using _holeStart markers
   const appendMeasurementHole = async (condId, holePts) => {
+    pushUndo();
     const item = itemsRef.current.find(i=>String(i.id)===String(condId));
     if(!item||item.measurement_type!=='area') return;
     const shapes = normalizeShapes(item.points);
@@ -628,7 +676,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
     // Recompute area
     const qty = Math.round(newShapes.reduce((s,sh) => s + calcShapeNetArea(sh), 0)*10)/10;
-    const total_cost = Math.max(0, qty) * (item.unit_cost||0);
+    const total_cost = Math.max(0, qty) * (item.multiplier||1) * (item.unit_cost||0);
     const updated = {...item, points:newShapes, quantity:Math.max(0,qty), total_cost};
     await supabase.from('takeoff_items').update({points:newShapes, quantity:Math.max(0,qty), total_cost}).eq('id', condId);
     setItems(prev=>prev.map(i=>String(i.id)===String(condId)?updated:i));
@@ -728,6 +776,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     // Eraser click — delete the hovered shape or full item
     if(tool==='eraser'){
       if(eraserHover){
+        pushUndo();
         const {itemId,shapeIdx} = eraserHover;
         const item = itemsRef.current.find(i=>i.id===itemId);
         if(!item) return;
@@ -743,10 +792,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           const mt=item.measurement_type;
           let qty=0;
           if(mt==='area') qty=newShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-          else if(mt==='linear') qty=newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0);
+          else if(mt==='linear'){ qty=newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
           else if(mt==='count') qty=newShapes.length;
           qty=Math.round(qty*10)/10;
-          const total_cost=qty*(item.unit_cost||0);
+          const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
           setItems(prev=>prev.map(i=>i.id===itemId?{...i,points:newShapes,quantity:qty,total_cost}:i));
           supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',itemId).then(({error})=>{ if(error) console.error('eraser upd',error); });
         }
@@ -794,7 +843,54 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     finishShape(lastPt); // include the final point that debounce cancelled
   };
 
-  const handleSvgContextMenu=(e)=>{ e.preventDefault(); };
+  const handleSvgContextMenu=(e)=>{
+    e.preventDefault();
+    // Delete vertex on right-click
+    const vtxEl = e.target.closest && e.target.closest('[data-vertex]');
+    if(vtxEl){
+      const iid = vtxEl.dataset.itemId;
+      const si = Number(vtxEl.dataset.shapeIdx);
+      const vi = Number(vtxEl.dataset.vertexIdx);
+      const item = itemsRef.current.find(i=>String(i.id)===String(iid));
+      if(!item) return;
+      pushUndo();
+      const shapes = normalizeShapes(item.points);
+      const sh = shapes[si];
+      if(!sh) return;
+      const realCount = sh.filter(p=>!p._ctrl&&!p._holeStart).length;
+      const minPts = item.measurement_type==='area' ? 3 : 2;
+      if(realCount <= minPts){
+        // Delete entire shape
+        const newShapes = shapes.filter((_,i)=>i!==si);
+        if(newShapes.length===0){
+          setItems(prev=>prev.filter(i=>String(i.id)!==String(iid)));
+          supabase.from('takeoff_items').delete().eq('id',iid);
+        } else {
+          const mt=item.measurement_type; let qty=0;
+          if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
+          else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+          else if(mt==='count') qty=newShapes.length;
+          qty=Math.round(qty*10)/10;
+          const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
+          setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
+          supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
+        }
+      } else {
+        // Remove just this vertex
+        const newSh = sh.filter((_,i)=>i!==vi);
+        const newShapes = shapes.map((s,i)=>i===si?newSh:s);
+        const mt=item.measurement_type; let qty=0;
+        if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
+        else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+        else if(mt==='count') qty=newShapes.length;
+        qty=Math.round(qty*10)/10;
+        const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
+        setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
+        supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
+      }
+      setSelectedShapes(new Set());
+    }
+  };
 
   const handleSvgRightPan=(e)=>{
     if(e.button!==2) return;
@@ -859,6 +955,35 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const doLasso = !forceP && e.button===0 && tool==='select';
     // Drawing tools + space+left = pan; any other left in drawing mode = ignore (handled by click)
     const doPan = forceP || (!doLasso && (e.button===1 || tool==='select'));
+
+    // ── Midpoint click: insert a new vertex ──
+    if(doLasso && e.target.closest && e.target.closest('[data-midpoint]')){
+      const mel = e.target.closest('[data-midpoint]');
+      const iid = mel.dataset.itemId;
+      const si = Number(mel.dataset.shapeIdx);
+      const ei = Number(mel.dataset.edgeIdx);
+      const item = itemsRef.current.find(i=>String(i.id)===String(iid));
+      if(!item) return;
+      e.stopPropagation(); e.preventDefault();
+      pushUndo();
+      const shapes = normalizeShapes(item.points);
+      const sh = shapes[si];
+      if(!sh) return;
+      const a = sh[ei], b = sh[(ei+1)%sh.length];
+      if(!a||!b) return;
+      const newPt = {x:(a.x+b.x)/2, y:(a.y+b.y)/2};
+      const newSh = [...sh.slice(0,ei+1), newPt, ...sh.slice(ei+1)];
+      const newShapes = shapes.map((s,i)=>i===si?newSh:s);
+      const mt=item.measurement_type; let qty=0;
+      if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
+      else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+      else if(mt==='count') qty=newShapes.length;
+      qty=Math.round(qty*10)/10;
+      const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
+      setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
+      supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
+      return;
+    }
 
     // ── Vertex drag: mousedown on a vertex handle ──
     if(doLasso && e.target.closest && e.target.closest('[data-vertex]')){
@@ -1487,6 +1612,7 @@ Return ONLY a valid JSON array, no markdown:
     const keys = [...selectedShapesRef.current];
     console.log('[deleteSelectedShapes] keys:', keys);
     if(!keys.length) return;
+    pushUndo();
     const byItem = {};
     keys.forEach(k => {
       const parts = k.split('::');
@@ -1532,6 +1658,7 @@ Return ONLY a valid JSON array, no markdown:
   // ── Commit shape drag: apply offset to selected shapes ─────────────────
   const commitShapeDrag = (offset) => {
     if(!offset) return;
+    pushUndo();
     const {dx, dy} = offset;
     const keys = [...selectedShapesRef.current];
     const byItem = {};
@@ -1560,6 +1687,7 @@ Return ONLY a valid JSON array, no markdown:
   // ── Commit vertex drag: apply single point change + recompute qty ──────
   const commitVertexDrag = (vd) => {
     if(!vd) return;
+    pushUndo();
     const {itemId, shapeIdx, vertexIdx, point} = vd;
     setItems(prev=>prev.map(item=>{
       if(String(item.id)!==String(itemId)) return item;
@@ -1571,10 +1699,10 @@ Return ONLY a valid JSON array, no markdown:
       const mt = item.measurement_type;
       let qty = 0;
       if(mt==='area') qty = newShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-      else if(mt==='linear') qty = newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++){const a=sh[i-1],b=sh[i];if(!a._ctrl&&!b._ctrl) t+=calcLinear(a,b);}return s+t;},0);
+      else if(mt==='linear'){ qty = newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++){const a=sh[i-1],b=sh[i];if(!a._ctrl&&!b._ctrl) t+=calcLinear(a,b);}return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
       else if(mt==='count') qty = newShapes.length;
       qty = Math.round(Math.abs(qty)*10)/10;
-      const total_cost = qty*(item.unit_cost||0);
+      const total_cost = qty*(item.multiplier||1)*(item.unit_cost||0);
       supabase.from('takeoff_items').update({points:newShapes, quantity:qty, total_cost}).eq('id',item.id);
       return {...item, points:newShapes, quantity:qty, total_cost};
     }));
@@ -1643,6 +1771,8 @@ Return ONLY a valid JSON array, no markdown:
               e.stopPropagation();
               if(e.ctrlKey||e.metaKey){
                 setSelectedShapes(prev=>{ const n=new Set(prev); n.has(shapeKey)?n.delete(shapeKey):n.add(shapeKey); return n; });
+              } else if(selectedShapes.has(shapeKey)){
+                // Already part of multi-selection — keep the group selected
               } else {
                 setSelectedShapes(new Set([shapeKey]));
               }
@@ -1673,6 +1803,24 @@ Return ONLY a valid JSON array, no markdown:
               fill={isActiveVtx?'#3B82F6':'#fff'} stroke="#3B82F6" strokeWidth={sw*0.8}
               style={{cursor:'move',pointerEvents:'all'}}/>;
           }).filter(Boolean) : null;
+
+          // ── Midpoint "+" handles for adding vertices ──
+          const midpointHandles = showVertices ? (()=>{
+            const realPts = dp.filter(p=>!p._ctrl&&!p._holeStart);
+            const handles = [];
+            const loopEnd = mt==='area' ? realPts.length : realPts.length-1;
+            for(let ei=0; ei<loopEnd; ei++){
+              const a = realPts[ei], b = realPts[(ei+1)%realPts.length];
+              const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+              // Find actual indices in dp for edge insertion
+              const aIdx = dp.indexOf(a), bIdx = dp.indexOf(b);
+              handles.push(<circle key={`mid-${ei}`} data-midpoint="true" data-item-id={it.id} data-shape-idx={shapeIdx} data-edge-idx={Math.max(aIdx,0)}
+                cx={mx} cy={my} r={rSm}
+                fill="rgba(59,130,246,0.3)" stroke="#3B82F6" strokeWidth={sw*0.5}
+                style={{cursor:'copy',pointerEvents:'all'}}/>);
+            }
+            return handles;
+          })() : null;
 
           if((mt==='area')&&dp.length>=3){
             const {outer: outerPts, holes: embeddedHoles} = splitShapeHoles(dp);
@@ -1712,6 +1860,7 @@ Return ONLY a valid JSON array, no markdown:
               <rect x={cx-lw/2} y={cy-lh/2} width={lw} height={lh} rx={2/zoom} fill="rgba(0,0,0,0.65)"/>
               <text x={cx} y={cy+fs*0.38} fontSize={fs*0.9} fill={isActive?'#F97316':'#ddd'} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={600} style={{pointerEvents:'none'}}>{netArea} SF</text>
               {vertexHandles}
+              {midpointHandles}
             </g>);
           }
           if(mt==='linear'&&dp.length>=2){
@@ -1734,6 +1883,7 @@ Return ONLY a valid JSON array, no markdown:
               <rect x={mx-lw/2} y={my-lh*1.6} width={lw} height={lh} rx={2/zoom} fill="rgba(0,0,0,0.65)"/>
               <text x={mx} y={my-lh*0.7} fontSize={fs*0.9} fill={isActive?'#F97316':'#ddd'} textAnchor="middle" fontFamily="'DM Mono',monospace" fontWeight={600} style={{pointerEvents:'none'}}>{dist} {scale?'LF':'px'}</text>
               {vertexHandles}
+              {midpointHandles}
             </g>);
           }
           if(mt==='count'&&dp[0]){
@@ -2542,6 +2692,21 @@ Return ONLY a valid JSON array, no markdown:
                             btn.textContent='✦'; btn.disabled=false;
                           }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(168,85,247,0.3)',background:'rgba(168,85,247,0.06)',color:'#a855f7',cursor:'pointer'}} title="AI name">✦</button>
                           <button onClick={async()=>{
+                            if(p.id==='preview') return;
+                            const {data:newPlan}=await supabase.from('precon_plans').insert([{project_id:p.project_id,name:(p.name||'Sheet')+' (Copy)',file_url:p.file_url,file_type:p.file_type,scale_px_per_ft:p.scale_px_per_ft}]).select().single();
+                            if(!newPlan) return;
+                            // Clone takeoff items for this plan
+                            const planItemsToDup=items.filter(i=>i.plan_id===p.id);
+                            const clonedItems=[];
+                            for(const it of planItemsToDup){
+                              const {id,...rest}=it;
+                              const {data:ni}=await supabase.from('takeoff_items').insert([{...rest,plan_id:newPlan.id}]).select().single();
+                              if(ni) clonedItems.push(ni);
+                            }
+                            setPlans(prev=>[...prev,newPlan]);
+                            setItems(prev=>[...prev,...clonedItems]);
+                          }} style={{fontSize:8,padding:'2px 4px',borderRadius:3,border:'1px solid rgba(59,130,246,0.3)',background:'none',color:'#3B82F6',cursor:'pointer'}} title="Duplicate plan">⧉</button>
+                          <button onClick={async()=>{
                             if(!window.confirm('Delete this sheet?')) return;
                             if(p.id!=='preview'){ const {error}=await supabase.from('precon_plans').delete().eq('id',p.id).select(); if(error){console.error('plan delete error:',error);alert('Delete failed: '+error.message);return;} }
                             setPlans(prev=>prev.filter(x=>x.id!==p.id));
@@ -3331,6 +3496,7 @@ Return ONLY a valid JSON array, no markdown:
                 const shift=(sh)=>sh.map(p=>({...p,x:p.x+OFF,y:p.y+OFF}));
                 const keys=[...selectedShapesRef.current];
                 if(!keys.length) return;
+                pushUndo();
                 const byItem={};
                 keys.forEach(k=>{const parts=k.split('::');const id=parts[0];const si=Number(parts[1]);if(!byItem[id])byItem[id]=[];byItem[id].push(si);});
                 // Append duplicated shapes to the same item they came from
@@ -3344,10 +3510,10 @@ Return ONLY a valid JSON array, no markdown:
                   const mt = item.measurement_type;
                   let qty = 0;
                   if(mt==='area') qty = newPoints.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-                  else if(mt==='linear') qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0);
+                  else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
                   else if(mt==='count') qty = newPoints.length;
                   qty = Math.round(qty*10)/10;
-                  const total_cost = qty*(item.unit_cost||0);
+                  const total_cost = qty*(item.multiplier||1)*(item.unit_cost||0);
                   setItems(prev=>prev.map(i=>String(i.id)===String(id)?{...i,points:newPoints,quantity:qty,total_cost}:i));
                   supabase.from('takeoff_items').update({points:newPoints,quantity:qty,total_cost}).eq('id',item.id);
                   // Select the new shapes
@@ -3372,6 +3538,82 @@ Return ONLY a valid JSON array, no markdown:
                 onMouseLeave={e=>e.currentTarget.style.background='none'}>
                 ⌫ Delete
               </button>
+              <div style={{position:'relative',display:'inline-block'}}>
+                <button onClick={(e)=>{e.stopPropagation();setShowMoveMenu(showMoveMenu?null:true);}}
+                  title="Move to another item"
+                  style={{background:'none',border:'none',color:'#C4B5FD',cursor:'pointer',fontSize:11,fontWeight:600,padding:'2px 6px',borderRadius:4,display:'flex',alignItems:'center',gap:4}}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgba(139,92,246,0.15)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                  ↗ Move to...
+                </button>
+                {showMoveMenu&&(()=>{
+                  // Determine measurement_type of selected shapes
+                  const selKeys=[...selectedShapesRef.current];
+                  const selItemIds=new Set(selKeys.map(k=>k.split('::')[0]));
+                  const selTypes=new Set([...selItemIds].map(id=>{const it=itemsRef.current.find(i=>String(i.id)===String(id));return it?.measurement_type;}).filter(Boolean));
+                  const mt=selTypes.size===1?[...selTypes][0]:null;
+                  if(!mt) return <div style={{position:'absolute',top:'100%',left:0,background:'#1a1a1a',border:'1px solid #333',borderRadius:6,padding:8,fontSize:10,color:'#f87171',whiteSpace:'nowrap',zIndex:120}}>Mixed types — cannot move</div>;
+                  const targets=planItems.filter(i=>i.measurement_type===mt&&!selItemIds.has(String(i.id)));
+                  if(!targets.length) return <div style={{position:'absolute',top:'100%',left:0,background:'#1a1a1a',border:'1px solid #333',borderRadius:6,padding:8,fontSize:10,color:'#94A3B8',whiteSpace:'nowrap',zIndex:120}}>No other {mt} items on this plan</div>;
+                  return(
+                    <div style={{position:'absolute',top:'100%',left:0,background:'#1a1a1a',border:'1px solid #333',borderRadius:6,padding:4,minWidth:160,maxHeight:200,overflowY:'auto',zIndex:120}}>
+                      {targets.map(tgt=>(
+                        <div key={tgt.id} onClick={(e)=>{
+                          e.stopPropagation();
+                          pushUndo();
+                          const byItem={};
+                          selKeys.forEach(k=>{const p=k.split('::');const id=p[0];const si=Number(p[1]);if(!byItem[id])byItem[id]=[];byItem[id].push(si);});
+                          const newSelKeys=[];
+                          let tgtItem=itemsRef.current.find(i=>String(i.id)===String(tgt.id));
+                          let tgtShapes=normalizeShapes(tgtItem.points);
+                          Object.entries(byItem).forEach(([srcId,idxs])=>{
+                            const srcItem=itemsRef.current.find(i=>String(i.id)===String(srcId));
+                            if(!srcItem) return;
+                            const srcShapes=normalizeShapes(srcItem.points);
+                            const moved=idxs.map(i=>srcShapes[i]).filter(Boolean);
+                            const kept=srcShapes.filter((_,i)=>!idxs.includes(i));
+                            // Update source
+                            let srcQty=0;
+                            if(mt==='area') srcQty=kept.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
+                            else if(mt==='linear'){ srcQty=kept.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(srcItem.wall_height>0) srcQty*=srcItem.wall_height; }
+                            else if(mt==='count') srcQty=kept.length;
+                            srcQty=Math.round(srcQty*10)/10;
+                            const srcTC=srcQty*(srcItem.multiplier||1)*(srcItem.unit_cost||0);
+                            if(kept.length===0){
+                              setItems(prev=>prev.filter(i=>String(i.id)!==String(srcId)));
+                              supabase.from('takeoff_items').delete().eq('id',srcId);
+                            } else {
+                              setItems(prev=>prev.map(i=>String(i.id)===String(srcId)?{...i,points:kept,quantity:srcQty,total_cost:srcTC}:i));
+                              supabase.from('takeoff_items').update({points:kept,quantity:srcQty,total_cost:srcTC}).eq('id',srcId);
+                            }
+                            // Append to target
+                            moved.forEach(sh=>{
+                              newSelKeys.push(`${tgt.id}::${tgtShapes.length}`);
+                              tgtShapes=[...tgtShapes,sh];
+                            });
+                          });
+                          let tgtQty=0;
+                          if(mt==='area') tgtQty=tgtShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
+                          else if(mt==='linear'){ tgtQty=tgtShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(tgtItem.wall_height>0) tgtQty*=tgtItem.wall_height; }
+                          else if(mt==='count') tgtQty=tgtShapes.length;
+                          tgtQty=Math.round(tgtQty*10)/10;
+                          const tgtTC=tgtQty*(tgtItem.multiplier||1)*(tgtItem.unit_cost||0);
+                          setItems(prev=>prev.map(i=>String(i.id)===String(tgt.id)?{...i,points:tgtShapes,quantity:tgtQty,total_cost:tgtTC}:i));
+                          supabase.from('takeoff_items').update({points:tgtShapes,quantity:tgtQty,total_cost:tgtTC}).eq('id',tgt.id);
+                          setSelectedShapes(new Set(newSelKeys));
+                          setShowMoveMenu(null);
+                        }}
+                          style={{padding:'5px 8px',fontSize:10,color:'#e2e8f0',cursor:'pointer',borderRadius:4,display:'flex',alignItems:'center',gap:6}}
+                          onMouseEnter={e=>e.currentTarget.style.background='rgba(139,92,246,0.15)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                          <span style={{width:8,height:8,borderRadius:2,background:tgt.color||'#10B981',flexShrink:0}}/>
+                          {tgt.description||'Untitled'}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
               <div style={{width:1,height:18,background:'rgba(255,255,255,0.12)'}}/>
               <button onClick={()=>setSelectedShapes(new Set())} title="Clear selection (Esc)"
                 style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:14,padding:'0 2px',lineHeight:1}}>×</button>
@@ -3528,10 +3770,6 @@ Return ONLY a valid JSON array, no markdown:
         <div style={{width:48,flexShrink:0,display:'flex',flexDirection:'column',borderLeft:`1px solid ${t.border}`,background:t.bg2,alignItems:'center',paddingTop:4,gap:0}}>
           {[
             {id:'select', icon:'↖', label:'Select', color:'#71717a'},
-            null,
-            {id:'area',   icon:'⬡', label:'Area',   color:'#F59E0B'},
-            {id:'linear', icon:'━', label:'Linear', color:'#06B6D4'},
-            {id:'count',  icon:'✕', label:'Count',  color:'#10B981'},
             null,
             {id:'cutout', icon:'⊘', label:'Cutout', color:'#EF4444'},
             {id:'eraser', icon:'⌫', label:'Eraser', color:'#F97316'},
@@ -3947,10 +4185,11 @@ Return ONLY a valid JSON array, no markdown:
                       const saveField = async (field, val) => {
                         const numVal = ['quantity','unit_cost'].includes(field) ? (parseFloat(val)||0) : val;
                         const patch = {[field]: numVal};
-                        if(field==='quantity'||field==='unit_cost'){
+                        if(field==='quantity'||field==='unit_cost'||field==='multiplier'){
                           const qty = field==='quantity' ? numVal : (it.quantity||0);
                           const uc  = field==='unit_cost' ? numVal : (it.unit_cost||0);
-                          patch.total_cost = qty * uc;
+                          const mul = field==='multiplier' ? numVal : (it.multiplier||1);
+                          patch.total_cost = qty * mul * uc;
                         }
                         setEstSaving(it.id);
                         await supabase.from('takeoff_items').update(patch).eq('id',it.id);

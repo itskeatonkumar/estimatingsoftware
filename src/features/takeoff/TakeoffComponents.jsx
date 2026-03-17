@@ -14,11 +14,11 @@ function TakeoffItemModal({ item, onSave, onClose }) {
     ...(item||{})
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const total = (Number(form.quantity)||0) * (Number(form.unit_cost)||0);
+  const total = (Number(form.quantity)||0) * (Number(form.multiplier)||1) * (Number(form.unit_cost)||0);
   const dynInput = {...inputStyle, background:t.input, borderColor:t.inputBorder, color:t.inputText, fontSize:13};
 
   const handleSave = async () => {
-    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, total_cost:total};
+    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, wall_height:Number(form.wall_height)||0, total_cost:total};
     if (isNew) {
       const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
       if (data) onSave(data, true);
@@ -55,6 +55,12 @@ function TakeoffItemModal({ item, onSave, onClose }) {
           <APMField label="Quantity"><input type="number" value={form.quantity} onChange={e=>set('quantity',e.target.value)} style={{...dynInput}} /></APMField>
           <APMField label="Unit"><input value={form.unit} onChange={e=>set('unit',e.target.value)} style={{...dynInput}} /></APMField>
           <APMField label="Unit Cost ($)"><input type="number" value={form.unit_cost} onChange={e=>set('unit_cost',e.target.value)} style={{...dynInput}} /></APMField>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:form.measurement_type==='linear'?'1fr 1fr':'1fr',gap:10}}>
+          <APMField label="Multiplier"><input type="number" value={form.multiplier||1} onChange={e=>set('multiplier',e.target.value)} style={{...dynInput}} /></APMField>
+          {form.measurement_type==='linear'&&(
+            <APMField label="Wall Height (ft)"><input type="number" value={form.wall_height||''} onChange={e=>set('wall_height',e.target.value)} placeholder="0 = LF only" style={{...dynInput}} /></APMField>
+          )}
         </div>
         <div style={{background:t.bg5,borderRadius:6,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <span style={{fontSize:11,color:t.text3,fontFamily:"'DM Mono',monospace"}}>TOTAL</span>
@@ -510,9 +516,12 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
     quantity: item.quantity||'',
     unit: item.unit||'SF',
     unit_cost: item.unit_cost||0,
+    multiplier: item.multiplier||1,
+    wall_height: item.wall_height||0,
+    measurement_type: item.measurement_type||'manual',
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const total = (Number(form.quantity)||0) * (Number(form.unit_cost)||0);
+  const total = (Number(form.quantity)||0) * (Number(form.multiplier)||1) * (Number(form.unit_cost)||0);
   const inp = {background:t.bg5,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'4px 6px',fontSize:10,fontFamily:"'DM Mono',monospace",width:'100%',outline:'none'};
   return(
     <div style={{padding:'8px',background:t.bg3,borderTop:`1px solid ${cat.color}40`}}>
@@ -544,6 +553,21 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
           <input type="number" value={form.unit_cost} onChange={e=>set('unit_cost',e.target.value)}
             style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
         </div>
+      </div>
+      {/* Multiplier + Wall Height row */}
+      <div style={{display:'grid',gridTemplateColumns:form.measurement_type==='linear'?'1fr 1fr':'1fr',gap:4,marginBottom:6}}>
+        <div>
+          <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>MULTIPLIER</div>
+          <input type="number" value={form.multiplier} onChange={e=>set('multiplier',e.target.value)}
+            style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
+        </div>
+        {form.measurement_type==='linear'&&(
+          <div>
+            <div style={{fontSize:8,color:t.text4,fontFamily:"'DM Mono',monospace",marginBottom:2}}>WALL HT (ft)</div>
+            <input type="number" value={form.wall_height||''} onChange={e=>set('wall_height',e.target.value)}
+              placeholder="0" style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
+          </div>
+        )}
       </div>
       {/* Total */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'4px 6px',background:t.bg5,borderRadius:4}}>
