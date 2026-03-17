@@ -89,4 +89,4 @@ export const ASSEMBLIES = [
 
 // ── AI Model ────────────────────────────────────────────
 export const AI_MODEL = 'claude-sonnet-4-20250514';
-export const AI_MODEL_FAST = 'claude-haiku-4-5-20251001';
+export const AI_MODEL_FAST = 'claude-sonnet-4-20250514';

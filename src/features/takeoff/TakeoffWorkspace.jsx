@@ -1267,8 +1267,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               })
             });
             const j = await resp.json();
+            console.log(`[name pg${i+bi+1}] status:${resp.status}`, j);
+            if(!resp.ok){ console.error(`[name pg${i+bi+1}] API error:`, j); return; }
             const raw = (j?.content?.find(b=>b.type==='text')?.text||'').trim();
-            console.log(`[name pg${i+bi+1}]`, raw);
+            console.log(`[name pg${i+bi+1}] result:`, raw);
             if(!raw || raw.toUpperCase().includes('UNKNOWN') || raw.length < 3) return;
             const aiName = raw.replace(/^["'`*\s]+|["'`*\s]+$/g,'').trim();
             if(aiName === p.name) return;
