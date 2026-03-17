@@ -444,6 +444,17 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     }
   },[blobUrl]);
 
+  // Catch images that loaded before React attached onLoad (blob URLs can decode instantly)
+  useEffect(()=>{
+    if(!blobUrl || isPdfPlan) return;
+    const raf = requestAnimationFrame(()=>{
+      const img = imgRef.current;
+      if(img && img.complete && img.naturalWidth > 0){
+        handleImgLoad();
+      }
+    });
+    return ()=>cancelAnimationFrame(raf);
+  },[blobUrl]);
 
   const getUnitCosts = () => { try{ return {...UNIT_COSTS_DEFAULT,...JSON.parse(localStorage.getItem('unitCosts')||'{}')}; }catch{return UNIT_COSTS_DEFAULT;} };
 
@@ -3243,8 +3254,8 @@ Return ONLY a valid JSON array, no markdown:
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
               const planH = imgNat.h > 4 ? imgNat.h : (canvasRef.current?.height || 1100);
               return (
-                <div style={{width:planW*zoom, height:planH*zoom, position:'relative', flexShrink:0}}>
-                  <div style={{transformOrigin:'top left', transform:`scale(${zoom})`, position:'absolute', top:0, left:0}}>
+                <div style={{width:planW*zoom, height:planH*zoom, position:'relative', flexShrink:0, overflow:'hidden'}}>
+                  <div style={{transformOrigin:'top left', transform:`scale(${zoom})`, position:'absolute', top:0, left:0, width:planW, height:planH}}>
                     {planErr&&<div style={{position:'absolute',top:10,left:10,zIndex:20,background:'#1a0505',border:'1px solid #ef4444',color:'#ef4444',padding:'10px 14px',borderRadius:8,fontSize:11,maxWidth:500,wordBreak:'break-all'}}>{planErr}</div>}
                     {loadingPlan&&(
                       <div style={{width:800,height:600,display:'flex',alignItems:'center',justifyContent:'center',background:'#1a1a1a',color:'#aaa',fontSize:13,gap:8,fontFamily:"'DM Mono',monospace"}}>
