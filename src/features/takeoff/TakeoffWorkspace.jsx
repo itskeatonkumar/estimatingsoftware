@@ -944,8 +944,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       }
       return;
     }
-    // Eraser click — delete the hovered shape or full item
+    // Eraser click — delete the hovered shape, full item, or markup
     if(tool==='eraser'){
+      if(eraserHover?.markupId){
+        setMarkups(prev=>prev.filter(m=>m.id!==eraserHover.markupId));
+        setEraserHover(null);
+        return;
+      }
       if(eraserHover){
         pushUndo();
         const {itemId,shapeIdx} = eraserHover;
@@ -1112,6 +1117,20 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             }
           }
         });
+      }
+      // Also check markup dimension lines
+      if(!found){
+        const mThreshold = 12/zoom;
+        for(const m of markups){
+          if(m.type==='dimension' && m.planId===selPlanRef.current?.id){
+            const a=m.p1, b=m.p2;
+            const dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy;
+            const tt=len2===0?0:Math.max(0,Math.min(1,((rawPt.x-a.x)*dx+(rawPt.y-a.y)*dy)/len2));
+            const px=a.x+tt*dx,py=a.y+tt*dy;
+            const d=Math.hypot(rawPt.x-px,rawPt.y-py);
+            if(d<mThreshold){ found={markupId:m.id}; break; }
+          }
+        }
       }
       setEraserHover(found);
     } else {
@@ -3579,20 +3598,16 @@ Return ONLY a valid JSON array, no markdown:
                           const tick=8/zoom;
                           const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
                           const fs=12/zoom;
-                          const angle=Math.atan2(dy,dx)*180/Math.PI;
-                          const flipText = angle>90||angle<-90;
+                          const isEraserTarget = eraserHover?.markupId===id;
+                          const drawColor = isEraserTarget ? '#C0504D' : color;
                           return(
-                            <g key={id} style={{pointerEvents:'none'}}>
-                              {/* Main line */}
-                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={color} strokeWidth={1.5/zoom}/>
-                              {/* End ticks */}
-                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={color} strokeWidth={1.5/zoom}/>
-                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={color} strokeWidth={1.5/zoom}/>
-                              {/* Label background */}
+                            <g key={id} style={{pointerEvents:'none',opacity:isEraserTarget?0.5:1}}>
+                              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={drawColor} strokeWidth={1.5/zoom}/>
+                              <line x1={p1.x+nx*tick} y1={p1.y+ny*tick} x2={p1.x-nx*tick} y2={p1.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom}/>
+                              <line x1={p2.x+nx*tick} y1={p2.y+ny*tick} x2={p2.x-nx*tick} y2={p2.y-ny*tick} stroke={drawColor} strokeWidth={1.5/zoom}/>
                               <rect x={mx-label.length*fs*0.3} y={my-fs*0.8-4/zoom} width={label.length*fs*0.6} height={fs*1.4} rx={2/zoom}
-                                fill="white" fillOpacity={0.9} stroke={color} strokeWidth={0.5/zoom}/>
-                              {/* Label text */}
-                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={color} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{label}</text>
+                                fill="white" fillOpacity={0.9} stroke={drawColor} strokeWidth={0.5/zoom}/>
+                              <text x={mx} y={my+fs*0.15} fontSize={fs} fill={drawColor} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{label}</text>
                             </g>
                           );
                         })}
