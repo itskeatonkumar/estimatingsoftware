@@ -700,6 +700,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // points stored as array-of-shapes: [ [{x,y},...], [{x,y},...] ]
   // qty = sum of all shapes (area, linear, perimeter) or count of shapes (count)
   const appendMeasurement = async (condId, newShape) => {
+    if(!scale){ console.warn('appendMeasurement: no scale set'); return; }
     pushUndo();
     let item = itemsRef.current.find(i=>String(i.id)===String(condId));
     if(!item){ console.warn('appendMeasurement: item not found', condId); return; }
@@ -2947,6 +2948,11 @@ Return ONLY a valid JSON array, no markdown:
           {leftTab==='takeoffs'&&(()=>{
             const activeCond = itemsRef.current.find(i=>String(i.id)===String(activeCondId));
             const armItem = (item) => {
+              if(!scale){
+                alert('Set the scale before drawing takeoffs. Use the green "Set Scale" button on the plan.');
+                setShowScalePanel(true);
+                return;
+              }
               // If this item has siblings, prefer the one matching the current plan
               const target = (item._siblings && selPlan)
                 ? (item._siblings.find(s=>s.id!==undefined && s.plan_id===selPlan.id) || item)
@@ -3030,7 +3036,7 @@ Return ONLY a valid JSON array, no markdown:
                     <div style={{fontSize:11,color:'#854D0E',lineHeight:1.5}}>{newTOType?.desc}</div>
                   </div>
                   <div style={{display:'flex',gap:8}}>
-                    <button onClick={()=>setTakeoffStep('type')}
+                    <button onClick={()=>{if(!scale){alert('Set the scale before creating takeoffs.');setShowScalePanel(true);return;}setTakeoffStep('type');}}
                       style={{flex:1,padding:'8px 0',border:`1px solid ${t.border2}`,background:t.bg,color:t.text3,
                         borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
                       ← Takeoffs
@@ -3237,7 +3243,7 @@ Return ONLY a valid JSON array, no markdown:
                     style={{width:'100%',padding:'6px 8px 6px 24px',border:`1px solid ${t.border}`,borderRadius:4,
                       fontSize:12,color:t.text,background:t.bg,outline:'none',boxSizing:'border-box'}}/>
                 </div>
-                <button onClick={()=>setTakeoffStep('type')}
+                <button onClick={()=>{if(!scale){alert('Set the scale before creating takeoffs.');setShowScalePanel(true);return;}setTakeoffStep('type');}}
                   style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 12px',borderRadius:4,
                     cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:3,flexShrink:0,whiteSpace:'nowrap'}}>
                   + New Takeoff
