@@ -2337,9 +2337,17 @@ Return ONLY a valid JSON array, no markdown:
 
     // Draw takeoff shapes — use plan's own scale, not the live UI state
     const planScale = plan.scale_px_per_ft || scale || null;
-    const planItemsEx = items.filter(it => it.points?.length && it.plan_id === plan.id);
+    // Get all items that have shapes belonging to this plan (by plan_id or _planId tag)
+    const planItemsEx = items.filter(it => it.points?.length && (
+      it.plan_id === plan.id || normalizeShapes(it.points).some(sh => sh[0]?._planId === plan.id)
+    ));
     for(const it of planItemsEx){
-      const shapes = normalizeShapes(it.points);
+      const allShapes = normalizeShapes(it.points);
+      // Filter to only shapes belonging to this plan
+      const shapes = allShapes.filter(sh => {
+        const shapePlanId = sh[0]?._planId;
+        return shapePlanId ? shapePlanId === plan.id : it.plan_id === plan.id;
+      });
       const c = it.color || '#4CAF50';
       const mt = it.measurement_type;
       for(const pts of shapes){
