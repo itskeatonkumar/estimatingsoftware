@@ -14,7 +14,12 @@ function TakeoffItemModal({ item, onSave, onClose }) {
     ...(item||{})
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const total = (Number(form.quantity)||0) * (Number(form.multiplier)||1) * (Number(form.unit_cost)||0);
+  const _rawQty = (Number(form.quantity)||0) * (Number(form.multiplier)||1);
+  const _h = Number(form.height)||0;
+  const _isLH = form.measurement_type==='linear' && _h > 0;
+  const _effQty = _isLH ? _rawQty * _h : _rawQty;
+  const _effUnit = _isLH ? 'SF' : (form.unit||'');
+  const total = _effQty * (Number(form.unit_cost)||0);
   const dynInput = {...inputStyle, background:t.input, borderColor:t.inputBorder, color:t.inputText, fontSize:13};
 
   const handleSave = async () => {
@@ -62,8 +67,13 @@ function TakeoffItemModal({ item, onSave, onClose }) {
             <APMField label="Wall Height (ft)"><input type="number" value={form.height||''} onChange={e=>set('height',e.target.value)} placeholder="0 = LF only" style={{...dynInput}} /></APMField>
           )}
         </div>
+        {_isLH&&(
+          <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:11,color:'#4CAF50'}}>{Number(form.quantity)||0} LF × {_h} ft = <strong>{Math.round(_effQty*10)/10} SF</strong></span>
+          </div>
+        )}
         <div style={{background:t.bg5,borderRadius:6,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>TOTAL</span>
+          <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>TOTAL ({_effUnit || form.unit})</span>
           <span style={{fontSize:15,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
         </div>
       </div>
@@ -516,7 +526,12 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
     measurement_type: item.measurement_type||'manual',
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const total = (Number(form.quantity)||0) * (Number(form.multiplier)||1) * (Number(form.unit_cost)||0);
+  const _rawQty = (Number(form.quantity)||0) * (Number(form.multiplier)||1);
+  const _h = Number(form.height)||0;
+  const _isLH = form.measurement_type==='linear' && _h > 0;
+  const _effQty = _isLH ? _rawQty * _h : _rawQty;
+  const _effUnit = _isLH ? 'SF' : (form.unit||'');
+  const total = _effQty * (Number(form.unit_cost)||0);
   const inp = {background:t.bg5,border:`1px solid ${t.border2}`,color:t.text,borderRadius:4,padding:'4px 6px',fontSize:10,fontVariantNumeric:'tabular-nums',width:'100%',outline:'none'};
   return(
     <div style={{padding:'8px',background:t.bg3,borderTop:`1px solid ${cat.color}40`}}>
