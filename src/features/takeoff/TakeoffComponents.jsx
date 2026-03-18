@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme, labelStyle, inputStyle } from "../../lib/theme.jsx";
-import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES } from "../../lib/constants.js";
+import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES } from "../../lib/constants.js";
 import { supabase } from "../../lib/supabase.js";
 import { APMModal, APMField } from "../../components/ui/Modal.jsx";
 
@@ -320,12 +320,7 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
     <APMModal title={isNew?'New Takeoff Project':'Edit Project'} onClose={onClose} width={500}>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <APMField label="Project Name"><input value={form.name} onChange={e=>set('name',e.target.value)} style={{...dynInput,fontSize:15}} autoFocus/></APMField>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <APMField label="Company">
-            <select value={form.company} onChange={e=>set('company',e.target.value)} style={{...dynInput}}>
-              {COMPANIES.filter(c=>c.id!=='all').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </APMField>
+        <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
           <APMField label="Status">
             <select value={form.status} onChange={e=>set('status',e.target.value)} style={{...dynInput}}>
               {['estimating','pending_approval','approved','bid_submitted','awarded','lost','hold'].map(s=><option key={s} value={s}>{s.replace(/_/g,' ').toUpperCase()}</option>)}
