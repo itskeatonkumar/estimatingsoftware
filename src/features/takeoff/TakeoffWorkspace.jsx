@@ -373,6 +373,18 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // toPx is identity: SVG coord space = image pixel space
   const toPx=(x,y)=>({x,y});
 
+  // Helper: get effective display quantity and unit for an item
+  // Linear items with height → SF (LF × height = SF wall area)
+  const getDisplayQtyUnit = (item) => {
+    const rawQty = (item.quantity || 0) * (item.multiplier || 1);
+    const mt = item.measurement_type;
+    const h = item.wall_height || item.height || 0;
+    if (mt === 'linear' && h > 0) {
+      return { qty: rawQty, unit: 'SF' }; // wall_height already multiplied into quantity during appendMeasurement
+    }
+    return { qty: rawQty, unit: item.unit || '' };
+  };
+
   // planItems: strict per-sheet item list. Defined early so all handlers can use it.
   // IMPORTANT: items with null plan_id are excluded — they have no valid page association.
   const planItems=items.filter(i=>i.plan_id!=null && i.plan_id===selPlan?.id);
@@ -2110,9 +2122,12 @@ Return ONLY a valid JSON array, no markdown:
             const realPts = dp.filter(p=>!p._ctrl);
             const mx=realPts.reduce((s,p)=>s+p.x,0)/realPts.length;
             const my=realPts.reduce((s,p)=>s+p.y,0)/realPts.length;
-            const dist = hasArcs
+            const linDist = hasArcs
               ? Math.round((calcShapeLength(dp)/scale)*10)/10
               : (()=>{ let t=0; for(let i=1;i<dp.length;i++) t+=calcLinear(dp[i-1],dp[i]); return Math.round(t*10)/10; })();
+            const itemH = it.wall_height || it.height || 0;
+            const dist = (itemH > 0 && scale) ? Math.round(linDist*itemH*10)/10 : linDist;
+            const distUnit = (itemH > 0 && scale) ? 'SF' : (scale ? 'LF' : 'px');
             const lw=36/zoom, lh=padH*1.5;
             const strokeColor = isEraserTarget ? '#C0504D' : c;
             const strokeW = isEraserTarget ? sw*2.5 : sw*1.2;
@@ -2122,7 +2137,7 @@ Return ONLY a valid JSON array, no markdown:
               {realPts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={r*0.8} fill={strokeColor} stroke="#fff" strokeWidth={sw*0.4}/>)}
               {hasArcs&&dp.filter(p=>p._ctrl).map((p,i)=><circle key={'ctrl'+i} cx={p.x} cy={p.y} r={r*0.5} fill={c} opacity={0.4}/>)}
               <rect x={mx-lw/2} y={my-lh*1.6} width={lw} height={lh} rx={2/zoom} fill="rgba(0,0,0,0.65)"/>
-              <text x={mx} y={my-lh*0.7} fontSize={fs*0.9} fill={isActive?'#E8A317':'#ddd'} textAnchor="middle" fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>{dist} {scale?'LF':'px'}</text>
+              <text x={mx} y={my-lh*0.7} fontSize={fs*0.9} fill={isActive?'#E8A317':'#ddd'} textAnchor="middle" fontFamily="monospace" fontWeight={600} style={{pointerEvents:'none'}}>{dist} {distUnit}</text>
               {vertexHandles}
               {midpointHandles}
             </g>);
@@ -2383,8 +2398,10 @@ Return ONLY a valid JSON array, no markdown:
           const my = realPts.reduce((s,p)=>s+p.y,0)/realPts.length;
           // Per-shape length from geometry
           let pxLen=0; for(let i=1;i<realPts.length;i++) pxLen+=Math.sqrt((realPts[i].x-realPts[i-1].x)**2+(realPts[i].y-realPts[i-1].y)**2);
-          const shapeQty = planScale ? Math.round((pxLen/planScale)*10)/10 : Math.round(pxLen*10)/10;
-          const shapeUnit = planScale ? (it.unit||'LF') : 'px';
+          const h = it.wall_height || it.height || 0;
+          let shapeQty = planScale ? Math.round((pxLen/planScale)*10)/10 : Math.round(pxLen*10)/10;
+          let shapeUnit = planScale ? (it.unit||'LF') : 'px';
+          if(h > 0 && planScale){ shapeQty = Math.round(shapeQty*h*10)/10; shapeUnit = 'SF'; }
           const labelStr = `${shapeQty} ${shapeUnit}`;
           const fs = Math.max(10, W/80);
           ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(mx-fs*3,my-fs*2.4,fs*6,fs*1.6);
@@ -2689,9 +2706,8 @@ Return ONLY a valid JSON array, no markdown:
         }
 
         const fmtQty = (it) => {
-          const q = (it.quantity||0) * (it.multiplier||1);
+          const {qty:q, unit:u} = getDisplayQtyUnit(it);
           if(q<=0) return '—';
-          const u = it.unit||'';
           const uLabel = {SF:'Sq Ft',LF:'Ln Ft',EA:'EA',CY:'Cu Yd'}[u]||u;
           return `${q.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} ${uLabel}`;
         };
@@ -2747,7 +2763,7 @@ Return ONLY a valid JSON array, no markdown:
               </td>}
               {reportCols.description&&<td style={{...cellStyle,color:'#666',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis'}}>{it.notes||'—'}</td>}
               {reportCols.quantity&&<td style={{...cellStyle,textAlign:'right',fontWeight:500}}>{fmtQty(it)}</td>}
-              {reportCols.unit&&<td style={{...cellStyle,textAlign:'center',color:'#666'}}>{it.unit||'—'}</td>}
+              {reportCols.unit&&<td style={{...cellStyle,textAlign:'center',color:'#666'}}>{getDisplayQtyUnit(it).unit||'—'}</td>}
               {reportCols.scale&&<td style={{...cellStyle,color:'#666',fontSize:12}}>{planScale?scaleLabel(planScale,''):'—'}</td>}
               {reportCols.location&&<td style={{...cellStyle,color:'#999'}}>—</td>}
               {reportCols.revision&&<td style={{...cellStyle,color:'#999'}}>—</td>}
@@ -3491,7 +3507,7 @@ Return ONLY a valid JSON array, no markdown:
                               if(item.points[0]?.x!=null) return [item.points];
                               return item.points;
                             })();
-                            const qty = (item.quantity||0) * (item.multiplier||1);
+                            const {qty, unit:displayUnit} = getDisplayQtyUnit(item);
                             const itemColor = item.color||cat.color;
                             const typeIcon = {area:'⬟',linear:'╱',count:'✓'}[item.measurement_type]||'✎';
                             const planName = planMap.get(item.plan_id)?.name||'';
@@ -3529,7 +3545,7 @@ Return ONLY a valid JSON array, no markdown:
                                 <div style={{width:68,textAlign:'right',flexShrink:0}}>
                                   <span style={{fontSize:10,fontVariantNumeric:'tabular-nums',
                                     color:qty>0?t.text:t.text4,fontWeight:qty>0?600:400}}>
-                                    {qty>0?`${Math.round(qty*10)/10} ${item.unit}`:'—'}
+                                    {qty>0?`${Math.round(qty*10)/10} ${displayUnit}`:'—'}
                                   </span>
                                 </div>
                                 {/* ✎ edit item */}
@@ -4910,8 +4926,8 @@ Return ONLY a valid JSON array, no markdown:
                               </div>
                             </td>
                             <td style={{...editCell,fontSize:11,color:'#666'}}>{cat.label}</td>
-                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{((it.quantity||0)*(it.multiplier||1)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                            <td style={{...editCell,textAlign:'center',color:'#666'}}>{it.unit||'—'}</td>
+                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{getDisplayQtyUnit(it).qty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                            <td style={{...editCell,textAlign:'center',color:'#666'}}>{getDisplayQtyUnit(it).unit||'—'}</td>
                             <td style={editCell}>
                               <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)}
                                 onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}}
