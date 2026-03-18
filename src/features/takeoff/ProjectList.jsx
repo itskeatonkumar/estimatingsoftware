@@ -36,28 +36,12 @@ function ProjectList({ onSelectProject, user }) {
         setProjects(data || []);
         setLoading(false);
       });
-    // Fetch org members for team assignment dropdown
-    (async () => {
-      let orgId = null;
-      const { data: rpcOrgId, error: rpcErr } = await supabase.rpc('get_my_org_id');
-      if (!rpcErr && rpcOrgId) {
-        orgId = rpcOrgId;
-      } else {
-        const { data: orgs } = await supabase.from('organizations').select('id').limit(1).single();
-        orgId = orgs?.id;
-      }
-      if (!orgId) return;
-      const { data: members, error: memErr } = await supabase.rpc('get_org_members', { p_org_id: orgId });
-      if (!memErr && members?.length) {
-        setOrgMembers(members);
-      } else {
-        const { data: mems } = await supabase.from('memberships').select('user_id, role').eq('org_id', orgId);
-        if (mems?.length) {
-          const { data: { user: me } } = await supabase.auth.getUser();
-          setOrgMembers(mems.map(m => ({ user_id: m.user_id, email: m.user_id === me?.id ? me.email : m.user_id, role: m.role })));
-        }
-      }
-    })();
+    // Fetch team members from profiles table
+    supabase.from('profiles').select('id, email, full_name')
+      .then(({ data, error }) => {
+        if (error) console.error('[profiles] load error:', error);
+        if (data?.length) setOrgMembers(data.map(p => ({ user_id: p.id, email: p.email, name: p.full_name })));
+      });
   }, []);
 
   const handleSave = async (data, type) => {
@@ -193,7 +177,7 @@ function ProjectList({ onSelectProject, user }) {
             }}>
             <option value="all">All estimators</option>
             <option value="unassigned">Unassigned</option>
-            {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.email}</option>)}
+            {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.name || m.email}</option>)}
           </select>
         </div>
       </div>
@@ -290,7 +274,7 @@ function ProjectList({ onSelectProject, user }) {
                         cursor: 'pointer',
                       }}>
                       <option value="">Unassigned</option>
-                      {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.email}</option>)}
+                      {orgMembers.map(m => <option key={m.user_id} value={m.email}>{m.name || m.email}</option>)}
                     </select>
                   </div>
                 </div>
