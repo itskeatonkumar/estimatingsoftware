@@ -526,9 +526,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           setArcPending(true);
           setArchMode(false);
         } else if(cond?.measurement_type==='area'){
-          // Legacy arch toggle for area shapes
+          // Toggle arch mode for area — keep existing points, just change how next click is interpreted
           setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});
-          setActivePts([]);
         }
       }
 
@@ -4421,7 +4420,7 @@ Return ONLY a valid JSON array, no markdown:
             return(
               <>
                 <div style={{height:1,background:t.border,width:32,margin:'4px 0'}}/>
-                <button onClick={()=>{setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});setActivePts([]);}}
+                <button onClick={()=>{setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});}}
                   title="Arc curves for area [A]"
                   style={{width:'100%',padding:'10px 0',border:'none',
                     background:archMode?'#7B6BA418':'none',color:archMode?'#7B6BA4':t.text3,cursor:'pointer',
