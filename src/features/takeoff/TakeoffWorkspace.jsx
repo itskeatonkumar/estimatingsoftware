@@ -4386,448 +4386,367 @@ Return ONLY a valid JSON array, no markdown:
 
       {/* ── Full-screen Estimate Page ── */}
       {rightTab==='estimate'&&(()=>{
+        const allItems = items.filter(i=>i.plan_id!=null);
         const allCatGroups=TAKEOFF_CATS.map(cat=>{
-          const its=items.filter(i=>i.plan_id!=null&&i.category===cat.id);
+          const its=allItems.filter(i=>i.category===cat.id);
           return its.length?{...cat,items:its,subtotal:its.reduce((s,i)=>s+(i.total_cost||0),0)}:null;
         }).filter(Boolean);
-        const sheetTotal=planItems.reduce((s,i)=>s+(i.total_cost||0),0);
-        const markup = 1.0; // future: user-adjustable
         const GC_OVERHEAD = overheadPct/100, PROFIT = profitPct/100;
+        const extendedCost = allItems.reduce((s,i)=>s+(i.total_cost||0),0);
+        const sellingPrice = Math.round(extendedCost*(1+GC_OVERHEAD+PROFIT));
+        const netProfit = sellingPrice - extendedCost;
+        const netProfitPct = sellingPrice>0 ? (netProfit/sellingPrice*100) : 0;
+        const totalSF = allItems.filter(i=>i.unit==='SF').reduce((s,i)=>s+(i.quantity||0),0);
+        const pricePerSF = totalSF>0 ? sellingPrice/totalSF : 0;
+        const profitPerSF = totalSF>0 ? netProfit/totalSF : 0;
 
-        // Group items by sheet for the sheet breakdown table
         const sheetBreakdown = plans.map(p=>{
-          const pItems = items.filter(i=>i.plan_id===p.id);
+          const pItems = allItems.filter(i=>i.plan_id===p.id);
           const total = pItems.reduce((s,i)=>s+(i.total_cost||0),0);
           return {plan:p, items:pItems, total};
         }).filter(x=>x.items.length>0);
 
+        const doProposalExport = () => {
+          const header = ['Category','Description','Qty','Unit','Unit Cost','Extended Cost','Markup %','Total'].join(',');
+          const rows = allItems.map(it=>{
+            const mkp = it.markup_pct!=null ? it.markup_pct : (GC_OVERHEAD+PROFIT)*100;
+            const ext = (it.quantity||0)*(it.unit_cost||0);
+            const tot = ext*(1+mkp/100);
+            return [
+              `"${TAKEOFF_CATS.find(c=>c.id===it.category)?.label||''}"`,
+              `"${(it.description||'').replace(/"/g,'""')}"`,
+              it.quantity||0, it.unit||'',
+              (it.unit_cost||0).toFixed(2), ext.toFixed(2),
+              mkp.toFixed(1), tot.toFixed(2)
+            ].join(',');
+          });
+          rows.push('');
+          rows.push(`,,,,,"Extended Cost",,${extendedCost.toFixed(2)}`);
+          rows.push(`,,,,,"Overhead (${overheadPct}%)",,${Math.round(extendedCost*GC_OVERHEAD)}`);
+          rows.push(`,,,,,"Profit (${profitPct}%)",,${Math.round(extendedCost*PROFIT)}`);
+          rows.push(`,,,,,"Selling Price",,${sellingPrice}`);
+          const csv = [header,...rows].join('\n');
+          const blob = new Blob([csv],{type:'text/csv'});
+          const a = document.createElement('a');
+          a.href=URL.createObjectURL(blob);
+          a.download=`${project.name}_proposal.csv`;
+          a.click();
+        };
+
+        const saveItemField = async (itemId, field, val) => {
+          const numVal = ['quantity','unit_cost','markup_pct','waste_pct'].includes(field) ? (parseFloat(val)||0) : val;
+          const it = items.find(i=>i.id===itemId);
+          if(!it) return;
+          const patch = {[field]: numVal};
+          if(field==='quantity'||field==='unit_cost'||field==='waste_pct'){
+            const qty = field==='quantity' ? numVal : (it.quantity||0);
+            const waste = field==='waste_pct' ? numVal : (it.waste_pct||0);
+            const uc = field==='unit_cost' ? numVal : (it.unit_cost||0);
+            const effectiveQty = qty * (1 + waste/100);
+            patch.total_cost = effectiveQty * uc;
+          }
+          setEstSaving(itemId);
+          await supabase.from('takeoff_items').update(patch).eq('id', itemId);
+          setItems(prev=>prev.map(i=>i.id===itemId?{...i,...patch}:i));
+          setEstSaving(null);
+        };
+
         return(
-        <div style={{position:'absolute',inset:0,background:t.bg,zIndex:100,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div style={{position:'absolute',inset:0,background:'#fff',zIndex:100,display:'flex',flexDirection:'column',overflow:'hidden'}}>
 
-          {/* Header row 1: project info + key metrics */}
-          <div style={{display:'flex',alignItems:'center',gap:12,padding:'0 20px',height:48,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0}}>
+          {/* ── Header Bar ── */}
+          <div style={{display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:52,borderBottom:'1px solid #E0E0E0',background:'#fff',flexShrink:0}}>
             <button onClick={()=>{setRightTab('items');setMainView('workspace');}}
-              style={{background:'none',border:`1px solid ${t.border2}`,color:t.text3,padding:'5px 12px',borderRadius:5,cursor:'pointer',fontSize:11,display:'flex',alignItems:'center',gap:5}}>
-              ← Back
+              style={{background:'none',border:'none',color:'#666',padding:'4px 8px',cursor:'pointer',fontSize:18,lineHeight:1}}>
+              &#8249;
             </button>
-            <div style={{width:1,height:20,background:t.border}}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:700,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</div>
+              <div style={{fontSize:15,fontWeight:500,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</div>
+              <div style={{fontSize:11,color:'#999',marginTop:1}}>Updated: {new Date().toLocaleString()}</div>
             </div>
-            {/* Key metrics — STACK style */}
-            <div style={{display:'flex',gap:16,alignItems:'center'}}>
-              <div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</div>
-                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>DIRECT COST</div>
+            {/* Three metric badges */}
+            <div style={{display:'flex',gap:12,alignItems:'center'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#FEF2F2',borderRadius:4,border:'1px solid #FECACA'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#C0504D'}}/>
+                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Extended Cost</div></div>
               </div>
-              {(GC_OVERHEAD+PROFIT)>0&&<div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#E8A317',fontVariantNumeric:'tabular-nums'}}>{Math.round((GC_OVERHEAD+PROFIT)*100)}%</div>
-                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>MARKUP</div>
-              </div>}
-              <div style={{textAlign:'center'}}>
-                <div style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</div>
-                <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>BID TOTAL</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#4CAF50'}}/>
+                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(2)}%</div><div style={{fontSize:9,color:'#999'}}>Net Profit</div></div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#4CAF50'}}/>
+                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Selling Price</div></div>
               </div>
             </div>
-          </div>
-
-          {/* Header row 2: sub-tabs + actions — STACK style */}
-          <div style={{display:'flex',alignItems:'stretch',height:38,borderBottom:`1px solid ${t.border}`,background:t.bg,flexShrink:0,padding:'0 20px',gap:0}}>
-            {[{id:'summary',label:'Summary'},{id:'worksheet',label:'Worksheet'}].map(tab=>(
-              <button key={tab.id} onClick={()=>setEstSubTab(tab.id)}
-                style={{padding:'0 16px',border:'none',background:'none',cursor:'pointer',
-                  fontSize:12,fontWeight:estSubTab===tab.id?700:500,
-                  color:estSubTab===tab.id?'#4CAF50':t.text3,
-                  borderBottom:estSubTab===tab.id?'2px solid #4CAF50':'2px solid transparent',
-                  boxSizing:'border-box',transition:'color 0.15s'}}>
-                {tab.label}
-              </button>
-            ))}
-            <div style={{flex:1}}/>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <button onClick={()=>{
-                // Download proposal as CSV
-                const header = ['Category','Description','Qty','Unit','Unit Cost','Total Cost'].join(',');
-                const rows = items.filter(i=>i.plan_id!=null).map(it=>[
-                  `"${TAKEOFF_CATS.find(c=>c.id===it.category)?.label||''}"`,
-                  `"${(it.description||'').replace(/"/g,'""')}"`,
-                  it.quantity||0, it.unit||'',
-                  it.unit_cost||0, it.total_cost||0
-                ].join(','));
-                rows.push('');
-                rows.push(`,,,,DIRECT COST,$${totalEst.toLocaleString()}`);
-                rows.push(`,,,,OVERHEAD (${overheadPct}%),$${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}`);
-                rows.push(`,,,,PROFIT (${profitPct}%),$${Math.round(totalEst*PROFIT).toLocaleString()}`);
-                rows.push(`,,,,BID TOTAL,$${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}`);
-                const csv = [header,...rows].join('\n');
-                const blob = new Blob([csv],{type:'text/csv'});
-                const a = document.createElement('a');
-                a.href=URL.createObjectURL(blob);
-                a.download=`${project.name}_estimate_proposal.csv`;
-                a.click();
-              }}
-                style={{background:'#5B9BD5',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:5}}>
-                ↓ Download Proposal
-              </button>
-              <button onClick={()=>setShowBidSummary(true)}
-                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
-                📋 Print Summary
-              </button>
-              {project.apm_project_id&&<button onClick={pushToSOV}
-                style={{background:'#7B6BA4',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700}}>
-                ⇒ Push to SOV
-              </button>}
+            {/* Summary/Worksheet toggle + Download */}
+            <div style={{display:'flex',gap:0,border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+              {[{id:'summary',label:'Summary'},{id:'worksheet',label:'Worksheet'}].map(tab=>(
+                <button key={tab.id} onClick={()=>setEstSubTab(tab.id)}
+                  style={{padding:'6px 16px',border:'none',cursor:'pointer',fontSize:12,fontWeight:500,
+                    background:estSubTab===tab.id?'#4CAF50':'#fff',
+                    color:estSubTab===tab.id?'#fff':'#666'}}>
+                  {tab.label}
+                </button>
+              ))}
             </div>
+            <button onClick={doProposalExport}
+              style={{background:'#fff',border:'1px solid #E0E0E0',color:'#333',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
+              &#8595; Download Proposal
+            </button>
           </div>
 
           {/* ── SUMMARY SUB-TAB ── */}
           {estSubTab==='summary'&&(
-            <div style={{flex:1,overflowY:'auto'}}>
-              <div style={{maxWidth:860,margin:'0 auto',padding:'28px 32px'}}>
-
-                {/* Two-column: left=pricing, right=project info */}
-                <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:24,marginBottom:24}}>
-
-                  {/* Pricing card */}
-                  <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-                    <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3}}>
-                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums'}}>PRICING</span>
-                    </div>
-                    <div style={{padding:'16px 20px'}}>
-                      {/* Direct cost */}
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
-                        <span style={{fontSize:13,color:t.text}}>Direct Cost</span>
-                        <span style={{fontSize:15,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
-                      </div>
-                      {/* Overhead — editable */}
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <span style={{fontSize:13,color:t.text}}>Overhead</span>
-                          <div style={{display:'flex',alignItems:'center',gap:2,background:t.bg3,borderRadius:4,border:`1px solid ${t.border}`,padding:'2px 4px'}}>
-                            <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
-                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
-                            <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums'}}>%</span>
-                          </div>
-                        </div>
-                        <span style={{fontSize:13,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
-                      </div>
-                      {/* Profit — editable */}
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${t.border}`}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <span style={{fontSize:13,color:t.text}}>Profit</span>
-                          <div style={{display:'flex',alignItems:'center',gap:2,background:t.bg3,borderRadius:4,border:`1px solid ${t.border}`,padding:'2px 4px'}}>
-                            <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
-                              style={{width:40,background:'none',border:'none',color:t.text,fontSize:12,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
-                            <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums'}}>%</span>
-                          </div>
-                        </div>
-                        <span style={{fontSize:13,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
-                      </div>
-                      {/* Bid total */}
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 0',marginTop:4}}>
-                        <span style={{fontSize:14,fontWeight:800,color:t.text}}>Bid Total</span>
-                        <span style={{fontSize:20,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
-                      </div>
-                    </div>
+            <div style={{flex:1,overflowY:'auto',background:'#f5f5f5',padding:24}}>
+              {/* Top row: Summary By SF + Details By SF */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20,maxWidth:1100}}>
+                {/* Summary By Square Foot */}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+                  <div style={{padding:'14px 20px',borderBottom:'1px solid #E0E0E0',display:'flex',alignItems:'center'}}>
+                    <span style={{fontSize:14,fontWeight:600,color:'#333',flex:1}}>Summary By Square Foot</span>
                   </div>
-
-                  {/* Project info card */}
-                  <div style={{display:'flex',flexDirection:'column',gap:16}}>
-                    <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-                      <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3}}>
-                        <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums'}}>PROJECT</span>
-                      </div>
-                      <div style={{padding:'16px 20px'}}>
-                        <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:8}}>{project.name}</div>
-                        {project.gc_name&&<div style={{fontSize:12,color:t.text3,marginBottom:3}}>{project.gc_name}</div>}
-                        {project.address&&<div style={{fontSize:12,color:t.text3,marginBottom:3}}>{project.address}</div>}
-                        {project.bid_date&&<div style={{fontSize:12,color:t.text3}}>Bid: {fmtDate(project.bid_date)}</div>}
-                      </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:0}}>
+                    <div style={{padding:'16px 20px',borderRight:'1px solid #E0E0E0',textAlign:'center'}}>
+                      <div style={{fontSize:24,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>{totalSF>0?Math.round(totalSF).toLocaleString():'—'}</div>
+                      <div style={{fontSize:10,color:'#999',marginTop:2}}>SQ FT</div>
+                      <div style={{fontSize:11,color:'#666',marginTop:4}}>Project Size</div>
                     </div>
-                    {project.contract_value&&(
-                      <div style={{background:totalEst>(project.contract_value||0)?'rgba(239,68,68,0.04)':'rgba(16,185,129,0.04)',borderRadius:8,border:`1px solid ${totalEst>(project.contract_value||0)?'rgba(239,68,68,0.2)':'rgba(16,185,129,0.2)'}`,padding:'16px 20px'}}>
-                        <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:6}}>CONTRACT</div>
-                        <div style={{fontSize:16,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums',marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:totalEst>(project.contract_value||0)?'#C0504D':'#4CAF50',fontVariantNumeric:'tabular-nums'}}>
-                          {totalEst>(project.contract_value||0)?'▲ Over':'▼ Under'} by ${Math.abs(totalEst-(project.contract_value||0)).toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-                    <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,padding:'14px 20px'}}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                        <span style={{fontSize:11,color:t.text4}}>Items</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{items.length}</span>
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                        <span style={{fontSize:11,color:t.text4}}>Sheets</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{plans.length}</span>
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between'}}>
-                        <span style={{fontSize:11,color:t.text4}}>Categories</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums'}}>{allCatGroups.length}</span>
-                      </div>
+                    <div style={{padding:'16px 20px',borderRight:'1px solid #E0E0E0',textAlign:'center',background:'#E8F5E9'}}>
+                      <div style={{fontSize:24,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${pricePerSF.toFixed(2)}</div>
+                      <div style={{fontSize:10,color:'#999',marginTop:2}}>/SQ FT</div>
+                      <div style={{fontSize:11,color:'#4CAF50',marginTop:4}}>Selling Price</div>
+                    </div>
+                    <div style={{padding:'16px 20px',textAlign:'center',background:'#E8F5E9'}}>
+                      <div style={{fontSize:24,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${profitPerSF.toFixed(2)}</div>
+                      <div style={{fontSize:10,color:'#999',marginTop:2}}>/SQ FT</div>
+                      <div style={{fontSize:11,color:'#4CAF50',marginTop:4}}>Net Profit</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Category breakdown table */}
-                <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden',marginBottom:24}}>
-                  <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3,display:'flex',alignItems:'center'}}>
-                    <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums',flex:1}}>BY CATEGORY</span>
-                    <span style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{allCatGroups.length} categories</span>
+                {/* Project Markups */}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+                  <div style={{padding:'14px 20px',borderBottom:'1px solid #E0E0E0'}}>
+                    <span style={{fontSize:14,fontWeight:600,color:'#333'}}>Project Markups</span>
+                  </div>
+                  <table style={{width:'100%',borderCollapse:'collapse'}}>
+                    <thead><tr style={{background:'#f5f5f5'}}>
+                      <th style={{textAlign:'left',padding:'8px 14px',fontSize:11,fontWeight:600,color:'#666'}}>Item</th>
+                      <th style={{textAlign:'right',padding:'8px 14px',fontSize:11,fontWeight:600,color:'#666'}}>Extended Cost</th>
+                      <th style={{textAlign:'right',padding:'8px 14px',fontSize:11,fontWeight:600,color:'#666'}}>Markup</th>
+                      <th style={{textAlign:'right',padding:'8px 14px',fontSize:11,fontWeight:600,color:'#666'}}>Selling Price</th>
+                    </tr></thead>
+                    <tbody>
+                      <tr style={{borderBottom:'1px solid #E0E0E0'}}>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333'}}>Direct Cost</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>—</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                      </tr>
+                      <tr style={{borderBottom:'1px solid #E0E0E0'}}>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',display:'flex',alignItems:'center',gap:6}}>
+                          Overhead
+                          <div style={{display:'inline-flex',alignItems:'center',background:'#f5f5f5',borderRadius:3,border:'1px solid #E0E0E0',padding:'1px 4px'}}>
+                            <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
+                              style={{width:36,background:'none',border:'none',color:'#333',fontSize:11,textAlign:'right',outline:'none',padding:0}}/>
+                            <span style={{fontSize:10,color:'#999'}}>%</span>
+                          </div>
+                        </td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#666',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#E8A317',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*GC_OVERHEAD).toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*(1+GC_OVERHEAD)).toLocaleString()}</td>
+                      </tr>
+                      <tr style={{borderBottom:'1px solid #E0E0E0'}}>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',display:'flex',alignItems:'center',gap:6}}>
+                          Profit
+                          <div style={{display:'inline-flex',alignItems:'center',background:'#f5f5f5',borderRadius:3,border:'1px solid #E0E0E0',padding:'1px 4px'}}>
+                            <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
+                              style={{width:36,background:'none',border:'none',color:'#333',fontSize:11,textAlign:'right',outline:'none',padding:0}}/>
+                            <span style={{fontSize:10,color:'#999'}}>%</span>
+                          </div>
+                        </td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#666',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#4CAF50',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*PROFIT).toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*(1+PROFIT)).toLocaleString()}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot><tr style={{background:'#f5f5f5'}}>
+                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#333'}}>Total</td>
+                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#E8A317',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${(sellingPrice-extendedCost).toLocaleString()}</td>
+                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#4CAF50',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
+                    </tr></tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* Bottom row: Category + Sheet breakdowns */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,maxWidth:1100}}>
+                {/* By Category */}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+                  <div style={{padding:'14px 20px',borderBottom:'1px solid #E0E0E0'}}>
+                    <span style={{fontSize:14,fontWeight:600,color:'#333'}}>By Category</span>
                   </div>
                   {allCatGroups.map(cg=>(
-                    <div key={cg.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:`1px solid ${t.border}`}}>
+                    <div key={cg.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:'1px solid #f0f0f0'}}>
                       <div style={{width:10,height:10,borderRadius:2,background:cg.color,flexShrink:0,marginRight:12}}/>
-                      <span style={{flex:1,fontSize:12,fontWeight:500,color:t.text}}>{cg.label}</span>
-                      <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums',width:60,textAlign:'right'}}>{cg.items.length}</span>
-                      <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums',width:100,textAlign:'right'}}>${Math.round(cg.subtotal).toLocaleString()}</span>
+                      <span style={{flex:1,fontSize:13,color:'#333'}}>{cg.label}</span>
+                      <span style={{fontSize:12,color:'#999',fontVariantNumeric:'tabular-nums',marginRight:16}}>{cg.items.length} items</span>
+                      <span style={{fontSize:13,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${Math.round(cg.subtotal).toLocaleString()}</span>
                     </div>
                   ))}
-                  <div style={{display:'flex',alignItems:'center',padding:'12px 20px',background:t.bg3}}>
-                    <span style={{flex:1,fontSize:12,fontWeight:700,color:t.text}}>Total</span>
-                    <span style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
+                  <div style={{display:'flex',alignItems:'center',padding:'12px 20px',background:'#f5f5f5'}}>
+                    <span style={{flex:1,fontSize:13,fontWeight:700,color:'#333'}}>Total</span>
+                    <span style={{fontSize:14,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</span>
                   </div>
                 </div>
 
-                {/* Sheet breakdown table */}
-                {sheetBreakdown.length>0&&(
-                  <div style={{background:t.bg2,borderRadius:8,border:`1px solid ${t.border}`,overflow:'hidden'}}>
-                    <div style={{padding:'14px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg3,display:'flex',alignItems:'center'}}>
-                      <span style={{fontSize:11,fontWeight:700,color:t.text4,letterSpacing:1,fontVariantNumeric:'tabular-nums',flex:1}}>BY SHEET</span>
-                      <span style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{sheetBreakdown.length} sheets</span>
-                    </div>
-                    {sheetBreakdown.map(({plan:p,items:pItems,total:pTotal})=>(
-                      <div key={p.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:`1px solid ${t.border}`,cursor:'pointer'}}
-                        onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setEstSubTab('worksheet');}}
-                        onMouseEnter={e=>e.currentTarget.style.background=t.bg3}
-                        onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                        <span style={{flex:1,fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</span>
-                        <span style={{fontSize:11,color:t.text4,fontVariantNumeric:'tabular-nums',width:60,textAlign:'right'}}>{pItems.length}</span>
-                        <span style={{fontSize:12,fontWeight:600,color:t.text,fontVariantNumeric:'tabular-nums',width:100,textAlign:'right'}}>${Math.round(pTotal).toLocaleString()}</span>
-                      </div>
-                    ))}
+                {/* By Sheet */}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+                  <div style={{padding:'14px 20px',borderBottom:'1px solid #E0E0E0'}}>
+                    <span style={{fontSize:14,fontWeight:600,color:'#333'}}>By Sheet</span>
                   </div>
-                )}
+                  {sheetBreakdown.map(({plan:p,items:pItems,total:pTotal})=>(
+                    <div key={p.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:'1px solid #f0f0f0',cursor:'pointer'}}
+                      onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+                      onMouseLeave={e=>e.currentTarget.style.background='#fff'}
+                      onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setEstSubTab('worksheet');}}>
+                      <span style={{flex:1,fontSize:13,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</span>
+                      <span style={{fontSize:12,color:'#999',fontVariantNumeric:'tabular-nums',marginRight:16}}>{pItems.length} items</span>
+                      <span style={{fontSize:13,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${Math.round(pTotal).toLocaleString()}</span>
+                    </div>
+                  ))}
+                  {sheetBreakdown.length===0&&<div style={{padding:'20px',color:'#999',fontSize:12,textAlign:'center'}}>No sheets with items</div>}
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── WORKSHEET SUB-TAB (existing editable grid) ── */}
+          {/* ── WORKSHEET SUB-TAB ── */}
           {estSubTab==='worksheet'&&(
-          <div style={{flex:1,overflow:'hidden',display:'flex',gap:0}}>
-
-            {/* Left — Spreadsheet-style editable estimate */}
-            <div style={{flex:1,overflowY:'auto',borderRight:`1px solid ${t.border}`,display:'flex',flexDirection:'column'}}>
-
-              {/* Column headers */}
-              <div style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',padding:'6px 8px',background:t.bg2,borderBottom:`2px solid ${t.border}`,position:'sticky',top:0,zIndex:2,flexShrink:0}}>
-                <span/>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8}}>DESCRIPTION</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>QTY</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'center',letterSpacing:0.8}}>UNIT</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>UNIT COST</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>CATEGORY</span>
-                <span style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',letterSpacing:0.8}}>TOTAL</span>
-                <span/>
-              </div>
-
-              {allCatGroups.length===0&&(
-                <div style={{textAlign:'center',padding:'60px 0',color:t.text4,fontSize:13,fontVariantNumeric:'tabular-nums',flex:1}}>
-                  No takeoff items yet
-                </div>
-              )}
-
-              {/* Rows — one per item, spreadsheet style */}
-              {allCatGroups.map(cat=>{
-                const pct=totalEst>0?Math.round(cat.subtotal/totalEst*100):0;
-                return(
-                  <div key={cat.id}>
-                    {/* Category group header */}
-                    <div style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',padding:'5px 8px',background:`${cat.color}10`,borderLeft:`3px solid ${cat.color}`,borderBottom:`1px solid ${cat.color}25`}}>
-                      <span style={{fontSize:9,color:cat.color}}>{pct}%</span>
-                      <span style={{fontSize:10,fontWeight:800,color:cat.color,letterSpacing:0.5}}>{cat.label.toUpperCase()}</span>
-                      <span/><span/><span/>
-                      <span/>
-                      <span style={{fontSize:11,fontWeight:800,color:cat.color,fontVariantNumeric:'tabular-nums',textAlign:'right'}}>${cat.subtotal.toLocaleString()}</span>
-                      <span/>
-                    </div>
-
-                    {cat.items.map((it,rowIdx)=>{
-                      const cellKey = `${it.id}`;
-                      const isSaving = estSaving===it.id;
-                      // Shared cell style
-                      const cellBase = {
-                        background:'transparent',border:'none',outline:'none',
-                        width:'100%',fontVariantNumeric:'tabular-nums',
-                        fontSize:11,color:t.text,padding:'2px 4px',
-                      };
-                      const saveField = async (field, val) => {
-                        const numVal = ['quantity','unit_cost'].includes(field) ? (parseFloat(val)||0) : val;
-                        const patch = {[field]: numVal};
-                        if(field==='quantity'||field==='unit_cost'||field==='multiplier'){
-                          const qty = field==='quantity' ? numVal : (it.quantity||0);
-                          const uc  = field==='unit_cost' ? numVal : (it.unit_cost||0);
-                          const mul = field==='multiplier' ? numVal : (it.multiplier||1);
-                          patch.total_cost = qty * mul * uc;
-                        }
-                        setEstSaving(it.id);
-                        await supabase.from('takeoff_items').update(patch).eq('id',it.id);
-                        setItems(prev=>prev.map(i=>i.id===it.id?{...i,...patch}:i));
-                        setEstSaving(null);
-                      };
-                      const typeIcon = {area:'⬡',linear:'━',count:'✕',manual:'✎'}[it.measurement_type]||'✎';
-                      return(
-                        <div key={it.id}
-                          style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',
-                            padding:'0 8px',minHeight:34,
-                            borderBottom:`1px solid ${t.border}`,
-                            background:estHover===it.id?`${cat.color}08`:'transparent',
-                            transition:'background 0.1s'}}
-                          onMouseEnter={()=>setEstHover(it.id)}
-                          onMouseLeave={()=>setEstHover(null)}>
-
-                          {/* Type icon */}
-                          <span style={{fontSize:9,color:cat.color,textAlign:'center'}}>{typeIcon}</span>
-
-                          {/* Description — editable */}
-                          <input
-                            defaultValue={it.description||''}
-                            onBlur={e=>{ if(e.target.value!==it.description) saveField('description',e.target.value); }}
-                            onKeyDown={e=>{ if(e.key==='Enter'||e.key==='Tab') e.target.blur(); }}
-                            style={{...cellBase,cursor:'text'}}
-                            title="Click to edit description"
-                          />
-
-                          {/* Qty — editable, right-align */}
-                          <input type="number"
-                            defaultValue={it.quantity||0}
-                            onBlur={e=>{ if(parseFloat(e.target.value)!==(it.quantity||0)) saveField('quantity',e.target.value); }}
-                            onKeyDown={e=>{ if(e.key==='Enter'||e.key==='Tab') e.target.blur(); }}
-                            style={{...cellBase,textAlign:'right',cursor:'text',color:it.quantity>0?t.text:t.text4}}
-                            title="Click to edit quantity"
-                          />
-
-                          {/* Unit — select */}
-                          <select
-                            defaultValue={it.unit||'SF'}
-                            onChange={e=>saveField('unit',e.target.value)}
-                            style={{...cellBase,textAlign:'center',cursor:'pointer',background:t.bg3,border:`1px solid ${t.border}`,borderRadius:3,padding:'2px'}}>
-                            {['SF','LF','CY','EA','LS','TN','LB','HR'].map(u=><option key={u} value={u}>{u}</option>)}
-                          </select>
-
-                          {/* Unit cost — editable */}
-                          <input type="number" step="0.01"
-                            defaultValue={(it.unit_cost||0).toFixed(2)}
-                            onBlur={e=>{ if(parseFloat(e.target.value)!==(it.unit_cost||0)) saveField('unit_cost',e.target.value); }}
-                            onKeyDown={e=>{ if(e.key==='Enter'||e.key==='Tab') e.target.blur(); }}
-                            style={{...cellBase,textAlign:'right',cursor:'text'}}
-                            title="Click to edit unit cost"
-                          />
-
-                          {/* Category — select */}
-                          <select
-                            defaultValue={it.category||'other'}
-                            onChange={e=>saveField('category',e.target.value)}
-                            style={{...cellBase,cursor:'pointer',background:t.bg3,border:`1px solid ${t.border}`,borderRadius:3,padding:'2px',fontSize:9}}>
-                            {TAKEOFF_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
-                          </select>
-
-                          {/* Total — computed, not editable */}
-                          <span style={{fontSize:11,fontWeight:700,color:it.total_cost>0?'#4CAF50':t.text4,fontVariantNumeric:'tabular-nums',textAlign:'right',paddingRight:4}}>
-                            {isSaving?'…':'$'+(it.total_cost||0).toLocaleString()}
-                          </span>
-
-                          {/* Delete */}
-                          <button onClick={async()=>{
-                            if(!window.confirm('Delete '+it.description+'?')) return;
-                            const {error}=await supabase.from('takeoff_items').delete().eq('id',it.id).select();
-                            if(error){console.error('item delete error:',error);alert('Delete failed: '+error.message);return;}
-                            setItems(prev=>prev.filter(i=>i.id!==it.id));
-                          }} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',fontSize:11,opacity:estHover===it.id?0.6:0,transition:'opacity 0.1s',padding:0,textAlign:'center'}}>✕</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-
-              {/* Footer total row */}
-              {allCatGroups.length>0&&(
-                <div style={{display:'grid',gridTemplateColumns:'28px 1fr 80px 56px 90px 90px 90px 28px',alignItems:'center',padding:'8px 8px',borderTop:`2px solid ${t.border2}`,background:t.bg2,position:'sticky',bottom:0,flexShrink:0}}>
-                  <span/><span style={{fontSize:10,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>TOTAL DIRECT COST</span>
-                  <span/><span/><span/><span/>
-                  <span style={{fontSize:14,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums',textAlign:'right'}}>${totalEst.toLocaleString()}</span>
-                  <span/>
-                </div>
-              )}
+          <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            {/* Worksheet table */}
+            <div style={{flex:1,overflowY:'auto',overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:1000}}>
+                <thead style={{position:'sticky',top:0,zIndex:2}}>
+                  <tr>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 8px',textAlign:'center',width:36}}>#</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'left'}}>Description</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'left',width:80}}>Category</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:90}}>Takeoff Qty</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'center',width:50}}>Unit</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:80}}>Unit Cost</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:100}}>Extended Cost</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:80}}>Markup %</th>
+                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:100}}>Total</th>
+                    <th style={{background:'#4CAF50',width:32}}/>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allCatGroups.map(cat=>(
+                    <React.Fragment key={cat.id}>
+                      <tr><td colSpan={10} style={{background:`${cat.color}10`,padding:'8px 12px',fontSize:12,fontWeight:700,color:cat.color,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${cat.color}`}}>
+                        {cat.label} — ${Math.round(cat.subtotal).toLocaleString()}
+                      </td></tr>
+                      {cat.items.map((it,idx)=>{
+                        const extCost = (it.quantity||0)*(it.unit_cost||0);
+                        const mkp = it.markup_pct!=null ? it.markup_pct : Math.round((GC_OVERHEAD+PROFIT)*100*10)/10;
+                        const total = extCost*(1+mkp/100);
+                        const isSaving = estSaving===it.id;
+                        const editCell = {fontSize:13,color:'#333',padding:'8px 12px',borderBottom:'1px solid #E0E0E0',verticalAlign:'middle'};
+                        const editInput = {background:'transparent',border:'none',outline:'none',width:'100%',fontSize:13,color:'#333',padding:0};
+                        return(
+                          <tr key={it.id}
+                            onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+                            onMouseLeave={e=>e.currentTarget.style.background='#fff'}
+                            style={{background:'#fff'}}>
+                            <td style={{...editCell,textAlign:'center',color:'#999',fontSize:11}}>{idx+1}</td>
+                            <td style={editCell}>
+                              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                <div style={{width:8,height:8,borderRadius:2,background:it.color||cat.color,flexShrink:0}}/>
+                                <input defaultValue={it.description||''}
+                                  onBlur={e=>{if(e.target.value!==it.description)saveItemField(it.id,'description',e.target.value);}}
+                                  onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
+                                  style={{...editInput,cursor:'text'}}/>
+                              </div>
+                            </td>
+                            <td style={{...editCell,fontSize:11,color:'#666'}}>{cat.label}</td>
+                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{(it.quantity||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                            <td style={{...editCell,textAlign:'center',color:'#666'}}>{it.unit||'—'}</td>
+                            <td style={editCell}>
+                              <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)}
+                                onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}}
+                                onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
+                                onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'}
+                                onBlurCapture={e=>e.target.style.borderBottom='none'}
+                                style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
+                            </td>
+                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:500}}>${Math.round(extCost).toLocaleString()}</td>
+                            <td style={editCell}>
+                              <input type="number" step="0.1" defaultValue={mkp}
+                                onBlur={e=>{saveItemField(it.id,'markup_pct',e.target.value);}}
+                                onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
+                                onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'}
+                                onBlurCapture={e=>e.target.style.borderBottom='none'}
+                                style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
+                            </td>
+                            <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
+                            <td style={{...editCell,textAlign:'center'}}>
+                              <button onClick={async()=>{
+                                if(!window.confirm('Delete '+it.description+'?')) return;
+                                await supabase.from('takeoff_items').delete().eq('id',it.id).select();
+                                setItems(prev=>prev.filter(i=>i.id!==it.id));
+                              }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+                {allCatGroups.length>0&&(
+                  <tfoot>
+                    <tr style={{background:'#f5f5f5'}}>
+                      <td colSpan={6} style={{padding:'12px',fontSize:13,fontWeight:700,color:'#333'}}>TOTAL</td>
+                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                      <td style={{padding:'12px'}}/>
+                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
+                      <td/>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+              {allCatGroups.length===0&&<div style={{textAlign:'center',padding:60,color:'#999',fontSize:13}}>No takeoff items yet</div>}
             </div>
 
-            {/* Right — Summary panel */}
-            <div style={{width:300,flexShrink:0,overflowY:'auto',padding:'20px 20px',background:t.bg2}}>
-              <div style={{fontSize:10,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:1,marginBottom:14}}>SUMMARY</div>
-
-              {/* Totals card */}
-              <div style={{background:t.bg3,borderRadius:8,padding:'14px 16px',marginBottom:14,border:`1px solid ${t.border}`}}>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                  <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>DIRECT COST</span>
-                  <span style={{fontSize:13,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums'}}>${totalEst.toLocaleString()}</span>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>OVERHEAD</span>
-                    <div style={{display:'flex',alignItems:'center',background:t.bg,borderRadius:3,border:`1px solid ${t.border}`,padding:'1px 3px'}}>
-                      <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
-                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
-                      <span style={{fontSize:9,color:t.text4}}>%</span>
-                    </div>
-                  </div>
-                  <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*GC_OVERHEAD).toLocaleString()}</span>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${t.border}`}}>
-                  <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    <span style={{fontSize:10,color:t.text3,fontVariantNumeric:'tabular-nums'}}>PROFIT</span>
-                    <div style={{display:'flex',alignItems:'center',background:t.bg,borderRadius:3,border:`1px solid ${t.border}`,padding:'1px 3px'}}>
-                      <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
-                        style={{width:28,background:'none',border:'none',color:t.text,fontSize:10,fontVariantNumeric:'tabular-nums',textAlign:'right',outline:'none',padding:0}}/>
-                      <span style={{fontSize:9,color:t.text4}}>%</span>
-                    </div>
-                  </div>
-                  <span style={{fontSize:11,color:t.text3,fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*PROFIT).toLocaleString()}</span>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:11,fontWeight:800,color:t.text,fontVariantNumeric:'tabular-nums'}}>BID TOTAL</span>
-                  <span style={{fontSize:18,fontWeight:800,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${Math.round(totalEst*(1+GC_OVERHEAD+PROFIT)).toLocaleString()}</span>
-                </div>
+            {/* Bottom summary bar */}
+            <div style={{display:'flex',alignItems:'center',gap:20,padding:'10px 24px',borderTop:'1px solid #E0E0E0',background:'#fff',flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:12,color:'#999'}}>Extended Cost:</span>
+                <span style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</span>
               </div>
-
-              {/* Contract variance */}
-              {project.contract_value&&(
-                <div style={{padding:'10px 14px',borderRadius:6,marginBottom:14,background:totalEst>(project.contract_value||0)?'rgba(239,68,68,0.08)':'rgba(16,185,129,0.08)',border:`1px solid ${totalEst>(project.contract_value||0)?'rgba(239,68,68,0.25)':'rgba(16,185,129,0.25)'}`}}>
-                  <div style={{fontSize:9,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>CONTRACT VALUE</div>
-                  <div style={{fontSize:13,fontWeight:700,color:t.text,fontVariantNumeric:'tabular-nums',marginBottom:4}}>${Number(project.contract_value).toLocaleString()}</div>
-                  <div style={{fontSize:10,fontWeight:700,color:totalEst>(project.contract_value||0)?'#C0504D':'#4CAF50',fontVariantNumeric:'tabular-nums'}}>
-                    {totalEst>(project.contract_value||0)?'▲ OVER CONTRACT':'▼ UNDER CONTRACT'} BY ${Math.abs(totalEst-(project.contract_value||0)).toLocaleString()}
-                  </div>
-                </div>
-              )}
-
-              {/* Sheet breakdown */}
-              {sheetBreakdown.length>0&&(
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:9,fontWeight:700,color:t.text4,fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:8}}>BY SHEET</div>
-                  {sheetBreakdown.map(({plan:p,total:pTotal})=>(
-                    <div key={p.id} style={{display:'flex',alignItems:'center',padding:'5px 8px',borderRadius:4,marginBottom:3,background:p.id===selPlan?.id?`rgba(16,185,129,0.08)`:'none',border:`1px solid ${p.id===selPlan?.id?'rgba(16,185,129,0.25)':t.border}`,cursor:'pointer'}}
-                      onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setRightTab('items');}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:9,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
-                        <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums'}}>{planItemCountMap.get(p.id)||0} conditions</div>
-                      </div>
-                      <span style={{fontSize:10,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums',flexShrink:0}}>${pTotal.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:12,color:'#999'}}>Net Profit:</span>
+                <span style={{fontSize:14,fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(1)}%</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:12,color:'#999'}}>Selling Price:</span>
+                <span style={{fontSize:14,fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</span>
+              </div>
+              <div style={{flex:1}}/>
+              <div style={{display:'flex',alignItems:'center',gap:4}}>
+                <span style={{fontSize:12,color:'#999'}}>Overhead:</span>
+                <input type="number" value={overheadPct} onChange={e=>setOverheadPct(Math.max(0,Number(e.target.value)||0))}
+                  style={{width:40,background:'#f5f5f5',border:'1px solid #E0E0E0',borderRadius:3,color:'#333',fontSize:12,textAlign:'right',outline:'none',padding:'2px 4px'}}/>
+                <span style={{fontSize:11,color:'#999'}}>%</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:4}}>
+                <span style={{fontSize:12,color:'#999'}}>Profit:</span>
+                <input type="number" value={profitPct} onChange={e=>setProfitPct(Math.max(0,Number(e.target.value)||0))}
+                  style={{width:40,background:'#f5f5f5',border:'1px solid #E0E0E0',borderRadius:3,color:'#333',fontSize:12,textAlign:'right',outline:'none',padding:'2px 4px'}}/>
+                <span style={{fontSize:11,color:'#999'}}>%</span>
+              </div>
             </div>
           </div>
           )}
