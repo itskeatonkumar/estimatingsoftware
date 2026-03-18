@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const COMPANY_INFO = {
   fcg: {
@@ -60,6 +60,7 @@ function addDays(d, n) {
 }
 
 export function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId }) {
+  try {
   const co = COMPANY_INFO[companyId] || COMPANY_INFO[project.company] || COMPANY_INFO.default;
   const doc = new jsPDF('p', 'pt', 'letter'); // 612 x 792
   const W = 612, margin = 40;
@@ -147,7 +148,7 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
     }
   }
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: y,
     margin: { left: margin, right: margin },
     head: [['CLIENT', 'SCOPE OF WORK', 'QTY', 'UNIT', 'AMOUNT']],
@@ -263,4 +264,8 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
   // Save
   const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`${(project.name || 'Proposal').replace(/[^a-zA-Z0-9]/g, '_')}_Proposal_${dateStr}.pdf`);
+  } catch(err) {
+    console.error('[proposalPdf] generation failed:', err);
+    alert('PDF generation failed: ' + err.message);
+  }
 }
