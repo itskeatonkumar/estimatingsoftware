@@ -15,7 +15,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
   return (
     <div onClick={() => {
         if (!H.openTabs.includes(p.id)) H.setOpenTabs(prev => [...prev, p.id]);
-        H.setSelPlan(p);
+        H.setSelPlan(p); H.setShowOverview(false);
         if (p.scale_px_per_ft) H.setScale(p.scale_px_per_ft);
         else { H.setScale(null); H.setPresetScale(''); }
         H.setLeftTab('takeoffs');
@@ -241,6 +241,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const planDragRef = useRef(null);
   const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs'
+  const [showOverview, setShowOverview] = useState(true); // plan overview grid
   const [markupMode, setMarkupMode] = useState(null); // null | 'highlight' | 'cloud' | 'callout' | 'dimension' | 'text' | 'legend'
   const [markups, setMarkups] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`markups_${project.id}`)||'[]'); } catch { return []; }
@@ -2580,7 +2581,7 @@ Return ONLY a valid JSON array, no markdown:
   // ── Stable handlers ref for PlanRow (avoids re-render on every parent render) ──
   const planHandlersRef = useRef({});
   planHandlersRef.current = {
-    setOpenTabs, setSelPlan, setScale, setPresetScale, setLeftTab,
+    setOpenTabs, setSelPlan, setScale, setPresetScale, setLeftTab, setShowOverview,
     planDragRef, setPlanDragOver, setPlans, setItems, savePlanSets,
     aiNameSheet, openTabs, selPlan, planSets, items, t, planDragOver,
   };
@@ -3629,6 +3630,16 @@ Return ONLY a valid JSON array, no markdown:
           {/* ── Sheet tab bar ── */}
           <div style={{display:'flex',alignItems:'stretch',height:32,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,position:'relative'}}>
             <div style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden'}}>
+            {/* Overview tab — always first */}
+            <div onClick={()=>{setShowOverview(true);setSelPlan(null);}}
+              style={{display:'flex',alignItems:'center',gap:5,padding:'0 14px',
+                borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,
+                background:showOverview?t.bg:'transparent',
+                borderBottom:showOverview?'2px solid #4CAF50':'2px solid transparent',
+                boxSizing:'border-box'}}>
+              <span style={{fontSize:12}}>&#8862;</span>
+              <span style={{fontSize:11,fontWeight:showOverview?600:400,color:showOverview?t.text:t.text3}}>Overview</span>
+            </div>
             {openTabs.map(tabId=>{
               const p = planMap.get(tabId);
               if(!p) return null;
@@ -3636,11 +3647,11 @@ Return ONLY a valid JSON array, no markdown:
               const cnt = planItemCountMap.get(tabId)||0;
               return(
                 <div key={tabId}
-                  onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else{setScale(null);setPresetScale('');}}}
+                  onClick={()=>{setShowOverview(false);setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else{setScale(null);setPresetScale('');}}}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',
                     borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,minWidth:100,maxWidth:180,
-                    background:isActive?t.bg:'transparent',
-                    borderBottom:isActive?`2px solid #4CAF50`:'2px solid transparent',
+                    background:(!showOverview&&isActive)?t.bg:'transparent',
+                    borderBottom:(!showOverview&&isActive)?`2px solid #4CAF50`:'2px solid transparent',
                     boxSizing:'border-box',position:'relative'}}>
                   <span style={{fontSize:11,fontWeight:isActive?600:400,color:isActive?t.text:t.text3,
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>
@@ -3743,12 +3754,59 @@ Return ONLY a valid JSON array, no markdown:
           {/* Plan canvas + floating overlays */}
           <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
           <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
-            {!selPlan?(
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',padding:40}}>
-                <div style={{fontSize:48,marginBottom:16}}>📐</div>
-                <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:6}}>No plan open</div>
-                <div style={{fontSize:12,color:t.text3,marginBottom:20,textAlign:'center'}}>Go to Plans panel and upload or open a plan</div>
-                <button onClick={()=>setLeftTab('plans')} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'10px 24px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:700}}>Open Plans</button>
+            {showOverview||!selPlan?(
+              <div style={{position:'absolute',inset:0,overflow:'auto',background:'#f5f5f5',padding:24}}>
+                {/* Header */}
+                <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:18,fontWeight:600,color:'#333'}}>All Sheets</div>
+                    <div style={{fontSize:12,color:'#999',marginTop:2}}>{plans.length} sheet{plans.length!==1?'s':''}</div>
+                  </div>
+                  <button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
+                    style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 18px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
+                    Upload Plans
+                  </button>
+                </div>
+                {/* Grid */}
+                {plans.length>0?(
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:16}}>
+                    {plans.map((p,idx)=>(
+                      <div key={p.id}
+                        onClick={()=>{
+                          setShowOverview(false);
+                          setSelPlan(p);
+                          if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
+                          if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
+                          else{setScale(null);setPresetScale('');}
+                        }}
+                        style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,cursor:'pointer',overflow:'hidden',transition:'box-shadow 0.15s'}}
+                        onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'}
+                        onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
+                        <div style={{width:'100%',height:160,background:'#e8e8e8',overflow:'hidden'}}>
+                          {p.file_url?(
+                            <img src={p.file_url} alt="" loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'}/>
+                          ):(
+                            <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#999',fontSize:13}}>No preview</div>
+                          )}
+                        </div>
+                        <div style={{padding:'10px 12px'}}>
+                          <div style={{fontSize:12,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</div>
+                          <div style={{fontSize:11,color:'#999',marginTop:2}}>Sheet {idx+1} of {plans.length}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ):(
+                  <div style={{textAlign:'center',padding:'80px 20px'}}>
+                    <div style={{fontSize:48,color:'#ccc',marginBottom:16}}>&#8862;</div>
+                    <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>No plans yet</div>
+                    <div style={{fontSize:13,color:'#999',marginBottom:24}}>Upload your construction plans to get started</div>
+                    <button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
+                      style={{background:'#4CAF50',border:'none',color:'#fff',padding:'10px 24px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
+                      Upload Plans
+                    </button>
+                  </div>
+                )}
               </div>
             ):(()=>{
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
