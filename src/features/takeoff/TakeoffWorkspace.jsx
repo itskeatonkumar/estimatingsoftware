@@ -2675,7 +2675,7 @@ Return ONLY a valid JSON array, no markdown:
         }
 
         const fmtQty = (it) => {
-          const q = it.quantity||0;
+          const q = (it.quantity||0) * (it.multiplier||1);
           if(q<=0) return '—';
           const u = it.unit||'';
           const uLabel = {SF:'Sq Ft',LF:'Ln Ft',EA:'EA',CY:'Cu Yd'}[u]||u;
@@ -3477,7 +3477,7 @@ Return ONLY a valid JSON array, no markdown:
                               if(item.points[0]?.x!=null) return [item.points];
                               return item.points;
                             })();
-                            const qty = item.quantity||0;
+                            const qty = (item.quantity||0) * (item.multiplier||1);
                             const itemColor = item.color||cat.color;
                             const typeIcon = {area:'⬟',linear:'╱',count:'✓'}[item.measurement_type]||'✎';
                             const planName = planMap.get(item.plan_id)?.name||'';
@@ -4922,7 +4922,7 @@ Return ONLY a valid JSON array, no markdown:
                               </div>
                             </td>
                             <td style={{...editCell,fontSize:11,color:'#666'}}>{cat.label}</td>
-                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{(it.quantity||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{((it.quantity||0)*(it.multiplier||1)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                             <td style={{...editCell,textAlign:'center',color:'#666'}}>{it.unit||'—'}</td>
                             <td style={editCell}>
                               <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)}
