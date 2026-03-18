@@ -744,46 +744,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     let item = itemsRef.current.find(i=>String(i.id)===String(condId));
     if(!item){ console.warn('appendMeasurement: item not found', condId); return; }
 
-    // ── Cross-plan drawing: if the active plan differs from the item's plan,
-    //    find or create a sibling item for the current plan ──────────────────
-    if(selPlan?.id && item.plan_id !== selPlan.id){
-      const sibling = itemsRef.current.find(i=>
-        i.plan_id === selPlan.id &&
-        i.description === item.description &&
-        i.category === item.category &&
-        i.project_id === item.project_id &&
-        i.measurement_type === item.measurement_type
-      );
-      if(sibling){
-        item = sibling;
-      } else {
-        // Create new sibling for current plan
-        const costs = getUnitCosts();
-        const uc = item.unit_cost ?? ((costs[item.category]?.mat||0)+(costs[item.category]?.lab||0));
-        const payload = {
-          project_id: item.project_id,
-          plan_id: selPlan.id,
-          category: item.category,
-          description: item.description,
-          quantity: 0,
-          unit: item.unit,
-          unit_cost: uc,
-          total_cost: 0,
-          measurement_type: item.measurement_type,
-          color: item.color,
-          points: [],
-          ai_generated: false,
-          sort_order: itemsRef.current.length,
-        };
-        const {data: newItem} = await supabase.from('takeoff_items').insert([payload]).select().single();
-        if(!newItem){ console.error('appendMeasurement: failed to create sibling item'); return; }
-        setItems(prev=>[...prev, newItem]);
-        // Update activeCondId to point to the new sibling so subsequent draws go here
-        setActiveCondId(newItem.id);
-        item = newItem;
-      }
+    // ── Cross-plan drawing: shapes accumulate on the original item.
+    //    Tag each shape with _planId so we know which sheet it came from. ──
+    // Tag shape with plan ID so we know which sheet it came from
+    if(selPlan?.id && newShape.length > 0) {
+      newShape[0] = { ...newShape[0], _planId: selPlan.id };
     }
-    // ──────────────────────────────────────────────────────────────────────
     // Detect legacy flat points and upgrade
     const existing = item.points;
     let shapes = [];
@@ -2020,9 +1986,14 @@ Return ONLY a valid JSON array, no markdown:
     if(!selPlan?.id) return [];
     const sw=2/zoom, fs=10/zoom, r=5/zoom, rSm=3/zoom, padH=9/zoom;
     return items
-      .filter(it=> it.points?.length && it.plan_id===selPlan.id)
+      .filter(it=> it.points?.length && (it.plan_id===selPlan.id || normalizeShapes(it.points).some(sh=>sh[0]?._planId===selPlan.id)))
       .flatMap(it=>{
-        const shapes = normalizeShapes(it.points);
+        const allShapes = normalizeShapes(it.points);
+        // Filter to shapes belonging to this plan (by _planId tag, or if item's plan_id matches)
+        const shapes = allShapes.filter(sh => {
+          const shapePlanId = sh[0]?._planId;
+          return shapePlanId ? shapePlanId === selPlan.id : it.plan_id === selPlan.id;
+        });
         if(!shapes.length) return [];
         const isActive = it.id===activeCondId;
         const isSelected = false; // resolved per-shape below using selectedShapes
