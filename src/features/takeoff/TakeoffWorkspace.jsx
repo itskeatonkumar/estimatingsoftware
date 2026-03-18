@@ -378,7 +378,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const getDisplayQtyUnit = (item) => {
     const rawQty = (item.quantity || 0) * (item.multiplier || 1);
     const mt = item.measurement_type;
-    const h = item.wall_height || item.height || 0;
+    const h = item.height || item.height || 0;
     if (mt === 'linear' && h > 0) {
       return { qty: rawQty, unit: 'SF' }; // wall_height already multiplied into quantity during appendMeasurement
     }
@@ -592,7 +592,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           const mt = existing.measurement_type;
           let qty = 0;
           if(mt==='area') qty = newPoints.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-          else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(existing.wall_height>0) qty=qty*existing.wall_height; }
+          else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(existing.height>0) qty=qty*existing.height; }
           else if(mt==='count') qty = newPoints.length;
           qty = Math.round(qty*10)/10;
           const total_cost = qty*(existing.multiplier||1)*(existing.unit_cost||0);
@@ -792,7 +792,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         for(let i=1;i<sh.length;i++) seg+=calcLinear(sh[i-1],sh[i]);
         return s+seg;
       },0);
-      if(item.wall_height > 0) qty = qty * item.wall_height;
+      if(item.height > 0) qty = qty * item.height;
       qty = Math.round(qty*10)/10;
     } else if(item.measurement_type==='count'){
       qty = shapes.length;
@@ -995,7 +995,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           const mt=item.measurement_type;
           let qty=0;
           if(mt==='area') qty=newShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-          else if(mt==='linear'){ qty=newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+          else if(mt==='linear'){ qty=newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.height>0) qty=qty*item.height; }
           else if(mt==='count') qty=newShapes.length;
           qty=Math.round(qty*10)/10;
           const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -1071,7 +1071,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         } else {
           const mt=item.measurement_type; let qty=0;
           if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
-          else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+          else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.height>0) qty=qty*item.height; }
           else if(mt==='count') qty=newShapes.length;
           qty=Math.round(qty*10)/10;
           const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -1084,7 +1084,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         const newShapes = shapes.map((s,i)=>i===si?newSh:s);
         const mt=item.measurement_type; let qty=0;
         if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
-        else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+        else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.height>0) qty=qty*item.height; }
         else if(mt==='count') qty=newShapes.length;
         qty=Math.round(qty*10)/10;
         const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -1222,7 +1222,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       const newShapes = shapes.map((s,i)=>i===si?newSh:s);
       const mt=item.measurement_type; let qty=0;
       if(mt==='area') qty=newShapes.reduce((s,s2)=>s+calcShapeNetArea(s2),0);
-      else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+      else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); if(item.height>0) qty=qty*item.height; }
       else if(mt==='count') qty=newShapes.length;
       qty=Math.round(qty*10)/10;
       const total_cost=qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -1945,7 +1945,7 @@ Return ONLY a valid JSON array, no markdown:
       const mt = item.measurement_type;
       let qty = 0;
       if(mt==='area') qty = newShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-      else if(mt==='linear'){ qty = newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++){const a=sh[i-1],b=sh[i];if(!a._ctrl&&!b._ctrl) t+=calcLinear(a,b);}return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+      else if(mt==='linear'){ qty = newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++){const a=sh[i-1],b=sh[i];if(!a._ctrl&&!b._ctrl) t+=calcLinear(a,b);}return s+t;},0); if(item.height>0) qty=qty*item.height; }
       else if(mt==='count') qty = newShapes.length;
       qty = Math.round(Math.abs(qty)*10)/10;
       const total_cost = qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -2125,7 +2125,7 @@ Return ONLY a valid JSON array, no markdown:
             const linDist = hasArcs
               ? Math.round((calcShapeLength(dp)/scale)*10)/10
               : (()=>{ let t=0; for(let i=1;i<dp.length;i++) t+=calcLinear(dp[i-1],dp[i]); return Math.round(t*10)/10; })();
-            const itemH = it.wall_height || it.height || 0;
+            const itemH = it.height || 0;
             const dist = (itemH > 0 && scale) ? Math.round(linDist*itemH*10)/10 : linDist;
             const distUnit = (itemH > 0 && scale) ? 'SF' : (scale ? 'LF' : 'px');
             const lw=36/zoom, lh=padH*1.5;
@@ -2398,7 +2398,7 @@ Return ONLY a valid JSON array, no markdown:
           const my = realPts.reduce((s,p)=>s+p.y,0)/realPts.length;
           // Per-shape length from geometry
           let pxLen=0; for(let i=1;i<realPts.length;i++) pxLen+=Math.sqrt((realPts[i].x-realPts[i-1].x)**2+(realPts[i].y-realPts[i-1].y)**2);
-          const h = it.wall_height || it.height || 0;
+          const h = it.height || 0;
           let shapeQty = planScale ? Math.round((pxLen/planScale)*10)/10 : Math.round(pxLen*10)/10;
           let shapeUnit = planScale ? (it.unit||'LF') : 'px';
           if(h > 0 && planScale){ shapeQty = Math.round(shapeQty*h*10)/10; shapeUnit = 'SF'; }
@@ -4055,7 +4055,7 @@ Return ONLY a valid JSON array, no markdown:
                   const mt = item.measurement_type;
                   let qty = 0;
                   if(mt==='area') qty = newPoints.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-                  else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.wall_height>0) qty=qty*item.wall_height; }
+                  else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(item.height>0) qty=qty*item.height; }
                   else if(mt==='count') qty = newPoints.length;
                   qty = Math.round(qty*10)/10;
                   const total_cost = qty*(item.multiplier||1)*(item.unit_cost||0);
@@ -4120,7 +4120,7 @@ Return ONLY a valid JSON array, no markdown:
                             // Update source
                             let srcQty=0;
                             if(mt==='area') srcQty=kept.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-                            else if(mt==='linear'){ srcQty=kept.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(srcItem.wall_height>0) srcQty*=srcItem.wall_height; }
+                            else if(mt==='linear'){ srcQty=kept.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(srcItem.height>0) srcQty*=srcItem.height; }
                             else if(mt==='count') srcQty=kept.length;
                             srcQty=Math.round(srcQty*10)/10;
                             const srcTC=srcQty*(srcItem.multiplier||1)*(srcItem.unit_cost||0);
@@ -4139,7 +4139,7 @@ Return ONLY a valid JSON array, no markdown:
                           });
                           let tgtQty=0;
                           if(mt==='area') tgtQty=tgtShapes.reduce((s,sh)=>s+calcShapeNetArea(sh),0);
-                          else if(mt==='linear'){ tgtQty=tgtShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(tgtItem.wall_height>0) tgtQty*=tgtItem.wall_height; }
+                          else if(mt==='linear'){ tgtQty=tgtShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); if(tgtItem.height>0) tgtQty*=tgtItem.height; }
                           else if(mt==='count') tgtQty=tgtShapes.length;
                           tgtQty=Math.round(tgtQty*10)/10;
                           const tgtTC=tgtQty*(tgtItem.multiplier||1)*(tgtItem.unit_cost||0);

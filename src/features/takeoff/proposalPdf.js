@@ -155,7 +155,7 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
     for (const it of cg.items) {
       const planName = planMap.get(it.plan_id)?.name;
       const desc = '   ' + (it.description || 'Unnamed') + (planName ? ` (${planName})` : '');
-      const h = it.wall_height || it.height || 0;
+      const h = it.height || 0;
       const rawQty = (it.quantity || 0) * (it.multiplier || 1);
       const effectiveUnit = (it.measurement_type === 'linear' && h > 0) ? 'SF' : (it.unit || '');
       const qty = rawQty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
