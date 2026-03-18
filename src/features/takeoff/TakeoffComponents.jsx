@@ -18,7 +18,7 @@ function TakeoffItemModal({ item, onSave, onClose }) {
   const dynInput = {...inputStyle, background:t.input, borderColor:t.inputBorder, color:t.inputText, fontSize:13};
 
   const handleSave = async () => {
-    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, wall_height:Number(form.wall_height)||0, total_cost:total};
+    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, height:Number(form.height)||0, total_cost:total};
     if (isNew) {
       const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
       if (data) onSave(data, true);
@@ -59,7 +59,7 @@ function TakeoffItemModal({ item, onSave, onClose }) {
         <div style={{display:'grid',gridTemplateColumns:form.measurement_type==='linear'?'1fr 1fr':'1fr',gap:10}}>
           <APMField label="Multiplier"><input type="number" value={form.multiplier||1} onChange={e=>set('multiplier',e.target.value)} style={{...dynInput}} /></APMField>
           {form.measurement_type==='linear'&&(
-            <APMField label="Wall Height (ft)"><input type="number" value={form.wall_height||''} onChange={e=>set('wall_height',e.target.value)} placeholder="0 = LF only" style={{...dynInput}} /></APMField>
+            <APMField label="Wall Height (ft)"><input type="number" value={form.height||''} onChange={e=>set('height',e.target.value)} placeholder="0 = LF only" style={{...dynInput}} /></APMField>
           )}
         </div>
         <div style={{background:t.bg5,borderRadius:6,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -512,7 +512,7 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
     unit: item.unit||'SF',
     unit_cost: item.unit_cost||0,
     multiplier: item.multiplier||1,
-    wall_height: item.wall_height||0,
+    height: item.height||0,
     measurement_type: item.measurement_type||'manual',
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -559,7 +559,7 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
         {form.measurement_type==='linear'&&(
           <div>
             <div style={{fontSize:8,color:t.text4,fontVariantNumeric:'tabular-nums',marginBottom:2}}>WALL HT (ft)</div>
-            <input type="number" value={form.wall_height||''} onChange={e=>set('wall_height',e.target.value)}
+            <input type="number" value={form.height||''} onChange={e=>set('height',e.target.value)}
               placeholder="0" style={{...inp}} onKeyDown={e=>e.key==='Enter'&&onSave(form)}/>
           </div>
         )}
