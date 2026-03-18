@@ -76,14 +76,17 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)', color: '#7B6BA4', cursor: 'pointer' }} title="AI name">✦</button>
         <button onClick={async () => {
           if (p.id === 'preview') return;
+          const withTakeoffs = window.confirm('Duplicate with takeoffs?\n\nOK = Plan + Takeoffs\nCancel = Plan Only');
           const { data: newPlan } = await supabase.from('precon_plans').insert([{ project_id: p.project_id, name: (p.name || 'Sheet') + ' (Copy)', file_url: p.file_url, file_type: p.file_type, scale_px_per_ft: p.scale_px_per_ft }]).select().single();
           if (!newPlan) return;
-          const planItemsToDup = H.items.filter(i => i.plan_id === p.id);
           const clonedItems = [];
-          for (const it of planItemsToDup) {
-            const { id, ...rest } = it;
-            const { data: ni } = await supabase.from('takeoff_items').insert([{ ...rest, plan_id: newPlan.id }]).select().single();
-            if (ni) clonedItems.push(ni);
+          if (withTakeoffs) {
+            const planItemsToDup = H.items.filter(i => i.plan_id === p.id);
+            for (const it of planItemsToDup) {
+              const { id, ...rest } = it;
+              const { data: ni } = await supabase.from('takeoff_items').insert([{ ...rest, plan_id: newPlan.id }]).select().single();
+              if (ni) clonedItems.push(ni);
+            }
           }
           H.setPlans(prev => {
             const idx = prev.findIndex(x => x.id === p.id);
@@ -91,7 +94,6 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
             next.splice(idx + 1, 0, newPlan);
             return next;
           });
-          // Also insert into folder's planIds if this plan is in a folder
           if (folderId && H.planSets[folderId]) {
             const folder = H.planSets[folderId];
             const folderPlanIds = [...(folder.planIds || [])];
@@ -100,7 +102,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
             else folderPlanIds.push(newPlan.id);
             H.savePlanSets({ ...H.planSets, [folderId]: { ...folder, planIds: folderPlanIds } });
           }
-          H.setItems(prev => [...prev, ...clonedItems]);
+          if (clonedItems.length) H.setItems(prev => [...prev, ...clonedItems]);
         }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(59,130,246,0.3)', background: 'none', color: '#5B9BD5', cursor: 'pointer' }} title="Duplicate plan">⧉</button>
         <button onClick={async () => {
           if (!window.confirm('Delete this sheet?')) return;
