@@ -606,6 +606,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     if(el){
       // Wheel zoom toward cursor
       const wheelHandler = (e)=>{
+        // Don't hijack scroll when showing overview grid
+        if(!selPlanRef.current) return;
         e.preventDefault();
         const factor = e.deltaY < 0 ? 1.05 : 0.95;
         const rect = el.getBoundingClientRect();
@@ -3754,8 +3756,18 @@ Return ONLY a valid JSON array, no markdown:
           {/* Plan canvas + floating overlays */}
           <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
           <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
-            {showOverview||!selPlan?(
-              <div style={{position:'absolute',inset:0,overflow:'auto',background:'#f5f5f5',padding:24}}>
+            {showOverview||!selPlan?(()=>{
+              const getThumbnailUrl = (plan) => {
+                const url = plan.file_url;
+                if (!url) return null;
+                const objectPath = '/storage/v1/object/public/';
+                const renderPath = '/storage/v1/render/image/public/';
+                if (url.includes(objectPath)) {
+                  return url.replace(objectPath, renderPath) + '?width=300&height=200&resize=contain&quality=60';
+                }
+                return url;
+              };
+              return <div style={{position:'absolute',inset:0,overflow:'auto',background:'#f5f5f5',padding:24}}>
                 {/* Header */}
                 <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
                   <div style={{flex:1}}>
@@ -3782,11 +3794,16 @@ Return ONLY a valid JSON array, no markdown:
                         style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,cursor:'pointer',overflow:'hidden',transition:'box-shadow 0.15s'}}
                         onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'}
                         onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-                        <div style={{width:'100%',height:160,background:'#e8e8e8',overflow:'hidden'}}>
-                          {p.file_url?(
-                            <img src={p.file_url} alt="" loading="lazy" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'}/>
-                          ):(
-                            <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#999',fontSize:13}}>No preview</div>
+                        <div style={{width:'100%',height:160,background:'#F0F0F0',overflow:'hidden',position:'relative'}}>
+                          {/* Placeholder */}
+                          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#bbb',fontSize:11,textAlign:'center',padding:8}}>
+                            {p.name||'Sheet'}
+                          </div>
+                          {getThumbnailUrl(p)&&(
+                            <img src={getThumbnailUrl(p)} alt="" loading="lazy"
+                              style={{width:'100%',height:'100%',objectFit:'cover',display:'block',position:'relative',zIndex:1,opacity:0,transition:'opacity 0.3s'}}
+                              onLoad={e=>e.target.style.opacity='1'}
+                              onError={e=>e.target.style.display='none'}/>
                           )}
                         </div>
                         <div style={{padding:'10px 12px'}}>
@@ -3807,8 +3824,8 @@ Return ONLY a valid JSON array, no markdown:
                     </button>
                   </div>
                 )}
-              </div>
-            ):(()=>{
+              </div>;
+            })():(()=>{
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
               const planH = imgNat.h > 4 ? imgNat.h : (canvasRef.current?.height || 1100);
               return (
