@@ -4,6 +4,7 @@ import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS
 import { supabase } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
+import { generateProposalPdf } from "./proposalPdf.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
@@ -149,6 +150,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [reportGroupBy, setReportGroupBy] = useState('none'); // 'none'|'category'|'sheet'|'type'
   const [reportCols, setReportCols] = useState({name:true,description:true,quantity:true,unit:true,scale:true,location:true,revision:true,trade:true,unit_cost:true,total_cost:true});
   const [showColDropdown, setShowColDropdown] = useState(false);
+  const [proposalCompany, setProposalCompany] = useState(project.company || 'fcg');
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
@@ -4490,9 +4492,23 @@ Return ONLY a valid JSON array, no markdown:
                 </button>
               ))}
             </div>
+            {/* Company selector */}
+            <select value={proposalCompany} onChange={e=>setProposalCompany(e.target.value)}
+              style={{padding:'6px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',cursor:'pointer'}}>
+              <option value="fcg">FCG</option>
+              <option value="brc">BR Concrete</option>
+              <option value="p4s">P4S Corp</option>
+            </select>
+            <button onClick={()=>generateProposalPdf({
+                project, items, plans, categories:TAKEOFF_CATS,
+                overheadPct, profitPct, companyId:proposalCompany
+              })}
+              style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
+              &#8595; Download Proposal PDF
+            </button>
             <button onClick={doProposalExport}
-              style={{background:'#fff',border:'1px solid #E0E0E0',color:'#333',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
-              &#8595; Download Proposal
+              style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
+              &#8595; CSV
             </button>
           </div>
 
