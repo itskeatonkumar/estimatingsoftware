@@ -2,39 +2,15 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const COMPANY_INFO = {
-  fcg: {
-    name: 'Foundation Construction Group LLC',
-    address: '1234 Construction Way',
-    city: 'Charlotte, NC 28202',
-    phone: '(704) 555-0100',
-    email: 'estimates@fcgllc.com',
-  },
-  brc: {
-    name: 'BR Concrete Inc.',
-    address: '5678 Concrete Blvd',
-    city: 'Charlotte, NC 28205',
-    phone: '(704) 555-0200',
-    email: 'estimates@brconcrete.com',
-  },
-  p4s: {
-    name: 'P4S Corp',
-    address: '9012 Industrial Dr',
-    city: 'Charlotte, NC 28210',
-    phone: '(704) 555-0300',
-    email: 'estimates@p4scorp.com',
-  },
-  default: {
-    name: 'My Company',
-    address: '',
-    city: '',
-    phone: '',
-    email: '',
-  },
+  fcg: { name: 'Foundation Construction Group LLC', address: '1234 Construction Way', city: 'Charlotte, NC 28202', phone: '(704) 555-0100', email: 'estimates@fcgllc.com' },
+  brc: { name: 'BR Concrete Inc.', address: '5678 Concrete Blvd', city: 'Charlotte, NC 28205', phone: '(704) 555-0200', email: 'estimates@brconcrete.com' },
+  p4s: { name: 'P4S Corp', address: '9012 Industrial Dr', city: 'Charlotte, NC 28210', phone: '(704) 555-0300', email: 'estimates@p4scorp.com' },
+  default: { name: 'My Company', address: '', city: '', phone: '', email: '' },
 };
 
 const UNIT_MAP = { SF: 'ft\u00B2', LF: 'lf', EA: 'ea', CY: 'cy', LS: 'ls', TN: 'tn', LB: 'lb', HR: 'hr' };
 
-const TERMS = [
+const DEFAULT_TERMS = [
   'We are insured and bondable (Bond not included).',
   'This bid is good for thirty (30) days from the bid date.',
   'We comply with Davis-Bacon and Related Acts for wages and reporting if required. Otherwise, Nonunion.',
@@ -48,68 +24,111 @@ const TERMS = [
   'Traffic Control \u2013 Not included, available upon request.',
 ];
 
-function fmtDate(d) {
-  if (!d) return '';
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
-
-function addDays(d, n) {
-  const dt = new Date(d + 'T00:00:00');
-  dt.setDate(dt.getDate() + n);
-  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
+const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+const addDays = (d, n) => { const dt = new Date(d + 'T00:00:00'); dt.setDate(dt.getDate() + n); return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); };
 
 export function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId, clientInfo, companyProfile, proposalScope, proposalTerms }) {
   try {
-  // Use user-configured company profile if available, otherwise fall back to hardcoded
   const co = companyProfile?.name ? companyProfile : (COMPANY_INFO[companyId] || COMPANY_INFO[project.company] || COMPANY_INFO.default);
-  // Use user-configured client info
-  const client = clientInfo?.name ? clientInfo : { name: project.gc_name || '', company: '', address: project.address || '' };
+  const client = clientInfo?.name ? clientInfo : { name: project.gc_name || '', company: '', address: project.address || '', email: '', phone: '' };
+
   const doc = new jsPDF('p', 'pt', 'letter'); // 612 x 792
-  const W = 612, margin = 40;
-  const contentW = W - margin * 2;
-  let y = margin;
+  const W = 612, H = 792;
+  const M = 54; // 0.75" margins
+  const contentW = W - M * 2;
+  const leftColW = contentW * 0.38;
+  const rightColW = contentW * 0.58;
+  const rightColX = M + leftColW + contentW * 0.04;
+  const gray = [136, 136, 136];
+  const dark = [51, 51, 51];
+  const lineGray = [200, 200, 200];
+  let y = M;
 
-  // ── HEADER ──
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text(project.name || 'Project Proposal', margin, y + 16);
-
-  doc.setFontSize(14);
-  doc.setTextColor(150, 150, 150);
-  doc.text('JOB ESTIMATE', W - margin, y + 16, { align: 'right' });
-  doc.setTextColor(0, 0, 0);
-  y += 32;
-
-  // Company info — left
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text(co.name, margin, y);
-  doc.setFont('helvetica', 'normal');
-  if (co.address) { y += 11; doc.text(co.address, margin, y); }
-  if (co.city) { y += 11; doc.text(co.city, margin, y); }
-  if (co.phone) { y += 11; doc.text(co.phone, margin, y); }
-  if (co.email) { y += 11; doc.text(co.email, margin, y); }
-
-  // Quote info — right
-  const today = new Date().toISOString().slice(0, 10);
-  const qx = W - margin;
-  let qy = y - 44;
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('DATE OF QUOTE:', qx - 120, qy); doc.setFont('helvetica', 'normal'); doc.text(fmtDate(today), qx, qy, { align: 'right' });
-  qy += 14;
-  doc.setFont('helvetica', 'bold');
-  doc.text('VALID UNTIL:', qx - 120, qy); doc.setFont('helvetica', 'normal'); doc.text(addDays(today, 30), qx, qy, { align: 'right' });
-  qy += 14;
-  doc.setFont('helvetica', 'bold');
-  doc.text('QUOTE NO.:', qx - 120, qy); doc.setFont('helvetica', 'normal'); doc.text('—', qx, qy, { align: 'right' });
-
-  y += 24;
-
-  // ── CLIENT + LINE ITEMS TABLE ──
   const planMap = new Map(plans.map(p => [p.id, p]));
 
+  // ═══════════════════════════════════════════════════════
+  // HEADER ZONE
+  // ═══════════════════════════════════════════════════════
+
+  // Project name — left
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(19);
+  doc.setTextColor(...dark);
+  const projLines = doc.splitTextToSize(project.name || 'Project Proposal', leftColW + 120);
+  doc.text(projLines, M, y + 14);
+  const projH = projLines.length * 22;
+
+  // "JOB ESTIMATE" — right
+  doc.setFontSize(16);
+  doc.setTextColor(...gray);
+  doc.text('JOB ESTIMATE', W - M, y + 14, { align: 'right' });
+
+  // Quote details — right, below JOB ESTIMATE
+  let qy = y + 34;
+  doc.setFontSize(9);
+  const today = new Date().toISOString().slice(0, 10);
+  const qLabelX = W - M - 140;
+  const qValX = W - M;
+  const quoteLines = [
+    ['DATE OF QUOTE:', fmtDate(today)],
+    ['VALID UNTIL:', addDays(today, 30)],
+    ['QUOTE NO.:', '\u2014'],
+  ];
+  for (const [lbl, val] of quoteLines) {
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...gray);
+    doc.text(lbl, qLabelX, qy);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...dark);
+    doc.text(val, qValX, qy, { align: 'right' });
+    qy += 14;
+  }
+
+  // Company info — left, below project name
+  y += Math.max(projH, 10) + 8;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...dark);
+  doc.text(co.name, M, y);
+  y += 13;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...gray);
+  doc.setFontSize(9);
+  if (co.address) { doc.text(co.address, M, y); y += 11; }
+  if (co.city) { doc.text(co.city, M, y); y += 11; }
+  if (co.phone) { doc.text(co.phone, M, y); y += 11; }
+  if (co.email) { doc.text(co.email, M, y); y += 11; }
+
+  // Horizontal divider
+  y += 6;
+  doc.setDrawColor(...lineGray);
+  doc.setLineWidth(0.5);
+  doc.line(M, y, W - M, y);
+  y += 14;
+
+  // ═══════════════════════════════════════════════════════
+  // TWO-COLUMN BODY
+  // ═══════════════════════════════════════════════════════
+
+  const bodyStartY = y;
+
+  // ── LEFT COLUMN: Client info ──
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...gray);
+  doc.text('CLIENT', M, y);
+  y += 14;
+
+  doc.setFontSize(9);
+  doc.setTextColor(...dark);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ATTN: ' + (client.name || '\u2014'), M, y);
+  y += 12;
+  doc.setFont('helvetica', 'normal');
+  if (client.company) { doc.text(client.company, M, y); y += 12; }
+  if (client.address) { doc.text(client.address, M, y); y += 12; }
+  if (client.email) { doc.text(client.email, M, y); y += 12; }
+  if (client.phone) { doc.text(client.phone, M, y); y += 12; }
+
+  // ── RIGHT COLUMN: Scope of work table ──
   // Group items by category
   const catGroups = [];
   const catMap = new Map();
@@ -117,161 +136,185 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
     const catId = it.category || 'other';
     if (!catMap.has(catId)) {
       const catDef = categories.find(c => c.id === catId) || { id: catId, label: catId };
-      const group = { ...catDef, items: [] };
-      catMap.set(catId, group);
-      catGroups.push(group);
+      catMap.set(catId, { ...catDef, items: [] });
+      catGroups.push(catMap.get(catId));
     }
     catMap.get(catId).items.push(it);
   }
 
   // Build table rows
-  const tableRows = [];
-
-  // Client row
-  const clientLabel = client.name ? `ATTN: ${client.name}${client.company ? ' / ' + client.company : ''}` : `ATTN: ${project.gc_name || '—'}`;
-  tableRows.push([
-    { content: clientLabel, colSpan: 2, styles: { fontStyle: 'bold', fontSize: 9 } },
-    '', '', ''
-  ]);
-
+  const tableBody = [];
   for (const cg of catGroups) {
     const catTotal = cg.items.reduce((s, i) => s + (i.total_cost || 0), 0);
-    // Category header
-    tableRows.push([
-      { content: cg.label, colSpan: 4, styles: { fontStyle: 'bold', fontSize: 9, fillColor: [245, 245, 245] } },
-      { content: `$${catTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fontSize: 9, fillColor: [245, 245, 245] } },
+    // Category header row
+    tableBody.push([
+      { content: cg.label, colSpan: 3, styles: { fontStyle: 'bold', fontSize: 9, fillColor: [240, 240, 240], textColor: dark } },
+      { content: '$' + fmtNum(catTotal), styles: { fontStyle: 'bold', halign: 'right', fontSize: 9, fillColor: [240, 240, 240], textColor: dark } },
     ]);
-    // Items
+    // Line items
     for (const it of cg.items) {
       const planName = planMap.get(it.plan_id)?.name;
-      const desc = (it.description || 'Unnamed') + (planName ? ` (${planName})` : '');
+      const desc = '   ' + (it.description || 'Unnamed') + (planName ? ` (${planName})` : '');
       const qty = (it.quantity || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const unit = UNIT_MAP[it.unit] || it.unit || '';
-      const amt = `$${(it.total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      tableRows.push(['', desc, qty, unit, { content: amt, styles: { halign: 'right' } }]);
+      const amt = '$' + fmtNum(it.total_cost || 0);
+      tableBody.push([
+        { content: desc, styles: { fontSize: 8.5 } },
+        { content: qty, styles: { halign: 'right', fontSize: 8.5 } },
+        { content: unit, styles: { halign: 'center', fontSize: 8.5 } },
+        { content: amt, styles: { halign: 'right', fontSize: 8.5 } },
+      ]);
     }
   }
+  // Empty spacer rows
+  for (let i = 0; i < 2; i++) tableBody.push([{ content: '', colSpan: 4, styles: { minCellHeight: 16 } }]);
 
   autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [['CLIENT', 'SCOPE OF WORK', 'QTY', 'UNIT', 'AMOUNT']],
-    body: tableRows,
+    startY: bodyStartY,
+    margin: { left: rightColX, right: M },
+    head: [['SCOPE OF WORK', 'AMOUNT', 'UNIT', 'AMOUNT']],
+    body: tableBody,
     theme: 'grid',
-    headStyles: { fillColor: [200, 200, 200], textColor: [51, 51, 51], fontStyle: 'bold', fontSize: 9, cellPadding: 6 },
-    bodyStyles: { fontSize: 8.5, cellPadding: 5, textColor: [51, 51, 51] },
+    tableWidth: rightColW,
+    headStyles: {
+      fillColor: [220, 220, 220], textColor: dark, fontStyle: 'bold', fontSize: 8,
+      cellPadding: { top: 5, bottom: 5, left: 6, right: 6 },
+    },
+    bodyStyles: {
+      fontSize: 8.5, textColor: dark,
+      cellPadding: { top: 4, bottom: 4, left: 6, right: 6 },
+      lineColor: [220, 220, 220], lineWidth: 0.3,
+    },
     columnStyles: {
-      0: { cellWidth: 80 },
-      2: { halign: 'right', cellWidth: 55 },
-      3: { halign: 'center', cellWidth: 35 },
-      4: { halign: 'right', cellWidth: 70 },
+      0: { cellWidth: rightColW - 150 },
+      1: { halign: 'right', cellWidth: 48 },
+      2: { halign: 'center', cellWidth: 32 },
+      3: { halign: 'right', cellWidth: 70 },
     },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 0 && !data.cell.raw) {
-        data.cell.styles.cellWidth = 0.01;
-      }
-    },
+    styles: { overflow: 'linebreak' },
   });
 
-  y = doc.lastAutoTable.finalY + 16;
+  const tableEndY = doc.lastAutoTable.finalY;
 
-  // ── TOTALS (right-aligned) ──
+  // ── TOTALS — right-aligned below table ──
   const subtotal = items.filter(i => i.plan_id != null).reduce((s, i) => s + (i.total_cost || 0), 0);
   const OH = overheadPct / 100, PR = profitPct / 100;
-  const total = Math.round(subtotal * (1 + OH + PR));
+  const grandTotal = subtotal * (1 + OH + PR);
 
-  const totalsX = W - margin;
-  const labelX = totalsX - 140;
+  let ty = tableEndY + 8;
+  const totLabelX = W - M - 100;
+  const totValX = W - M;
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text('SUBTOTAL:', labelX, y, { align: 'right' });
-  doc.text(`$${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, totalsX, y, { align: 'right' });
-  y += 14;
-  doc.text('DISCOUNT:', labelX, y, { align: 'right' });
-  doc.text('—', totalsX, y, { align: 'right' });
-  y += 14;
-  doc.text('SUBTOTAL LESS DISCOUNT:', labelX, y, { align: 'right' });
-  doc.text(`$${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, totalsX, y, { align: 'right' });
-  y += 14;
-  if (OH > 0) {
-    doc.text(`OVERHEAD (${overheadPct}%):`, labelX, y, { align: 'right' });
-    doc.text(`$${Math.round(subtotal * OH).toLocaleString()}`, totalsX, y, { align: 'right' });
-    y += 14;
+  doc.setDrawColor(...lineGray);
+  doc.setLineWidth(0.3);
+
+  const totalsRows = [
+    ['SUBTOTAL', '$' + fmtNum(subtotal)],
+    ['DISCOUNT', '\u2014'],
+    ['SUBTOTAL LESS DISCOUNT', '$' + fmtNum(subtotal)],
+  ];
+  if (OH > 0) totalsRows.push([`OVERHEAD (${overheadPct}%)`, '$' + fmtNum(subtotal * OH)]);
+  if (PR > 0) totalsRows.push([`PROFIT (${profitPct}%)`, '$' + fmtNum(subtotal * PR)]);
+
+  doc.setFontSize(8.5);
+  for (const [lbl, val] of totalsRows) {
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...gray);
+    doc.text(lbl, totLabelX, ty, { align: 'right' });
+    doc.setTextColor(...dark);
+    doc.text(val, totValX, ty, { align: 'right' });
+    ty += 14;
+    doc.line(totLabelX - 10, ty - 6, totValX, ty - 6);
   }
-  if (PR > 0) {
-    doc.text(`PROFIT (${profitPct}%):`, labelX, y, { align: 'right' });
-    doc.text(`$${Math.round(subtotal * PR).toLocaleString()}`, totalsX, y, { align: 'right' });
-    y += 14;
-  }
-  y += 4;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(labelX - 20, y - 6, totalsX, y - 6);
+
+  ty += 4;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL:', labelX, y + 4, { align: 'right' });
-  doc.text(`$${total.toLocaleString()}`, totalsX, y + 4, { align: 'right' });
-  y += 24;
+  doc.setTextColor(...dark);
+  doc.text('TOTAL', totLabelX, ty, { align: 'right' });
+  doc.text('$' + fmtNum(grandTotal), totValX, ty, { align: 'right' });
+  doc.setLineWidth(1);
+  doc.line(totLabelX - 10, ty + 4, totValX, ty + 4);
 
-  // ── DESCRIPTION OF WORK ──
-  // Check if we need a new page
-  if (y > 580) { doc.addPage(); y = margin; }
+  // ═══════════════════════════════════════════════════════
+  // LEFT COLUMN CONTINUED: Description + Terms (below client)
+  // These go in the left column area, starting below client info
+  // ═══════════════════════════════════════════════════════
 
+  let ly = Math.max(y + 20, bodyStartY + 100); // below client info with some spacing
+  const leftTextW = leftColW - 4;
+
+  // DESCRIPTION OF WORK
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('DESCRIPTION OF WORK', margin, y);
-  y += 3;
-  doc.setDrawColor(51, 51, 51);
-  doc.line(margin, y, margin + 140, y);
-  y += 12;
+  doc.setTextColor(...dark);
+  doc.text('DESCRIPTION OF WORK', M, ly);
+  ly += 2;
+  doc.setDrawColor(...dark);
+  doc.setLineWidth(0.5);
+  doc.line(M, ly, M + 138, ly);
+  ly += 12;
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...dark);
   const bidDateStr = project.bid_date ? fmtDate(project.bid_date) : 'the bid date';
   const defaultScope = `${co.name} proposes to provide all materials and labor as required to perform the concrete work in accordance with the plans and specifications dated ${bidDateStr}, attached quantities, and following:`;
-  const descText = proposalScope || defaultScope;
-  const descLines = doc.splitTextToSize(descText, contentW);
-  doc.text(descLines, margin, y);
-  y += descLines.length * 11 + 12;
+  const scopeText = proposalScope || defaultScope;
+  const scopeLines = doc.splitTextToSize(scopeText, leftTextW);
+  doc.text(scopeLines, M, ly);
+  ly += scopeLines.length * 10 + 16;
 
-  // ── TERMS AND CONDITIONS ──
-  if (y > 640) { doc.addPage(); y = margin; }
-
+  // TERMS AND CONDITIONS
+  if (ly > H - 160) { doc.addPage(); ly = M; }
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('TERMS AND CONDITIONS', margin, y);
-  y += 3;
-  doc.line(margin, y, margin + 150, y);
-  y += 12;
+  doc.setTextColor(...dark);
+  doc.text('TERMS AND CONDITIONS', M, ly);
+  ly += 2;
+  doc.line(M, ly, M + 148, ly);
+  ly += 12;
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
-  const userTerms = proposalTerms ? proposalTerms.split('\n').filter(t => t.trim()) : TERMS;
-  for (const term of userTerms) {
-    if (y > 740) { doc.addPage(); y = margin; }
-    const tLines = doc.splitTextToSize(`\u2022  ${term}`, contentW - 10);
-    doc.text(tLines, margin + 6, y);
-    y += tLines.length * 10 + 3;
+  const terms = proposalTerms ? proposalTerms.split('\n').filter(t => t.trim()) : DEFAULT_TERMS;
+  for (const term of terms) {
+    if (ly > H - 80) { doc.addPage(); ly = M; }
+    const tLines = doc.splitTextToSize('\u2022  ' + term, leftTextW - 8);
+    doc.text(tLines, M + 4, ly);
+    ly += tLines.length * 9 + 2;
   }
 
-  // ── FOOTER ──
-  y += 16;
-  if (y > 720) { doc.addPage(); y = margin; }
-  doc.setFontSize(14);
+  // ═══════════════════════════════════════════════════════
+  // FOOTER — THANK YOU
+  // ═══════════════════════════════════════════════════════
+
+  const footerY = Math.max(ly + 30, ty + 40, H - 90);
+  // If it won't fit on current page, add new page
+  if (footerY > H - 30) { doc.addPage(); }
+  const fy = footerY > H - 30 ? H - 90 : footerY;
+
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('THANK YOU', W / 2, y, { align: 'center' });
-  y += 16;
+  doc.setTextColor(...dark);
+  doc.text('THANK YOU', W / 2, fy, { align: 'center' });
+
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(co.name, W / 2, y, { align: 'center' });
-  if (co.phone) { y += 12; doc.text(co.phone, W / 2, y, { align: 'center' }); }
-  if (co.email) { y += 12; doc.text(co.email, W / 2, y, { align: 'center' }); }
+  doc.setTextColor(...gray);
+  let ffy = fy + 18;
+  doc.text(co.name, W / 2, ffy, { align: 'center' });
+  if (co.phone) { ffy += 12; doc.text(co.phone, W / 2, ffy, { align: 'center' }); }
+  if (co.email) { ffy += 12; doc.text(co.email, W / 2, ffy, { align: 'center' }); }
 
   // Save
   const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`${(project.name || 'Proposal').replace(/[^a-zA-Z0-9]/g, '_')}_Proposal_${dateStr}.pdf`);
-  } catch(err) {
+  } catch (err) {
     console.error('[proposalPdf] generation failed:', err);
     alert('PDF generation failed: ' + err.message);
   }
+}
+
+function fmtNum(v) {
+  return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
