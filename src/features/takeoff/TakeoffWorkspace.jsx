@@ -2039,6 +2039,8 @@ Return ONLY a valid JSON array, no markdown:
           const shapeKey = `${it.id}::${shapeIdx}`;
           const onClick = (e)=>{
             if(tool==='eraser') return;
+            // If actively drawing a takeoff, let clicks pass through to SVG handler
+            if(activeCondId && tool!=='select' && tool!=='cutout') return;
             // ── Cutout: click on an area shape to arm it for cutting ──
             if(tool==='cutout'){
               if(mt==='area'){
