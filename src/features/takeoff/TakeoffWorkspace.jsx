@@ -544,6 +544,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         // If actively drawing points, remove the last one
         if(activePtsRef.current.length > 0){
           e.preventDefault(); e.stopPropagation();
+          // If removing a _through point, deactivate arc mode
+          if(activePtsRef.current[activePtsRef.current.length-1]?._through) setArcPending(false);
           setActivePts(prev => prev.slice(0, -1));
           return;
         }
@@ -863,13 +865,22 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     //   Click 2: endpoint of curve (normal point, arc auto-deactivates)
     if(arcPending){
       const lastPt = activePtsRef.current[activePtsRef.current.length-1];
-      const hasCtrlPending = lastPt?._ctrl;
-      if(!hasCtrlPending){
-        // First arc click: this is the control/peak point
-        setActivePts(prev=>[...prev, {...pt, _ctrl:true}]);
+      const hasThroughPending = lastPt?._through;
+      if(!hasThroughPending){
+        // First arc click: store the THROUGH point (where user wants the curve to pass)
+        setActivePts(prev=>[...prev, {...pt, _through:true}]);
       } else {
-        // Second arc click: this is the endpoint — arc complete
-        setActivePts(prev=>[...prev, pt]);
+        // Second arc click: endpoint. Compute real bezier control point from through-point.
+        const startPt = activePtsRef.current[activePtsRef.current.length-2]; // point before through
+        const throughPt = lastPt; // the through point
+        const endPt = pt;
+        const ctrl = {
+          x: 2 * throughPt.x - 0.5 * startPt.x - 0.5 * endPt.x,
+          y: 2 * throughPt.y - 0.5 * startPt.y - 0.5 * endPt.y,
+          _ctrl: true,
+        };
+        // Replace the _through point with the computed _ctrl, then add endpoint
+        setActivePts(prev => [...prev.slice(0, -1), ctrl, endPt]);
         setArcPending(false);
       }
       return;
@@ -2142,29 +2153,35 @@ Return ONLY a valid JSON array, no markdown:
     // Build preview path
     let previewPath = null;
     const lastPt = pts.length ? pts[pts.length-1] : null;
-    const hasCtrlPending = lastPt?._ctrl; // last point is a control point, awaiting arc endpoint
+    const hasThroughPending = lastPt?._through; // through-point placed, awaiting arc endpoint
 
-    if(arcPending && hasCtrlPending && hoverPt && pts.length>=2){
-      // Arc mode: control point placed, show live bezier preview to mouse
-      const startPt = pts[pts.length-2]; // point before ctrl
-      const ctrlPt = lastPt;
-      const d=`M${startPt.x},${startPt.y} Q${ctrlPt.x},${ctrlPt.y} ${hoverPt.x},${hoverPt.y}`;
-      const pxLen = bezierLength(startPt, ctrlPt, hoverPt);
+    if(arcPending && hasThroughPending && hoverPt && pts.length>=2){
+      // Arc mode: through-point placed, show live bezier preview to mouse
+      // Compute preview control point so curve passes THROUGH the clicked point
+      const startPt = pts[pts.length-2]; // point before through
+      const throughPt = lastPt;
+      const tentativeEnd = hoverPt;
+      const previewCtrl = {
+        x: 2 * throughPt.x - 0.5 * startPt.x - 0.5 * tentativeEnd.x,
+        y: 2 * throughPt.y - 0.5 * startPt.y - 0.5 * tentativeEnd.y,
+      };
+      const d=`M${startPt.x},${startPt.y} Q${previewCtrl.x},${previewCtrl.y} ${tentativeEnd.x},${tentativeEnd.y}`;
+      const pxLen = bezierLength(startPt, previewCtrl, tentativeEnd);
       const ft = scale ? Math.round(pxLen/scale*10)/10 : null;
-      const mx=(startPt.x+hoverPt.x)/2, my=(startPt.y+hoverPt.y)/2;
-      // Also draw the straight segments leading up to the arc
-      const straightPts = pts.slice(0,-1).filter(p=>!p._ctrl); // all non-ctrl points before
+      const mx=(startPt.x+tentativeEnd.x)/2, my=(startPt.y+tentativeEnd.y)/2;
+      // Draw the straight segments leading up to the arc
+      const straightPts = pts.slice(0,-1).filter(p=>!p._ctrl&&!p._through);
       previewPath = (<>
         {straightPts.length>=2&&<polyline points={straightPts.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={(tool==='area')?'none':`${6/zoom},${3/zoom}`} opacity={0.9}/>}
         <path d={d} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`} opacity={0.9}/>
-        <line x1={ctrlPt.x} y1={ctrlPt.y} x2={startPt.x} y2={startPt.y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
-        <line x1={ctrlPt.x} y1={ctrlPt.y} x2={hoverPt.x} y2={hoverPt.y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
-        <circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.6}/>
+        {/* Show the through-point as a visible marker */}
+        <circle cx={throughPt.x} cy={throughPt.y} r={r2*1.2} fill={c} opacity={0.7}/>
+        <circle cx={tentativeEnd.x} cy={tentativeEnd.y} r={r2} fill={c} opacity={0.5}/>
         {ft&&<text x={mx} y={my-8/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>{ft} LF ⌒</text>}
       </>);
     } else {
-      // Normal preview: polyline of all non-ctrl points + hover
-      const realPts = pts.filter(p=>!p._ctrl);
+      // Normal preview: polyline of all non-ctrl/non-through points + hover
+      const realPts = pts.filter(p=>!p._ctrl&&!p._through);
       const allPts = hoverPt ? [...realPts, hoverPt] : realPts;
       if(allPts.length>=2) previewPath = (<>
         <polyline points={allPts.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={(tool==='area'||tool==='cutout')?'none':`${6/zoom},${3/zoom}`} opacity={0.9}/>
@@ -2185,17 +2202,17 @@ Return ONLY a valid JSON array, no markdown:
 
     return(<>
       {previewPath}
-      {/* Draw placed points */}
-      {pts.filter(p=>!p._ctrl).map((p,i)=>(
-        <circle key={i} cx={p.x} cy={p.y} r={i===0&&pts.length>=3?r0:r1} fill={c} stroke={i===0&&pts.length>=3?'#fff':'none'} strokeWidth={sw*0.8} opacity={0.95}/>
+      {/* Draw placed points (skip _ctrl and _through) */}
+      {pts.filter(p=>!p._ctrl&&!p._through).map((p,i)=>(
+        <circle key={i} cx={p.x} cy={p.y} r={i===0&&pts.filter(pp=>!pp._ctrl&&!pp._through).length>=3?r0:r1} fill={c} stroke={i===0&&pts.filter(pp=>!pp._ctrl&&!pp._through).length>=3?'#fff':'none'} strokeWidth={sw*0.8} opacity={0.95}/>
       ))}
-      {/* Show ctrl points as diamonds */}
+      {/* Show ctrl points as small circles */}
       {pts.filter(p=>p._ctrl).map((p,i)=>(
         <circle key={'c'+i} cx={p.x} cy={p.y} r={r2*0.8} fill={c} opacity={0.5}/>
       ))}
-      {hoverPt&&!hasCtrlPending&&<circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.5}/>}
+      {hoverPt&&!hasThroughPending&&<circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.5}/>}
       {/* Close hint for area */}
-      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl).length>=3&&!arcPending&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>dbl-click to close</text>}
+      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl&&!p._through).length>=3&&!arcPending&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>dbl-click to close</text>}
       {/* Snap indicator — small crosshair on cursor when snap is active */}
       {snapEnabled&&hoverPt&&(()=>{
         const sz=9/zoom;
@@ -2216,7 +2233,7 @@ Return ONLY a valid JSON array, no markdown:
       {/* Arc mode hint */}
       {arcPending&&hoverPt&&(
         <text x={hoverPt.x} y={hoverPt.y-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>
-          {hasCtrlPending ? '⌒ Click arc endpoint' : '⌒ Click arc peak (bulge)'}
+          {hasThroughPending ? '⌒ Click arc endpoint' : '⌒ Click where curve passes through'}
         </text>
       )}
     </>);
@@ -4387,7 +4404,7 @@ Return ONLY a valid JSON array, no markdown:
             <div style={{padding:'6px 2px',textAlign:'center',borderTop:`1px solid #7B6BA430`,width:'100%',background:'#7B6BA410'}}>
               <span style={{fontSize:9,color:'#7B6BA4',fontWeight:700,display:'block',lineHeight:1.4}}>⌒</span>
               <span style={{fontSize:7,color:'#7B6BA4',fontWeight:600,display:'block',lineHeight:1.4}}>
-                {activePts[activePts.length-1]?._ctrl ? 'endpoint' : 'peak'}
+                {activePts[activePts.length-1]?._through ? 'endpoint' : 'peak'}
               </span>
             </div>
           )}
