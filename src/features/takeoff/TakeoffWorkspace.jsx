@@ -518,18 +518,15 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         setSnapEnabled(p=>!p);
       }
 
-      // A — arc mode for linear takeoffs: auto-commit current segment, enter 3-click arc
+      // A — arc mode: next click becomes a bezier control point (_ctrl), then auto-deactivates
       if(e.key==='a'||e.key==='A'){
         const condId = activeCondIdRef.current;
         const cond = itemsRef.current.find(i=>String(i.id)===String(condId));
-        if(cond?.measurement_type==='linear'){
-          // Commit current straight segment if we have ≥2 pts
-          if(commitCurrentPtsRef.current) commitCurrentPtsRef.current();
-          setArcPending(true);
-          setArchMode(false);
-        } else if(cond?.measurement_type==='area'){
-          // Toggle arch mode for area — keep existing points, just change how next click is interpreted
-          setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});
+        if(cond && (cond.measurement_type==='linear'||cond.measurement_type==='area')){
+          // Only allow arc if we have at least 1 point (need a start point for the curve)
+          if(activePtsRef.current.length >= 1){
+            setArcPending(true);
+          }
         }
       }
 
@@ -860,19 +857,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     const lastPlaced = activePtsRef.current.length ? activePtsRef.current[activePtsRef.current.length-1] : null;
     const pt = snapToAngle(lastPlaced, rawPt);
 
-    // ── Arc-pending mode (A key): 3-click arc — start → peak → end ───────
-    if(arcPending && mt==='linear'){
-      setActivePts(prev=>{
-        const npts=[...prev, pt];
-        if(npts.length===3){
-          // [start, peak, end] → commit as quadratic bezier arc shape
-          const [start, peak, end] = npts;
-          appendMeasurement(activeCondId, [start, {...peak,_ctrl:true}, end]);
-          setArcPending(false);
-          return [end]; // continue drawing from end point
-        }
-        return npts;
-      });
+    // ── Arc-pending mode (A key): insert control point then endpoint ───────
+    // Works for both linear and area. Two clicks after pressing A:
+    //   Click 1: control point (peak of curve, stored with _ctrl:true)
+    //   Click 2: endpoint of curve (normal point, arc auto-deactivates)
+    if(arcPending){
+      const lastPt = activePtsRef.current[activePtsRef.current.length-1];
+      const hasCtrlPending = lastPt?._ctrl;
+      if(!hasCtrlPending){
+        // First arc click: this is the control/peak point
+        setActivePts(prev=>[...prev, {...pt, _ctrl:true}]);
+      } else {
+        // Second arc click: this is the endpoint — arc complete
+        setActivePts(prev=>[...prev, pt]);
+        setArcPending(false);
+      }
       return;
     }
 
@@ -882,32 +881,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       return;
     }
 
-    if(mt==='linear'){
-      if(!archMode){
-        setActivePts(prev=>[...prev, pt]);
-      } else {
-        setActivePts(prev=>{
-          const npts=[...prev, pt];
-          if(npts.length>=3){
-            const [p1,ctrl,p2]=npts;
-            appendMeasurement(activeCondId, [p1, {...ctrl,_ctrl:true}, p2]);
-            return [];
-          }
-          return npts;
-        });
-      }
-    } else if(mt==='area'){
-      if(!archMode){
-        setActivePts(prev=>[...prev, pt]);
-      } else {
-        if(archCtrlPending){
-          setActivePts(prev=>[...prev, {...pt,_ctrl:true}]);
-          setArchCtrlPending(false);
-        } else {
-          setActivePts(prev=>[...prev, pt]);
-          setArchCtrlPending(true);
-        }
-      }
+    // ── Normal straight-line clicks ──
+    if(mt==='linear' || mt==='area'){
+      setActivePts(prev=>[...prev, pt]);
     }
   };
 
@@ -2163,33 +2139,47 @@ Return ONLY a valid JSON array, no markdown:
     const activeCond = itemsRef.current.find(i=>String(i.id)===String(activeCondId));
     const mt = activeCond?.measurement_type;
 
-    // Arch linear: show bezier preview when we have p1+p2 and hovering for ctrl
-    const isArchLinear = (archMode || arcPending) && mt==='linear';
-    const isArchArea   = archMode && mt==='area';
-
     // Build preview path
     let previewPath = null;
-    if(isArchLinear && pts.length===2 && hoverPt){
-      // Preview: p1 → curve → p2 with hoverPt as ctrl
-      const d=`M${pts[0].x},${pts[0].y} Q${hoverPt.x},${hoverPt.y} ${pts[1].x},${pts[1].y}`;
-      const pxLen = bezierLength(pts[0], hoverPt, pts[1]);
+    const lastPt = pts.length ? pts[pts.length-1] : null;
+    const hasCtrlPending = lastPt?._ctrl; // last point is a control point, awaiting arc endpoint
+
+    if(arcPending && hasCtrlPending && hoverPt && pts.length>=2){
+      // Arc mode: control point placed, show live bezier preview to mouse
+      const startPt = pts[pts.length-2]; // point before ctrl
+      const ctrlPt = lastPt;
+      const d=`M${startPt.x},${startPt.y} Q${ctrlPt.x},${ctrlPt.y} ${hoverPt.x},${hoverPt.y}`;
+      const pxLen = bezierLength(startPt, ctrlPt, hoverPt);
       const ft = scale ? Math.round(pxLen/scale*10)/10 : null;
-      const mx=(pts[0].x+pts[1].x)/2, my=(pts[0].y+pts[1].y)/2;
+      const mx=(startPt.x+hoverPt.x)/2, my=(startPt.y+hoverPt.y)/2;
+      // Also draw the straight segments leading up to the arc
+      const straightPts = pts.slice(0,-1).filter(p=>!p._ctrl); // all non-ctrl points before
       previewPath = (<>
+        {straightPts.length>=2&&<polyline points={straightPts.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={(tool==='area')?'none':`${6/zoom},${3/zoom}`} opacity={0.9}/>}
         <path d={d} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`} opacity={0.9}/>
-        <line x1={hoverPt.x} y1={hoverPt.y} x2={pts[0].x} y2={pts[0].y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
-        <line x1={hoverPt.x} y1={hoverPt.y} x2={pts[1].x} y2={pts[1].y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
+        <line x1={ctrlPt.x} y1={ctrlPt.y} x2={startPt.x} y2={startPt.y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
+        <line x1={ctrlPt.x} y1={ctrlPt.y} x2={hoverPt.x} y2={hoverPt.y} stroke={c} strokeWidth={sw*0.4} strokeDasharray={`${3/zoom},${3/zoom}`} opacity={0.3}/>
         <circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.6}/>
         {ft&&<text x={mx} y={my-8/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>{ft} LF ⌒</text>}
       </>);
-    } else if(isArchLinear && pts.length===1 && hoverPt){
-      // First segment — show straight preview to p2
-      previewPath = <line x1={pts[0].x} y1={pts[0].y} x2={hoverPt.x} y2={hoverPt.y} stroke={c} strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`} opacity={0.7}/>;
-    } else if(!isArchLinear){
-      // Normal area/linear/cutout preview
-      if(all.length>=2) previewPath = (<>
-        <polyline points={all.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={(tool==='area'||tool==='cutout')?'none':`${6/zoom},${3/zoom}`} opacity={0.9}/>
-        {tool==='cutout'&&all.length>=3&&<polygon points={all.map(p=>`${p.x},${p.y}`).join(' ')} fill="rgba(239,68,68,0.15)" stroke="none"/>}
+    } else {
+      // Normal preview: polyline of all non-ctrl points + hover
+      const realPts = pts.filter(p=>!p._ctrl);
+      const allPts = hoverPt ? [...realPts, hoverPt] : realPts;
+      if(allPts.length>=2) previewPath = (<>
+        <polyline points={allPts.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={(tool==='area'||tool==='cutout')?'none':`${6/zoom},${3/zoom}`} opacity={0.9}/>
+        {tool==='cutout'&&allPts.length>=3&&<polygon points={allPts.map(p=>`${p.x},${p.y}`).join(' ')} fill="rgba(239,68,68,0.15)" stroke="none"/>}
+        {/* Draw committed bezier arcs in activePts */}
+        {(()=>{
+          const arcs=[];
+          for(let i=1;i<pts.length;i++){
+            if(pts[i]._ctrl && i>0 && i<pts.length-1){
+              const d=`M${pts[i-1].x},${pts[i-1].y} Q${pts[i].x},${pts[i].y} ${pts[i+1].x},${pts[i+1].y}`;
+              arcs.push(<path key={i} d={d} fill="none" stroke={c} strokeWidth={sw} opacity={0.9}/>);
+            }
+          }
+          return arcs;
+        })()}
       </>);
     }
 
@@ -2203,9 +2193,9 @@ Return ONLY a valid JSON array, no markdown:
       {pts.filter(p=>p._ctrl).map((p,i)=>(
         <circle key={'c'+i} cx={p.x} cy={p.y} r={r2*0.8} fill={c} opacity={0.5}/>
       ))}
-      {hoverPt&&!isArchLinear&&<circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.5}/>}
+      {hoverPt&&!hasCtrlPending&&<circle cx={hoverPt.x} cy={hoverPt.y} r={r2} fill={c} opacity={0.5}/>}
       {/* Close hint for area */}
-      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl).length>=3&&!isArchArea&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>✦ dbl-click to close</text>}
+      {(tool==='area'||tool==='cutout')&&activePts.filter(p=>!p._ctrl).length>=3&&!arcPending&&<text x={pts[0].x+14/zoom} y={pts[0].y-10/zoom} fontSize={fs} fill={c} fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>dbl-click to close</text>}
       {/* Snap indicator — small crosshair on cursor when snap is active */}
       {snapEnabled&&hoverPt&&(()=>{
         const sz=9/zoom;
@@ -2223,14 +2213,11 @@ Return ONLY a valid JSON array, no markdown:
         const dist=Math.round(calcLinear(lastPt,hoverPt)*10)/10;
         return <text x={(lastPt.x+hoverPt.x)/2} y={(lastPt.y+hoverPt.y)/2-6/zoom} fontSize={fs} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>{dist} LF</text>;
       })()}
-      {/* Arch mode step indicator */}
-      {isArchLinear&&(
-        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>
-          {arcPending ? (pts.length===0?'⌒ Arc: click start':pts.length===1?'⌒ Arc: click peak (radius bulge)':'⌒ Arc: click end') : (pts.length===0?'⌒ Click start':pts.length===1?'⌒ Click end':pts.length===2?'⌒ Click arc bulge':'')}
+      {/* Arc mode hint */}
+      {arcPending&&hoverPt&&(
+        <text x={hoverPt.x} y={hoverPt.y-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>
+          {hasCtrlPending ? '⌒ Click arc endpoint' : '⌒ Click arc peak (bulge)'}
         </text>
-      )}
-      {isArchArea&&archCtrlPending&&(
-        <text x={hoverPt?.x??0} y={(hoverPt?.y??0)-16/zoom} fontSize={fs*0.9} fill={c} textAnchor="middle" fontFamily="monospace" fontWeight={700} style={{pointerEvents:'none'}}>⌒ Click arc ctrl pt</text>
       )}
     </>);
   };
@@ -4358,51 +4345,28 @@ Return ONLY a valid JSON array, no markdown:
             <span style={{fontSize:7,color:snapEnabled?'#facc15':t.text4,opacity:0.7}}>[S]</span>
           </button>
 
-          {/* Arc mode [A] — shown when linear item is armed */}
+          {/* Arc mode [A] — shown when any takeoff (linear or area) is armed */}
           {activeCondId&&(()=>{
             const ac=itemsRef.current.find(i=>String(i.id)===String(activeCondId));
-            if(!ac||ac.measurement_type!=='linear') return null;
+            if(!ac||(ac.measurement_type!=='linear'&&ac.measurement_type!=='area')) return null;
             const arcOn = arcPending;
+            const canArc = activePtsRef.current.length >= 1;
             return(
               <>
                 <div style={{height:1,background:t.border,width:32,margin:'4px 0'}}/>
                 <button onClick={()=>{
                   if(arcPending){ setArcPending(false); }
-                  else {
-                    if(commitCurrentPtsRef.current) commitCurrentPtsRef.current();
-                    setArcPending(true);
-                  }
+                  else if(canArc){ setArcPending(true); }
                 }}
-                  title="Arc/Radius tool [A] — 3-click: start → peak → end"
+                  title="Arc curve [A] — click peak then endpoint"
                   style={{width:'100%',padding:'10px 0',border:'none',
-                    background:arcOn?'#7B6BA418':'none',color:arcOn?'#7B6BA4':t.text3,cursor:'pointer',
+                    background:arcOn?'#7B6BA418':'none',color:arcOn?'#7B6BA4':canArc?t.text3:'#ddd',cursor:canArc?'pointer':'default',
                     display:'flex',flexDirection:'column',alignItems:'center',gap:2,
                     borderRight:arcOn?'2px solid #7B6BA4':'2px solid transparent',
                     boxSizing:'border-box',transition:'all 0.1s'}}>
                   <span style={{fontSize:15,lineHeight:1}}>⌒</span>
-                  <span style={{fontSize:8,fontWeight:600,color:arcOn?'#7B6BA4':t.text4,letterSpacing:0.2}}>Arc</span>
-                  <span style={{fontSize:7,color:arcOn?'#7B6BA4':t.text4,opacity:0.7}}>[A]</span>
-                </button>
-              </>
-            );
-          })()}
-          {/* Area arch toggle — shown when area item armed */}
-          {activeCondId&&(()=>{
-            const ac=itemsRef.current.find(i=>String(i.id)===String(activeCondId));
-            if(!ac||ac.measurement_type!=='area') return null;
-            return(
-              <>
-                <div style={{height:1,background:t.border,width:32,margin:'4px 0'}}/>
-                <button onClick={()=>{setArchMode(p=>{const n=!p;if(!n)setArchCtrlPending(false);return n;});}}
-                  title="Arc curves for area [A]"
-                  style={{width:'100%',padding:'10px 0',border:'none',
-                    background:archMode?'#7B6BA418':'none',color:archMode?'#7B6BA4':t.text3,cursor:'pointer',
-                    display:'flex',flexDirection:'column',alignItems:'center',gap:2,
-                    borderRight:archMode?'2px solid #7B6BA4':'2px solid transparent',
-                    boxSizing:'border-box',transition:'all 0.1s'}}>
-                  <span style={{fontSize:15,lineHeight:1}}>⌒</span>
-                  <span style={{fontSize:8,fontWeight:600,color:archMode?'#7B6BA4':t.text4,letterSpacing:0.2}}>Arc</span>
-                  <span style={{fontSize:7,color:archMode?'#7B6BA4':t.text4,opacity:0.7}}>[A]</span>
+                  <span style={{fontSize:8,fontWeight:600,letterSpacing:0.2}}>Arc</span>
+                  <span style={{fontSize:7,opacity:0.7}}>[A]</span>
                 </button>
               </>
             );
@@ -4419,14 +4383,11 @@ Return ONLY a valid JSON array, no markdown:
 
           <div style={{flex:1}}/>
           {/* Live measure readout at bottom of tool bar */}
-          {(archMode||arcPending)&&(
+          {arcPending&&(
             <div style={{padding:'6px 2px',textAlign:'center',borderTop:`1px solid #7B6BA430`,width:'100%',background:'#7B6BA410'}}>
               <span style={{fontSize:9,color:'#7B6BA4',fontWeight:700,display:'block',lineHeight:1.4}}>⌒</span>
               <span style={{fontSize:7,color:'#7B6BA4',fontWeight:600,display:'block',lineHeight:1.4}}>
-                {arcPending
-                  ? (activePts.length===0?'start':activePts.length===1?'peak':'end')
-                  : tool==='linear'?(activePts.length===0?'pt 1':activePts.length===1?'pt 2':'bulge')
-                  : (archCtrlPending?'ctrl pt':'vertex')}
+                {activePts[activePts.length-1]?._ctrl ? 'endpoint' : 'peak'}
               </span>
             </div>
           )}
