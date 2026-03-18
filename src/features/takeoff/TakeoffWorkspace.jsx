@@ -500,6 +500,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         setArcPending(false); setArchMode(false); setArchCtrlPending(false);
         setSelectedShapes(new Set());
         setDragOffset(null); setVertexDrag(null);
+        setActiveCondId(null); setMarkupMode(null); setActiveMarkup(null);
       }
 
       // V — switch to Select tool
@@ -539,8 +540,14 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         e.preventDefault(); redo(); return;
       }
 
-      // Delete / Backspace — delete selected shapes
+      // Delete / Backspace — remove last point if drawing, or delete selected shapes
       if(e.key==='Delete'||e.key==='Backspace'){
+        // If actively drawing points, remove the last one
+        if(activePtsRef.current.length > 0){
+          e.preventDefault(); e.stopPropagation();
+          setActivePts(prev => prev.slice(0, -1));
+          return;
+        }
         if(!selectedShapesRef.current.size) return;
         e.preventDefault(); e.stopPropagation();
         if(e.repeat) return;
