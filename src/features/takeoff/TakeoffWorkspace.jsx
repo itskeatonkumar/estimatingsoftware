@@ -145,6 +145,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [mainView, setMainView] = useState('workspace'); // 'workspace' | 'reports'
   const [reportSort, setReportSort] = useState({col:'description',asc:true});
   const [reportSearch, setReportSearch] = useState('');
+  const [reportType, setReportType] = useState('takeoff_quantity');
+  const [reportGroupBy, setReportGroupBy] = useState('none'); // 'none'|'category'|'sheet'|'type'
+  const [reportCols, setReportCols] = useState({name:true,description:true,quantity:true,unit:true,scale:true,location:true,revision:true,trade:true,unit_cost:true,total_cost:true});
+  const [showColDropdown, setShowColDropdown] = useState(false);
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
@@ -2641,11 +2645,10 @@ Return ONLY a valid JSON array, no markdown:
         </div>
       </div>
 
-      {/* ── Reports View ── */}
+      {/* ── Reports View — STACK style ── */}
       {mainView==='reports'&&(()=>{
         const searchL = reportSearch.toLowerCase();
-        const reportItems = items.filter(it=>!reportSearch || it.description?.toLowerCase().includes(searchL) || TAKEOFF_CATS.find(c=>c.id===it.category)?.label.toLowerCase().includes(searchL));
-        // Sort
+        const reportItems = items.filter(it=>it.plan_id!=null&&(!reportSearch || it.description?.toLowerCase().includes(searchL) || TAKEOFF_CATS.find(c=>c.id===it.category)?.label.toLowerCase().includes(searchL)));
         const sorted = [...reportItems].sort((a,b)=>{
           const col = reportSort.col;
           let av, bv;
@@ -2659,144 +2662,254 @@ Return ONLY a valid JSON array, no markdown:
           if(typeof av==='string') return reportSort.asc ? av.localeCompare(bv) : bv.localeCompare(av);
           return reportSort.asc ? av-bv : bv-av;
         });
-        // Summary stats
-        const totalSF = items.filter(i=>i.unit==='SF').reduce((s,i)=>s+(i.quantity||0),0);
-        const totalLF = items.filter(i=>i.unit==='LF').reduce((s,i)=>s+(i.quantity||0),0);
-        const totalEA = items.filter(i=>i.unit==='EA').reduce((s,i)=>s+(i.quantity||0),0);
-        const totalCY = items.filter(i=>i.unit==='CY').reduce((s,i)=>s+(i.quantity||0),0);
-        const grandTotal = items.reduce((s,i)=>s+(i.total_cost||0),0);
+
+        // Grouping
+        let grouped = null;
+        if(reportGroupBy==='category'){
+          grouped = {};
+          sorted.forEach(it=>{const k=TAKEOFF_CATS.find(c=>c.id===it.category)?.label||'Other';if(!grouped[k])grouped[k]=[];grouped[k].push(it);});
+        } else if(reportGroupBy==='sheet'){
+          grouped = {};
+          sorted.forEach(it=>{const k=planMap.get(it.plan_id)?.name||'Unassigned';if(!grouped[k])grouped[k]=[];grouped[k].push(it);});
+        } else if(reportGroupBy==='type'){
+          grouped = {};
+          sorted.forEach(it=>{const k=(it.measurement_type||'other').replace(/^\w/,c=>c.toUpperCase());if(!grouped[k])grouped[k]=[];grouped[k].push(it);});
+        }
+
+        const fmtQty = (it) => {
+          const q = it.quantity||0;
+          if(q<=0) return '—';
+          const u = it.unit||'';
+          const uLabel = {SF:'Sq Ft',LF:'Ln Ft',EA:'EA',CY:'Cu Yd'}[u]||u;
+          return `${q.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} ${uLabel}`;
+        };
 
         const sortCol = (col) => setReportSort(prev=>({col,asc:prev.col===col?!prev.asc:true}));
-        const sortArrow = (col) => reportSort.col===col ? (reportSort.asc?' ↑':' ↓') : '';
-        const hdrStyle = {fontSize:10,fontWeight:700,color:t.text3,cursor:'pointer',userSelect:'none',padding:'8px 10px',textAlign:'left',fontVariantNumeric:'tabular-nums',letterSpacing:0.5,whiteSpace:'nowrap',borderBottom:`2px solid ${t.border2}`};
-        const cellStyle = {fontSize:11,color:t.text,padding:'7px 10px',borderBottom:`1px solid ${t.border}`,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'};
+        const sortArrow = (col) => reportSort.col===col ? (reportSort.asc?' ▲':' ▼') : '';
+
+        const reportTitles = {
+          takeoff_quantity:'Takeoff Quantity', takeoff_summary:'Takeoff Summary',
+          measurements_by_takeoff:'Measurements By Takeoff', item_list:'Item List',
+          item_cost:'Item Cost', item_cost_by_type:'Item Cost By Type',
+          item_cost_by_takeoff:'Item Cost By Takeoff',
+        };
+
+        const visibleCols = Object.entries(reportCols).filter(([,v])=>v).length;
+
+        const hdrStyle = {fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',userSelect:'none',padding:'10px 12px',textAlign:'left',whiteSpace:'nowrap',background:'#4CAF50',borderBottom:'none'};
+        const cellStyle = {fontSize:13,color:'#333',padding:'10px 12px',borderBottom:'1px solid #E0E0E0',whiteSpace:'nowrap',verticalAlign:'middle'};
+
+        const doExport = (type) => {
+          const header = ['Takeoff Name','Description','Quantity','Unit','Scale','Location','Revision','Trade','Unit Cost','Total Cost'].join(',');
+          const rows = sorted.map(it=>[
+            `"${(it.description||'').replace(/"/g,'""')}"`,
+            `"${(it.notes||'').replace(/"/g,'""')}"`,
+            it.quantity||0, it.unit||'',
+            `"${scaleLabel(planMap.get(it.plan_id)?.scale_px_per_ft, '')}"`,
+            '','','',
+            it.unit_cost||0, it.total_cost||0
+          ].join(','));
+          const csv = [header,...rows].join('\n');
+          const blob = new Blob([csv],{type:'text/csv'});
+          const a = document.createElement('a');
+          a.href=URL.createObjectURL(blob);
+          a.download=`${project.name}_${reportType}.${type==='excel'?'csv':'csv'}`;
+          a.click();
+        };
+
+        // Render a table of rows (used for both flat and grouped)
+        const renderRows = (rowItems, startIdx=0) => rowItems.map((it,idx)=>{
+          const cat = TAKEOFF_CATS.find(c=>c.id===it.category);
+          const sheetName = planMap.get(it.plan_id)?.name||'—';
+          const planScale = planMap.get(it.plan_id)?.scale_px_per_ft;
+          return(
+            <tr key={it.id}
+              onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+              onMouseLeave={e=>e.currentTarget.style.background='#fff'}
+              style={{background:'#fff'}}>
+              {reportCols.name&&<td style={cellStyle}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:it.color||cat?.color||'#888',flexShrink:0}}/>
+                  <span>{it.description||'Unnamed'}</span>
+                </div>
+              </td>}
+              {reportCols.description&&<td style={{...cellStyle,color:'#666',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis'}}>{it.notes||'—'}</td>}
+              {reportCols.quantity&&<td style={{...cellStyle,textAlign:'right',fontWeight:500}}>{fmtQty(it)}</td>}
+              {reportCols.unit&&<td style={{...cellStyle,textAlign:'center',color:'#666'}}>{it.unit||'—'}</td>}
+              {reportCols.scale&&<td style={{...cellStyle,color:'#666',fontSize:12}}>{planScale?scaleLabel(planScale,''):'—'}</td>}
+              {reportCols.location&&<td style={{...cellStyle,color:'#999'}}>—</td>}
+              {reportCols.revision&&<td style={{...cellStyle,color:'#999'}}>—</td>}
+              {reportCols.trade&&<td style={{...cellStyle,color:'#999'}}>—</td>}
+              {(reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff')&&reportCols.unit_cost&&
+                <td style={{...cellStyle,textAlign:'right',color:'#666'}}>{(it.unit_cost||0)>0?`$${Number(it.unit_cost).toFixed(2)}`:'—'}</td>}
+              {(reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff')&&reportCols.total_cost&&
+                <td style={{...cellStyle,textAlign:'right',fontWeight:600,color:'#4CAF50'}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>}
+              <td style={{...cellStyle,textAlign:'center',width:36}}>
+                <button onClick={()=>{setEditItem(it);setMainView('workspace');}} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}} title="Edit">&#9998;</button>
+              </td>
+            </tr>
+          );
+        });
+
+        const isCostReport = reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff';
 
         return(
-        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          {/* Report Header */}
-          <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 20px',borderBottom:`1px solid ${t.border}`,background:t.bg,flexShrink:0}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:16,fontWeight:800,color:t.text,fontFamily:"inherit"}}>Takeoff Summary</div>
-              <div style={{fontSize:10,color:t.text4,fontVariantNumeric:'tabular-nums',marginTop:2}}>Generated {new Date().toLocaleString()}</div>
-            </div>
-            {/* Summary badges */}
-            <div style={{display:'flex',gap:8}}>
-              {totalSF>0&&<div style={{background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#F59E0B',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>SQ FT</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#F59E0B',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalSF).toLocaleString()}</div>
-              </div>}
-              {totalLF>0&&<div style={{background:'rgba(6,182,212,0.1)',border:'1px solid rgba(6,182,212,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#4A90A4',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>LN FT</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#4A90A4',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalLF).toLocaleString()}</div>
-              </div>}
-              {totalEA>0&&<div style={{background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#4CAF50',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>EA</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalEA).toLocaleString()}</div>
-              </div>}
-              {totalCY>0&&<div style={{background:'rgba(139,92,246,0.1)',border:'1px solid rgba(139,92,246,0.3)',borderRadius:6,padding:'4px 10px'}}>
-                <div style={{fontSize:8,color:'#7B6BA4',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>CU YD</div>
-                <div style={{fontSize:13,fontWeight:700,color:'#7B6BA4',fontVariantNumeric:'tabular-nums'}}>{Math.round(totalCY).toLocaleString()}</div>
-              </div>}
-            </div>
-            <div style={{display:'flex',gap:6}}>
-              <div style={{position:'relative'}}>
-                <span style={{position:'absolute',left:7,top:'50%',transform:'translateY(-50%)',color:t.text4,fontSize:11}}>⌕</span>
-                <input value={reportSearch} onChange={e=>setReportSearch(e.target.value)}
-                  placeholder="Search..."
-                  style={{padding:'6px 8px 6px 22px',border:`1px solid ${t.border}`,borderRadius:5,
-                    fontSize:11,color:t.text,background:t.bg3,outline:'none',width:160}}/>
-              </div>
-              <button onClick={()=>{
-                // CSV export
-                const header = ['Takeoff Name','Category','Sheet','Qty','Unit','Unit Cost','Total Cost'].join(',');
-                const rows = sorted.map(it=>[
-                  `"${(it.description||'').replace(/"/g,'""')}"`,
-                  `"${TAKEOFF_CATS.find(c=>c.id===it.category)?.label||''}"`,
-                  `"${planMap.get(it.plan_id)?.name||''}"`,
-                  it.quantity||0, it.unit||'',
-                  it.unit_cost||0, it.total_cost||0
-                ].join(','));
-                const csv = [header,...rows].join('\n');
-                const blob = new Blob([csv],{type:'text/csv'});
-                const a = document.createElement('a');
-                a.href=URL.createObjectURL(blob);
-                a.download=`${project.name}_takeoff_report.csv`;
-                a.click();
-              }}
-                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:4}}>
-                ↓ Export CSV
+        <div style={{flex:1,display:'flex',overflow:'hidden',background:'#fff'}}>
+
+          {/* ── Left Sidebar — Report Navigation ── */}
+          <div style={{width:220,flexShrink:0,borderRight:'1px solid #E0E0E0',display:'flex',flexDirection:'column',background:'#fff',overflowY:'auto'}}>
+            <div style={{padding:'16px 16px 8px',fontSize:11,fontWeight:700,color:'#999',letterSpacing:0.5}}>Takeoff Reports</div>
+            {[
+              {id:'takeoff_quantity',label:'Takeoff Quantity'},
+              {id:'takeoff_summary',label:'Takeoff Summary'},
+              {id:'measurements_by_takeoff',label:'Measurements By Takeoff'},
+              {id:'item_list',label:'Item List'},
+              {id:'item_cost',label:'Item Cost'},
+              {id:'item_cost_by_type',label:'Item Cost By Type'},
+              {id:'item_cost_by_takeoff',label:'Item Cost By Takeoff'},
+            ].map(r=>(
+              <button key={r.id} onClick={()=>setReportType(r.id)}
+                style={{display:'block',width:'100%',textAlign:'left',padding:'8px 16px',border:'none',background:reportType===r.id?'#f5f5f5':'transparent',
+                  color:reportType===r.id?'#4CAF50':'#666',fontWeight:reportType===r.id?600:400,fontSize:13,cursor:'pointer'}}>
+                {r.label}
               </button>
-            </div>
+            ))}
+            <div style={{height:1,background:'#E0E0E0',margin:'12px 16px'}}/>
+            <div style={{padding:'4px 16px 8px',fontSize:11,fontWeight:700,color:'#999',letterSpacing:0.5}}>Estimate Reports</div>
+            <button style={{display:'block',width:'100%',textAlign:'left',padding:'8px 16px',border:'none',background:'transparent',color:'#ccc',fontSize:13,cursor:'default'}}>Coming soon</button>
+            <div style={{height:1,background:'#E0E0E0',margin:'12px 16px'}}/>
+            <div style={{padding:'4px 16px 8px',fontSize:11,fontWeight:700,color:'#999',letterSpacing:0.5}}>Snapshots</div>
+            <div style={{padding:'4px 16px',fontSize:12,color:'#ccc',fontStyle:'italic'}}>No snapshots yet</div>
           </div>
 
-          {/* Report Table */}
-          <div style={{flex:1,overflowY:'auto',overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',minWidth:900}}>
-              <thead style={{position:'sticky',top:0,background:t.bg2,zIndex:2}}>
-                <tr>
-                  <th style={{...hdrStyle,width:30}}>#</th>
-                  <th onClick={()=>sortCol('description')} style={{...hdrStyle}}>TAKEOFF NAME{sortArrow('description')}</th>
-                  <th onClick={()=>sortCol('category')} style={{...hdrStyle}}>CATEGORY{sortArrow('category')}</th>
-                  <th onClick={()=>sortCol('sheet')} style={{...hdrStyle}}>SHEET{sortArrow('sheet')}</th>
-                  <th onClick={()=>sortCol('quantity')} style={{...hdrStyle,textAlign:'right'}}>QTY{sortArrow('quantity')}</th>
-                  <th style={{...hdrStyle,textAlign:'center'}}>UNIT</th>
-                  <th onClick={()=>sortCol('unit_cost')} style={{...hdrStyle,textAlign:'right'}}>UNIT COST{sortArrow('unit_cost')}</th>
-                  <th onClick={()=>sortCol('total_cost')} style={{...hdrStyle,textAlign:'right'}}>TOTAL{sortArrow('total_cost')}</th>
-                  <th style={{...hdrStyle,width:40}}/>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((it,idx)=>{
-                  const cat = TAKEOFF_CATS.find(c=>c.id===it.category);
-                  const sheetName = planMap.get(it.plan_id)?.name||'—';
-                  return(
-                    <tr key={it.id}
-                      onMouseEnter={e=>e.currentTarget.style.background=t.bg3}
-                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <td style={{...cellStyle,color:t.text4,fontSize:9,textAlign:'center'}}>{idx+1}</td>
-                      <td style={{...cellStyle}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:10,height:10,borderRadius:2,background:it.color||cat?.color||'#888',flexShrink:0}}/>
-                          <span style={{fontFamily:"inherit",fontWeight:600,fontSize:12,color:t.text}}>{it.description||'Unnamed'}</span>
-                        </div>
-                      </td>
-                      <td style={{...cellStyle,color:cat?.color||t.text3,fontWeight:600,fontSize:10}}>{cat?.label||it.category}</td>
-                      <td style={{...cellStyle,color:t.text3,fontSize:10,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'}}>{sheetName}</td>
-                      <td style={{...cellStyle,textAlign:'right',fontWeight:700,color:(it.quantity||0)>0?t.text:t.text4}}>{(it.quantity||0)>0?Math.round((it.quantity||0)*10)/10:'—'}</td>
-                      <td style={{...cellStyle,textAlign:'center',color:t.text3,fontSize:10}}>{it.unit||'—'}</td>
-                      <td style={{...cellStyle,textAlign:'right',color:t.text3}}>{(it.unit_cost||0)>0?`$${Number(it.unit_cost).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—'}</td>
-                      <td style={{...cellStyle,textAlign:'right',fontWeight:700,color:(it.total_cost||0)>0?'#4CAF50':t.text4}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>
-                      <td style={{...cellStyle,textAlign:'center'}}>
-                        <button onClick={()=>{setEditItem(it);setMainView('workspace');}} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',fontSize:10,opacity:0.5}} title="Edit">✎</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {sorted.length>0&&(
-                <tfoot>
-                  <tr style={{background:t.bg2}}>
-                    <td style={{...cellStyle,borderBottom:'none'}} colSpan={4}>
-                      <span style={{fontSize:11,fontWeight:800,color:t.text}}>TOTALS ({sorted.length} items)</span>
-                    </td>
-                    <td style={{...cellStyle,textAlign:'right',borderBottom:'none'}}>
-                      <span style={{fontWeight:700,color:t.text,fontSize:11}}>{Math.round(sorted.reduce((s,i)=>s+(i.quantity||0),0)*10)/10}</span>
-                    </td>
-                    <td style={{...cellStyle,borderBottom:'none'}}/>
-                    <td style={{...cellStyle,borderBottom:'none'}}/>
-                    <td style={{...cellStyle,textAlign:'right',borderBottom:'none'}}>
-                      <span style={{fontWeight:800,color:'#4CAF50',fontSize:13}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</span>
-                    </td>
-                    <td style={{...cellStyle,borderBottom:'none'}}/>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-            {sorted.length===0&&(
-              <div style={{textAlign:'center',padding:'60px 20px',color:t.text4,fontSize:12}}>
-                {reportSearch?'No takeoffs match your search.':'No takeoff items yet. Draw measurements on plans to populate this report.'}
+          {/* ── Main Content ── */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+
+            {/* Report Header */}
+            <div style={{display:'flex',alignItems:'center',gap:12,padding:'16px 24px',borderBottom:'1px solid #E0E0E0',flexShrink:0}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:18,fontWeight:600,color:'#333'}}>{reportTitles[reportType]||'Report'}</div>
+                <div style={{fontSize:12,color:'#999',marginTop:2}}>Generated on: {new Date().toLocaleString()}</div>
               </div>
-            )}
+              <button onClick={()=>window.print()}
+                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
+                Print &#9662;
+              </button>
+              <div style={{position:'relative'}}>
+                <button onClick={()=>{
+                  const dd=document.getElementById('exportDD');
+                  if(dd) dd.style.display=dd.style.display==='none'?'block':'none';
+                }}
+                  style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
+                  Export &#9662;
+                </button>
+                <div id="exportDD" style={{display:'none',position:'absolute',top:'100%',right:0,zIndex:50,marginTop:4,background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',minWidth:180,overflow:'hidden'}}>
+                  <button onClick={()=>{doExport('excel');document.getElementById('exportDD').style.display='none';}}
+                    style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',border:'none',background:'#fff',color:'#333',fontSize:12,cursor:'pointer',borderBottom:'1px solid #f0f0f0'}}>
+                    Excel (Visible Data)
+                  </button>
+                  <button onClick={()=>{doExport('csv');document.getElementById('exportDD').style.display='none';}}
+                    style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',border:'none',background:'#fff',color:'#333',fontSize:12,cursor:'pointer'}}>
+                    CSV (All Data)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Toolbar Row */}
+            <div style={{display:'flex',gap:8,padding:'10px 24px',borderBottom:'1px solid #E0E0E0',flexShrink:0,flexWrap:'wrap',alignItems:'center'}}>
+              {/* Columns toggle */}
+              <div style={{position:'relative'}}>
+                <button onClick={()=>setShowColDropdown(p=>!p)}
+                  style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'5px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>
+                  Columns ({visibleCols}) &#9662;
+                </button>
+                {showColDropdown&&<>
+                  <div style={{position:'fixed',inset:0,zIndex:49}} onClick={()=>setShowColDropdown(false)}/>
+                  <div style={{position:'absolute',top:'100%',left:0,zIndex:50,marginTop:4,background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',padding:'8px 0',minWidth:180}}>
+                    {Object.entries(reportCols).map(([key,val])=>(
+                      <label key={key} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',cursor:'pointer',fontSize:12,color:'#333'}}>
+                        <input type="checkbox" checked={val} onChange={()=>setReportCols(prev=>({...prev,[key]:!prev[key]}))} style={{accentColor:'#4CAF50'}}/>
+                        {key.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase())}
+                      </label>
+                    ))}
+                  </div>
+                </>}
+              </div>
+              {/* Groupings */}
+              <select value={reportGroupBy} onChange={e=>setReportGroupBy(e.target.value)}
+                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'5px 12px',borderRadius:4,cursor:'pointer',fontSize:12,outline:'none'}}>
+                <option value="none">No grouping</option>
+                <option value="category">Group by Category</option>
+                <option value="sheet">Group by Sheet</option>
+                <option value="type">Group by Type</option>
+              </select>
+              {/* Search */}
+              <input value={reportSearch} onChange={e=>setReportSearch(e.target.value)}
+                placeholder="Filter..."
+                style={{padding:'5px 12px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',width:180}}/>
+              <button onClick={()=>{setReportSearch('');setReportGroupBy('none');setReportSort({col:'description',asc:true});setReportCols({name:true,description:true,quantity:true,unit:true,scale:true,location:true,revision:true,trade:true,unit_cost:true,total_cost:true});}}
+                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#999',padding:'5px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>
+                Reset
+              </button>
+              <div style={{flex:1}}/>
+              <span style={{fontSize:12,color:'#999'}}>{sorted.length} items</span>
+            </div>
+
+            {/* Data Table */}
+            <div style={{flex:1,overflowY:'auto',overflowX:'auto',background:'#fff'}}>
+              {(reportType==='takeoff_quantity'||reportType==='takeoff_summary'||reportType==='item_list'||reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff'||reportType==='measurements_by_takeoff')?(
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:800}}>
+                <thead style={{position:'sticky',top:0,zIndex:2}}>
+                  <tr>
+                    {reportCols.name&&<th onClick={()=>sortCol('description')} style={hdrStyle}>Takeoff Name{sortArrow('description')}</th>}
+                    {reportCols.description&&<th style={hdrStyle}>Description</th>}
+                    {reportCols.quantity&&<th onClick={()=>sortCol('quantity')} style={{...hdrStyle,textAlign:'right'}}>Quantity{sortArrow('quantity')}</th>}
+                    {reportCols.unit&&<th style={{...hdrStyle,textAlign:'center'}}>Unit</th>}
+                    {reportCols.scale&&<th style={hdrStyle}>Scale</th>}
+                    {reportCols.location&&<th style={hdrStyle}>Location</th>}
+                    {reportCols.revision&&<th style={hdrStyle}>Revision</th>}
+                    {reportCols.trade&&<th style={hdrStyle}>Trade</th>}
+                    {isCostReport&&reportCols.unit_cost&&<th onClick={()=>sortCol('unit_cost')} style={{...hdrStyle,textAlign:'right'}}>Unit Cost{sortArrow('unit_cost')}</th>}
+                    {isCostReport&&reportCols.total_cost&&<th onClick={()=>sortCol('total_cost')} style={{...hdrStyle,textAlign:'right'}}>Total{sortArrow('total_cost')}</th>}
+                    <th style={{...hdrStyle,width:36}}/>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grouped ? Object.entries(grouped).map(([groupName,groupItems])=>(
+                    <React.Fragment key={groupName}>
+                      <tr><td colSpan={20} style={{background:'#f5f5f5',padding:'8px 12px',fontSize:13,fontWeight:600,color:'#333',borderBottom:'1px solid #E0E0E0'}}>{groupName} ({groupItems.length})</td></tr>
+                      {renderRows(groupItems)}
+                    </React.Fragment>
+                  )) : renderRows(sorted)}
+                </tbody>
+                {sorted.length>0&&!grouped&&(
+                  <tfoot>
+                    <tr style={{background:'#f5f5f5'}}>
+                      {reportCols.name&&<td style={{...cellStyle,fontWeight:700,borderBottom:'none'}}>Totals ({sorted.length})</td>}
+                      {reportCols.description&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {reportCols.quantity&&<td style={{...cellStyle,textAlign:'right',fontWeight:700,borderBottom:'none'}}>{sorted.reduce((s,i)=>s+(i.quantity||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>}
+                      {reportCols.unit&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {reportCols.scale&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {reportCols.location&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {reportCols.revision&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {reportCols.trade&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {isCostReport&&reportCols.unit_cost&&<td style={{...cellStyle,borderBottom:'none'}}/>}
+                      {isCostReport&&reportCols.total_cost&&<td style={{...cellStyle,textAlign:'right',fontWeight:700,color:'#4CAF50',fontSize:14,borderBottom:'none'}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</td>}
+                      <td style={{...cellStyle,borderBottom:'none'}}/>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+              ):(
+                <div style={{textAlign:'center',padding:80,color:'#999',fontSize:14}}>Coming soon</div>
+              )}
+              {sorted.length===0&&(
+                <div style={{textAlign:'center',padding:'60px 20px',color:'#999',fontSize:13}}>
+                  {reportSearch?'No takeoffs match your filter.':'No takeoff items yet. Draw measurements on plans to populate this report.'}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         );
