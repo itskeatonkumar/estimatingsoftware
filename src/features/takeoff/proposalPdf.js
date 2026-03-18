@@ -59,9 +59,12 @@ function addDays(d, n) {
   return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-export function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId }) {
+export function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId, clientInfo, companyProfile, proposalScope, proposalTerms }) {
   try {
-  const co = COMPANY_INFO[companyId] || COMPANY_INFO[project.company] || COMPANY_INFO.default;
+  // Use user-configured company profile if available, otherwise fall back to hardcoded
+  const co = companyProfile?.name ? companyProfile : (COMPANY_INFO[companyId] || COMPANY_INFO[project.company] || COMPANY_INFO.default);
+  // Use user-configured client info
+  const client = clientInfo?.name ? clientInfo : { name: project.gc_name || '', company: '', address: project.address || '' };
   const doc = new jsPDF('p', 'pt', 'letter'); // 612 x 792
   const W = 612, margin = 40;
   const contentW = W - margin * 2;
@@ -125,8 +128,9 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
   const tableRows = [];
 
   // Client row
+  const clientLabel = client.name ? `ATTN: ${client.name}${client.company ? ' / ' + client.company : ''}` : `ATTN: ${project.gc_name || '—'}`;
   tableRows.push([
-    { content: `ATTN: ${project.gc_name || '—'}`, colSpan: 2, styles: { fontStyle: 'bold', fontSize: 9 } },
+    { content: clientLabel, colSpan: 2, styles: { fontStyle: 'bold', fontSize: 9 } },
     '', '', ''
   ]);
 
@@ -224,7 +228,8 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   const bidDateStr = project.bid_date ? fmtDate(project.bid_date) : 'the bid date';
-  const descText = `${co.name} proposes to provide all materials and labor as required to perform the concrete work in accordance with the plans and specifications dated ${bidDateStr}, attached quantities, and following:`;
+  const defaultScope = `${co.name} proposes to provide all materials and labor as required to perform the concrete work in accordance with the plans and specifications dated ${bidDateStr}, attached quantities, and following:`;
+  const descText = proposalScope || defaultScope;
   const descLines = doc.splitTextToSize(descText, contentW);
   doc.text(descLines, margin, y);
   y += descLines.length * 11 + 12;
@@ -241,7 +246,8 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  for (const term of TERMS) {
+  const userTerms = proposalTerms ? proposalTerms.split('\n').filter(t => t.trim()) : TERMS;
+  for (const term of userTerms) {
     if (y > 740) { doc.addPage(); y = margin; }
     const tLines = doc.splitTextToSize(`\u2022  ${term}`, contentW - 10);
     doc.text(tLines, margin + 6, y);

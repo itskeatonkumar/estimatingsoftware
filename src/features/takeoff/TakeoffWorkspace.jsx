@@ -151,6 +151,20 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [reportCols, setReportCols] = useState({name:true,description:true,quantity:true,unit:true,scale:true,location:true,revision:true,trade:true,unit_cost:true,total_cost:true});
   const [showColDropdown, setShowColDropdown] = useState(false);
   const [proposalCompany, setProposalCompany] = useState(project.company || 'fcg');
+  const [proposalScope, setProposalScope] = useState(() => {
+    try { return localStorage.getItem(`proposalScope_${project.id}`) || ''; } catch { return ''; }
+  });
+  const [proposalTerms, setProposalTerms] = useState(() => {
+    try { return localStorage.getItem(`proposalTerms_${project.id}`) || ''; } catch { return ''; }
+  });
+  const [companyProfile, setCompanyProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('companyProfile') || 'null'); } catch { return null; }
+  });
+  const [clientInfo, setClientInfo] = useState({
+    name: project.client_name || '', company: project.client_company || project.gc_name || '',
+    address: project.client_address || '', email: project.client_email || '', phone: project.client_phone || '',
+  });
+  const [editModal, setEditModal] = useState(null); // 'scope'|'terms'|'client'|'company'|null
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
@@ -4501,7 +4515,8 @@ Return ONLY a valid JSON array, no markdown:
             </select>
             <button onClick={()=>generateProposalPdf({
                 project, items, plans, categories:TAKEOFF_CATS,
-                overheadPct, profitPct, companyId:proposalCompany
+                overheadPct, profitPct, companyId:proposalCompany,
+                clientInfo, companyProfile, proposalScope, proposalTerms,
               })}
               style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
               &#8595; Download Proposal PDF
@@ -4515,6 +4530,171 @@ Return ONLY a valid JSON array, no markdown:
           {/* ── SUMMARY SUB-TAB ── */}
           {estSubTab==='summary'&&(
             <div style={{flex:1,overflowY:'auto',background:'#f5f5f5',padding:24}}>
+
+              {/* ── Proposal Details — 3 cards ── */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginBottom:20,maxWidth:1100}}>
+
+                {/* Card 1: Proposal Details */}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:8,padding:20}}>
+                  <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>Proposal Details</div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                    <span style={{color:proposalScope?'#4CAF50':'#ccc',fontSize:14}}>{proposalScope?'✓':'○'}</span>
+                    <span style={{flex:1,fontSize:13,color:'#333'}}>Scope of Work</span>
+                    <button onClick={()=>setEditModal('scope')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+                    <span style={{color:proposalTerms?'#4CAF50':'#ccc',fontSize:14}}>{proposalTerms?'✓':'○'}</span>
+                    <span style={{flex:1,fontSize:13,color:'#333'}}>Terms and Conditions</span>
+                    <button onClick={()=>setEditModal('terms')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
+                  </div>
+                  {proposalScope&&proposalTerms?(
+                    <div style={{fontSize:12,color:'#4CAF50',fontWeight:500}}>Your proposal is good to go!</div>
+                  ):(
+                    <div style={{fontSize:12,color:'#999'}}>Complete both sections above</div>
+                  )}
+                </div>
+
+                {/* Card 2: Client / Prepared For */}
+                <div style={{background:'#fff',border:clientInfo.name?'1px solid #E0E0E0':'1px dashed #ccc',borderRadius:8,padding:20}}>
+                  <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
+                    <span style={{flex:1,fontSize:16,fontWeight:600,color:'#333'}}>{clientInfo.name?`Prepared for ${clientInfo.name}`:'Client Info'}</span>
+                    {clientInfo.name&&<button onClick={()=>setEditModal('client')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:16}}>&#8942;</button>}
+                  </div>
+                  {clientInfo.name?(
+                    <div style={{fontSize:13,color:'#333',lineHeight:1.7}}>
+                      <div style={{fontWeight:600}}>{clientInfo.name}</div>
+                      {clientInfo.company&&<div>{clientInfo.company}</div>}
+                      {clientInfo.address&&<div style={{color:'#666'}}>{clientInfo.address}</div>}
+                      {clientInfo.email&&<div><a href={`mailto:${clientInfo.email}`} style={{color:'#1976D2',textDecoration:'none'}}>{clientInfo.email}</a></div>}
+                      {clientInfo.phone&&<div style={{color:'#666'}}>{clientInfo.phone}</div>}
+                    </div>
+                  ):(
+                    <button onClick={()=>setEditModal('client')}
+                      style={{background:'none',border:'1px dashed #ccc',color:'#999',padding:'12px 20px',borderRadius:4,cursor:'pointer',fontSize:13,width:'100%'}}>
+                      + Add Client
+                    </button>
+                  )}
+                </div>
+
+                {/* Card 3: Your Company */}
+                <div style={{background:'#fff',border:companyProfile?.name?'1px solid #E0E0E0':'1px dashed #ccc',borderRadius:8,padding:20}}>
+                  <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
+                    <span style={{flex:1,fontSize:16,fontWeight:600,color:'#333'}}>{companyProfile?.name||'Your Company'}</span>
+                    {companyProfile?.name&&<button onClick={()=>setEditModal('company')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:16}}>&#8942;</button>}
+                  </div>
+                  {companyProfile?.name?(
+                    <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
+                      <div style={{width:36,height:36,borderRadius:'50%',background:'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
+                        {companyProfile.name[0]}
+                      </div>
+                      <div style={{fontSize:13,color:'#333',lineHeight:1.7}}>
+                        <div style={{fontWeight:600}}>{companyProfile.name}</div>
+                        {companyProfile.address&&<div style={{color:'#666'}}>{companyProfile.address}</div>}
+                        {companyProfile.city&&<div style={{color:'#666'}}>{companyProfile.city}</div>}
+                        {companyProfile.email&&<div><a href={`mailto:${companyProfile.email}`} style={{color:'#1976D2',textDecoration:'none'}}>{companyProfile.email}</a></div>}
+                        {companyProfile.phone&&<div style={{color:'#666'}}>{companyProfile.phone}</div>}
+                      </div>
+                    </div>
+                  ):(
+                    <button onClick={()=>setEditModal('company')}
+                      style={{background:'none',border:'1px dashed #ccc',color:'#999',padding:'12px 20px',borderRadius:4,cursor:'pointer',fontSize:13,width:'100%'}}>
+                      + Add Company Profile
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Modals ── */}
+              {editModal==='scope'&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
+                  <div style={{background:'#fff',borderRadius:8,padding:24,width:560,maxHeight:'80vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:12}}>Scope of Work</div>
+                    <textarea defaultValue={proposalScope} id="_scopeTA" rows={10}
+                      style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:12,fontSize:13,color:'#333',outline:'none',resize:'vertical',boxSizing:'border-box'}}
+                      placeholder="Describe the scope of work for this proposal..."/>
+                    <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setEditModal(null)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
+                      <button onClick={()=>{
+                        const v=document.getElementById('_scopeTA').value;
+                        setProposalScope(v);
+                        try{localStorage.setItem(`proposalScope_${project.id}`,v);}catch{}
+                        setEditModal(null);
+                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {editModal==='terms'&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
+                  <div style={{background:'#fff',borderRadius:8,padding:24,width:560,maxHeight:'80vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:12}}>Terms and Conditions</div>
+                    <div style={{fontSize:11,color:'#999',marginBottom:8}}>One term per line. These appear as bullet points on the proposal PDF.</div>
+                    <textarea defaultValue={proposalTerms} id="_termsTA" rows={12}
+                      style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:12,fontSize:13,color:'#333',outline:'none',resize:'vertical',boxSizing:'border-box'}}
+                      placeholder={"We are insured and bondable (Bond not included).\nThis bid is good for thirty (30) days.\nWe exclude rock demolition.\n..."}/>
+                    <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setEditModal(null)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
+                      <button onClick={()=>{
+                        const v=document.getElementById('_termsTA').value;
+                        setProposalTerms(v);
+                        try{localStorage.setItem(`proposalTerms_${project.id}`,v);}catch{}
+                        setEditModal(null);
+                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {editModal==='client'&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
+                  <div style={{background:'#fff',borderRadius:8,padding:24,width:440}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>Client / Prepared For</div>
+                    {[['name','Contact Name'],['company','Company'],['address','Address'],['email','Email'],['phone','Phone']].map(([k,lbl])=>(
+                      <div key={k} style={{marginBottom:10}}>
+                        <div style={{fontSize:12,color:'#666',marginBottom:4}}>{lbl}</div>
+                        <input defaultValue={clientInfo[k]||''} id={`_client_${k}`}
+                          style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:'8px 10px',fontSize:13,color:'#333',outline:'none',boxSizing:'border-box'}}/>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setEditModal(null)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
+                      <button onClick={async()=>{
+                        const ci={};
+                        ['name','company','address','email','phone'].forEach(k=>{ci[k]=document.getElementById(`_client_${k}`).value.trim();});
+                        setClientInfo(ci);
+                        await supabase.from('precon_projects').update({
+                          client_name:ci.name,client_company:ci.company,client_address:ci.address,client_email:ci.email,client_phone:ci.phone
+                        }).eq('id',project.id);
+                        setEditModal(null);
+                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {editModal==='company'&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
+                  <div style={{background:'#fff',borderRadius:8,padding:24,width:440}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>Your Company Profile</div>
+                    {[['name','Company Name'],['address','Address'],['city','City, State, ZIP'],['phone','Phone'],['email','Email']].map(([k,lbl])=>(
+                      <div key={k} style={{marginBottom:10}}>
+                        <div style={{fontSize:12,color:'#666',marginBottom:4}}>{lbl}</div>
+                        <input defaultValue={companyProfile?.[k]||''} id={`_co_${k}`}
+                          style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:'8px 10px',fontSize:13,color:'#333',outline:'none',boxSizing:'border-box'}}/>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setEditModal(null)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
+                      <button onClick={()=>{
+                        const cp={};
+                        ['name','address','city','phone','email'].forEach(k=>{cp[k]=document.getElementById(`_co_${k}`).value.trim();});
+                        setCompanyProfile(cp);
+                        try{localStorage.setItem('companyProfile',JSON.stringify(cp));}catch{}
+                        setEditModal(null);
+                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Top row: Summary By SF + Details By SF */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20,maxWidth:1100}}>
                 {/* Summary By Square Foot */}
