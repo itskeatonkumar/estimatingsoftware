@@ -229,7 +229,13 @@ function ProjectList({ onSelectProject, user }) {
                 <div style={{ marginLeft: 22 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <input
+                        defaultValue={p.name || ''}
+                        onClick={e => e.stopPropagation()}
+                        onBlur={e => { const v = e.target.value.trim(); if (v && v !== p.name) updateField(p.id, 'name', v); }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                        style={{ fontSize: 14, fontWeight: 500, color: t.text, background: 'transparent', border: 'none', outline: 'none', width: '100%', padding: 0, cursor: 'text' }}
+                      />
                       <div style={{ fontSize: 12, color: t.text3, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.address || p.gc_name || ''}
                       </div>
@@ -256,11 +262,14 @@ function ProjectList({ onSelectProject, user }) {
                       )}
                       {p.gc_name && <div style={{ fontSize: 12, color: t.text3, marginTop: 2 }}>GC: {p.gc_name}</div>}
                     </div>
-                    {p.bid_date && (
-                      <div style={{ fontSize: 12, color: p.bid_date < new Date().toISOString().slice(0, 10) ? '#C0504D' : t.text3 }}>
-                        Bid: {fmtDate(p.bid_date)}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+                      <span style={{ fontSize: 11, color: t.text3 }}>Bid:</span>
+                      <input type="date" defaultValue={p.bid_date || ''}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => updateField(p.id, 'bid_date', e.target.value || null)}
+                        style={{ fontSize: 12, color: p.bid_date && p.bid_date < new Date().toISOString().slice(0, 10) ? '#C0504D' : t.text3, background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', padding: 0 }}
+                      />
+                    </div>
                   </div>
                   {/* Team member */}
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.border}` }} onClick={e => e.stopPropagation()}>
