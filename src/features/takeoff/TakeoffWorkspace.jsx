@@ -1544,9 +1544,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         // Extract embedded text (free — no AI needed)
         let pageText = '';
         try {
+          console.log('[OCR] Extracting text for page', pageN);
           const textContent = await page.getTextContent();
-          pageText = textContent.items.map(item => item.str).join(' ').slice(0, 10000); // cap at 10k chars
-        } catch(e) { console.warn('text extraction failed p'+pageN, e); }
+          console.log('[OCR] Raw items count:', textContent.items.length);
+          pageText = textContent.items.filter(item => item.str && item.str.trim()).map(item => item.str).join(' ').replace(/\s+/g, ' ').trim().slice(0, 10000);
+          console.log('[OCR] Page', pageN, 'text length:', pageText.length, 'preview:', pageText.slice(0, 200));
+        } catch(e) { console.error('[OCR] text extraction FAILED p'+pageN, e); }
         const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
         offscreen.width = viewport.width; offscreen.height = viewport.height;
@@ -3221,6 +3224,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   style={{width:'100%',padding:'4px 8px',fontSize:10,border:`1px solid ${t.border}`,borderRadius:4,background:t.bg,color:t.text,outline:'none',boxSizing:'border-box'}}
                 />
                 {planSearch.trim()&&<div style={{fontSize:9,color:t.text4,marginTop:3}}>{visiblePlans.length} of {plans.length} sheets match</div>}
+                <button onClick={async()=>{
+                  const {data}=await supabase.from('precon_plans').select('id,name,ocr_text').eq('project_id',project.id).limit(5);
+                  const info = data?.map(p=>({name:p.name,hasText:!!p.ocr_text,len:p.ocr_text?.length||0,preview:p.ocr_text?.slice(0,80)}));
+                  console.log('[OCR DEBUG] DB check:', info);
+                  alert(JSON.stringify(info,null,2));
+                }} style={{fontSize:9,color:'#999',background:'none',border:'1px solid #ddd',borderRadius:3,padding:'2px 6px',cursor:'pointer',marginTop:3}}>Debug OCR</button>
               </div>
 
               {/* Folder tree */}
