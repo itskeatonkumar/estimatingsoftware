@@ -32,16 +32,21 @@ function ProjectList({ onSelectProject, user }) {
 
   useEffect(() => {
     supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error('[projects] load error:', error);
         setProjects(data || []);
         setLoading(false);
-      });
-    // Fetch team members from profiles table
+      })
+      .catch(e => { console.error('[projects] fetch failed:', e); setLoading(false); });
+    // Fetch team members from profiles table (skip silently if table doesn't exist)
     supabase.from('profiles').select('id, email, full_name')
       .then(({ data, error }) => {
-        if (error) console.error('[profiles] load error:', error);
-        if (data?.length) setOrgMembers(data.map(p => ({ user_id: p.id, email: p.email, name: p.full_name })));
-      });
+        if (!error && data?.length) setOrgMembers(data.map(p => ({ user_id: p.id, email: p.email, name: p.full_name })));
+      })
+      .catch(() => {});
+    // Safety: force loading off after 5s in case query hangs
+    const t = setTimeout(() => setLoading(false), 5000);
+    return () => clearTimeout(t);
   }, []);
 
   const handleSave = async (data, type) => {
