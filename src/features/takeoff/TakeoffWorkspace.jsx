@@ -1571,7 +1571,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           const textContent = await page.getTextContent();
           const vp = page.getViewport({scale:2.0}); // MUST match the render scale used for JPEG
           for(const item of textContent.items){
-            if(!item.str?.trim() || !item.transform) continue;
+            if(!item.str || !item.transform) continue;
+            if(!item.str.replace(/\s/g,'')) continue; // skip pure whitespace but keep items with spaces
             // Use PDF.js built-in coordinate conversion (handles rotation, skew, etc.)
             const [px, py] = vp.convertToViewportPoint(item.transform[4], item.transform[5]);
             const fontSize = Math.sqrt(item.transform[0]**2 + item.transform[1]**2);
@@ -1585,7 +1586,23 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               h: Math.round(heightPx),
             });
           }
-          pageText = ocrItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim().slice(0,10000);
+          // Also merge adjacent items into combined entries for multi-word search matching
+          // Items within ~20px vertically and ~200px horizontally are likely on the same line
+          const merged = [];
+          const sorted = [...ocrItems].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);
+          let current = null;
+          for(const item of sorted){
+            if(current && Math.abs(item.y-current.y)<20 && item.x<current.x+current.w+200){
+              current.str += ' '+item.str;
+              current.w = (item.x+item.w)-current.x;
+            } else {
+              if(current) merged.push(current);
+              current = {...item};
+            }
+          }
+          if(current) merged.push(current);
+          ocrItems.push(...merged.filter(m=>m.str.includes(' '))); // add merged multi-word items
+          pageText = ocrItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim().slice(0,50000);
         } catch(e) { console.error('[OCR] text extraction FAILED p'+pageN, e); }
         const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
@@ -4327,8 +4344,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           if(!matches.length) return null;
                           return matches.map((m,i)=>(
                             <g key={`hl${i}`} style={{pointerEvents:'none'}}>
-                              <rect x={m.x-3} y={m.y-2} width={Math.max(m.w+6,30)} height={Math.max(m.h+4,12)} rx={2}
-                                fill="rgba(255,235,59,0.4)" stroke="rgba(255,180,0,0.7)" strokeWidth={1.5/zoom}/>
+                              <rect x={m.x-4} y={m.y-3} width={Math.max(m.w+8,40)} height={Math.max(m.h+6,16)} rx={3}
+                                fill="rgba(255,213,0,0.55)" stroke="#FF6F00" strokeWidth={2.5/zoom}/>
                             </g>
                           ));
                         })()}
