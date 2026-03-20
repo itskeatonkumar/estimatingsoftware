@@ -33,7 +33,8 @@ function ProjectList({ onSelectProject, user }) {
   useEffect(() => {
     supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
       .then(({ data, error }) => {
-        if (error) console.error('[projects] load error:', error);
+        if (error) { console.error('[projects] load error:', error); alert('Project load error: ' + error.message); }
+        console.log('[projects] loaded:', (data||[]).length, 'projects');
         setProjects(data || []);
         setLoading(false);
       })
