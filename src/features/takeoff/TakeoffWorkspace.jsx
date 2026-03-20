@@ -1512,26 +1512,37 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       }
     }
 
-    console.log('[parseSheetName] title block text:', titleBlockText.slice(0, 300));
+    // Strategy: find ALL sheet-number-like patterns, then pick the best one
+    // Sheet numbers: A1.0, C-3, S1.1, ES1.0, FP1.0, M2.0, etc.
+    const sheetNumRe = /\b([A-Z]{1,3}\d{1,2}(?:\.\d{1,2})?)\b/g;
+    const titleKeywords = /(?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE|DRAINAGE|PAVING|LIGHTING|LIFE SAFETY|FIRE PROTECTION|FIRE|REFLECTED|ENLARGED|PARTIAL|OVERALL|GENERAL|POWER|SYSTEMS|INTERIOR|EXTERIOR|ARCHITECTURAL|CONCRETE|LEGEND|RISER|SPECIFICATION|NOTE|ACCESSIBILITY|VENDOR|CRITERIA|RECEIVING|PET WASH|STANDARD)/i;
 
-    const patterns = [
-      // "A1.01 - FLOOR PLAN" or "C3.01 - SITE PLAN"
-      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]\s*([A-Z][A-Z\s&\/,.'()-]{3,60})/,
-      // "SHEET: A1.01" or "SHEET NO.: C-3"
-      /SHEET\s*(?:NO\.?|NUMBER|#)?\s*:?\s*([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—:.]?\s*([A-Z][A-Z\s&\/,.'()-]{3,60})?/i,
-      // Sheet number + construction keyword: "C-3 SITE PLAN" etc.
-      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s+((?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE|DRAINAGE|PAVING|LIGHTING|LIFE SAFETY|FIRE|REFLECTED|ENLARGED|PARTIAL|OVERALL)[A-Z\s&\/,.'()-]{0,50})/i,
-    ];
-    for(const pat of patterns){
-      const m = titleBlockText.match(pat);
-      if(m){
-        const num = m[1]?.trim();
-        let title = m[2]?.trim()?.replace(/\s+/g,' ');
-        // Clean up trailing garbage
-        if(title) title = title.replace(/[^A-Z\s&\/,.'()-]+$/i,'').trim();
-        if(num && title && title.length > 2 && title.length < 80) return `${num} - ${title}`;
-        if(num && num.length >= 2) return num;
+    let bestMatch = null;
+    let match;
+    while((match = sheetNumRe.exec(titleBlockText)) !== null){
+      const num = match[1];
+      const afterNum = titleBlockText.slice(match.index + num.length, match.index + num.length + 80);
+      // Look for a title after the sheet number: "A1.0 FLOOR PLAN" or "A1.0 - FLOOR PLAN"
+      const titleMatch = afterNum.match(/^\s*[-–—]?\s*([A-Z][A-Z\s&\/,.'()#-]{2,70})/);
+      if(titleMatch){
+        let title = titleMatch[1].trim().replace(/\s+/g, ' ');
+        // Prefer matches with construction keywords
+        const hasKeyword = titleKeywords.test(title);
+        // Clean trailing junk
+        title = title.replace(/\s+(This|The|1163|Tel:|Fax:|Project|Job|Date|Revision|Sheet|Scale|Drawn|Check).*/i, '').trim();
+        if(title.length > 2 && title.length < 80){
+          if(!bestMatch || hasKeyword) bestMatch = { num, title, hasKeyword };
+          if(hasKeyword) break; // found a keyword match, use it
+        }
+      } else if(!bestMatch){
+        bestMatch = { num, title: null, hasKeyword: false };
       }
+    }
+
+    if(bestMatch){
+      const { num, title } = bestMatch;
+      if(title) return `${num} - ${title}`;
+      return num;
     }
     return null;
   };
