@@ -4021,7 +4021,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
           {/* Find on page bar */}
           {planSearch.trim()&&selPlan&&!showOverview&&(()=>{
-            const tp = selPlan.text_positions;
+            let tp = selPlan.text_positions;
+            if(!tp){ try{ const raw=localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) tp=JSON.parse(raw); }catch(e){} }
             const items = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
             const q = planSearch.trim().toLowerCase();
             const matches = items.filter(item=>item.str.toLowerCase().includes(q));
@@ -4315,7 +4316,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         {/* Search text highlights on plan */}
                         {planSearch.trim()&&selPlan&&(()=>{
                           const q = planSearch.trim().toLowerCase();
-                          const tp = selPlan.text_positions;
+                          let tp = selPlan.text_positions;
+                          // Fallback to localStorage if DB doesn't have positions
+                          if(!tp){
+                            try{ const raw=localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) tp=JSON.parse(raw); }catch(e){}
+                          }
                           const items = Array.isArray(tp) ? tp : (typeof tp==='string' ? (()=>{try{return JSON.parse(tp);}catch{return[];}})() : []);
                           if(!items.length) return null;
                           const matches = items.filter(item=>item.str.toLowerCase().includes(q));
