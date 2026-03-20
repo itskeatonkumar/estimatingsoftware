@@ -352,10 +352,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     });
   },[project.id]);
 
-  // Load AI credits on mount
+  // Load AI credits on mount (skip silently if org tables don't exist)
   useEffect(()=>{
-    supabase.rpc('get_ai_credits').then(({data})=>{
-      if(data) setAiCredits(data);
+    supabase.rpc('get_ai_credits').then(({data,error})=>{
+      if(!error && data) setAiCredits(data);
+      else setAiCredits({available:999,monthly:999,used:0,purchased:0,reset_at:null});
     });
   },[]);
 
@@ -1675,13 +1676,16 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
   // Single-sheet AI analysis (called per sheet)
   const runAISingleSheet = async (plan) => {
-    // Check credit
-    const {data:creditResult, error:creditErr} = await supabase.rpc('use_ai_credit', {p_plan_id:plan.id, p_project_id:project.id});
-    if(creditErr || creditResult?.error){
-      alert(creditResult?.error || 'Credit check failed: ' + (creditErr?.message||''));
-      return null;
-    }
-    setAiCredits(prev=>({...prev, available:creditResult.available, used:creditResult.used}));
+    // Try to use credit (skip silently if org tables don't exist yet)
+    try {
+      const {data:creditResult, error:creditErr} = await supabase.rpc('use_ai_credit', {p_plan_id:plan.id, p_project_id:project.id});
+      if(!creditErr && creditResult && !creditResult.error){
+        setAiCredits(prev=>({...prev, available:creditResult.available, used:creditResult.used}));
+      } else if(creditResult?.error === 'No credits remaining'){
+        alert('No AI credits remaining.');
+        return null;
+      }
+    } catch(e){ /* credit system not set up yet — skip */ }
 
     // Get plan image as base64
     let b64, mime='image/jpeg';
@@ -1727,11 +1731,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
   const runAITakeoff=async()=>{
     if(!selPlan) return;
-    if(aiCredits && aiCredits.available <= 0){
-      alert('No AI credits remaining. Purchase more credits to continue.');
-      return;
-    }
-    if(!window.confirm(`Analyze this sheet? (1 credit)\n\nAvailable: ${aiCredits?.available??'?'} credits`)) return;
+    if(!window.confirm(`Analyze this sheet with AI?${aiCredits?.available!=null&&aiCredits.available<999?`\n\nAvailable: ${aiCredits.available} credits`:''}`)) return;
 
     // Check if items already exist for this plan
     const existingPlanItems = items.filter(i=>i.plan_id===selPlan.id);
