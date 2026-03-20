@@ -1580,7 +1580,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               return supabase.from('precon_plans')
                 .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', ocr_text:pageText||null}])
                 .select().single()
-                .then(({data:plan}) => plan ? {...plan, _idx:idx} : null);
+                .then(({data:plan, error:insErr}) => {
+                  if(insErr) {
+                    console.error('[upload] plan insert error:', insErr);
+                    // Retry without ocr_text in case column doesn't exist
+                    return supabase.from('precon_plans')
+                      .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg'}])
+                      .select().single()
+                      .then(({data:plan2}) => {
+                        // Save ocr_text as a separate update (will silently fail if column missing)
+                        if(plan2 && pageText) supabase.from('precon_plans').update({ocr_text:pageText}).eq('id',plan2.id);
+                        return plan2 ? {...plan2, ocr_text:pageText, _idx:idx} : null;
+                      });
+                  }
+                  return plan ? {...plan, _idx:idx} : null;
+                });
             })
         );
       }
