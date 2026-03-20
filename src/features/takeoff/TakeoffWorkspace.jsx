@@ -4541,9 +4541,6 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             }}>
                               <rect x={lk.x-2} y={lk.y-2} width={Math.max(lk.w+4,40)} height={Math.max(lk.h+4,14)} rx={2}
                                 fill="rgba(91,155,213,0.12)" stroke="#5B9BD5" strokeWidth={1.2/zoom} strokeDasharray={`${3/zoom},${2/zoom}`}/>
-                              <text x={lk.x+lk.w+6} y={lk.y+lk.h*0.8} fontSize={9/zoom} fill="#5B9BD5" fontWeight={600} style={{pointerEvents:'none'}}>
-                                ↗ {lk.target.name?.split(' - ')[0]||''}
-                              </text>
                             </g>
                           ));
                         })()}
