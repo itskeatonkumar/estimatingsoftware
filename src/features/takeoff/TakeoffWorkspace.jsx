@@ -344,7 +344,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     ]).then(([{data:p,error:e1},{data:i,error:e2}])=>{
       if(e1) console.error('[load] plans error:', e1);
       if(e2) console.error('[load] items error:', e2);
-      console.log('[load] plans:', (p||[]).length, 'items:', (i||[]).length);
+      console.log('[load] plans:', (p||[]).length, 'items:', (i||[]).length, 'plans with ocr_text:', (p||[]).filter(x=>x.ocr_text).length);
       const pl=p||[];
       const validItems=(i||[]).filter(it=>it.plan_id!=null);
       setPlans(pl); setItems(validItems);
