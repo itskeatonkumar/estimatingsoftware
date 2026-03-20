@@ -4505,6 +4505,47 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#4CAF50"/>
                           </g>);
                         })()}
+                        {/* Cross-reference link overlays on plan */}
+                        {selPlan&&!planSearch.trim()&&(()=>{
+                          let tp = selPlan.text_positions;
+                          if(!tp){ try{ const raw=localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) tp=JSON.parse(raw); }catch(e){} }
+                          const items = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
+                          if(!items.length || !plans.length) return null;
+                          // Build sheet number → plan lookup
+                          const numToPlan = new Map();
+                          for(const p of plans){
+                            if(p.id===selPlan.id) continue;
+                            const m = (p.name||'').match(/^([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
+                            if(m) numToPlan.set(m[1].toUpperCase(), p);
+                          }
+                          // Find text items that contain sheet references
+                          const refPattern = /(?:SEE|REFER TO|DETAIL|SECTION|SHEET|ON SHEET|PER)\s+([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/i;
+                          const links = [];
+                          for(const item of items){
+                            const m = item.str.match(refPattern);
+                            if(m){
+                              const target = numToPlan.get(m[1].toUpperCase());
+                              if(target) links.push({...item, target});
+                            }
+                          }
+                          if(!links.length) return null;
+                          return links.map((lk,i)=>(
+                            <g key={`ref${i}`} style={{cursor:'pointer'}} onClick={(e)=>{
+                              e.stopPropagation();
+                              setShowOverview(false);
+                              if(!openTabs.includes(lk.target.id)) setOpenTabs(prev=>[...prev,lk.target.id]);
+                              setSelPlan(lk.target);
+                              if(lk.target.scale_px_per_ft) setScale(lk.target.scale_px_per_ft);
+                              else{setScale(null);setPresetScale('');}
+                            }}>
+                              <rect x={lk.x-2} y={lk.y-2} width={Math.max(lk.w+4,40)} height={Math.max(lk.h+4,14)} rx={2}
+                                fill="rgba(91,155,213,0.12)" stroke="#5B9BD5" strokeWidth={1.2/zoom} strokeDasharray={`${3/zoom},${2/zoom}`}/>
+                              <text x={lk.x+lk.w+6} y={lk.y+lk.h*0.8} fontSize={9/zoom} fill="#5B9BD5" fontWeight={600} style={{pointerEvents:'none'}}>
+                                ↗ {lk.target.name?.split(' - ')[0]||''}
+                              </text>
+                            </g>
+                          ));
+                        })()}
                         {/* Search text highlights on plan */}
                         {planSearch.trim()&&selPlan&&(()=>{
                           const q = planSearch.trim().toLowerCase();
