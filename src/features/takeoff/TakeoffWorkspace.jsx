@@ -1522,17 +1522,16 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     while((match = sheetNumRe.exec(titleBlockText)) !== null){
       const num = match[1];
       const afterNum = titleBlockText.slice(match.index + num.length, match.index + num.length + 80);
-      // Look for a title after the sheet number: "A1.0 FLOOR PLAN" or "A1.0 - FLOOR PLAN"
       const titleMatch = afterNum.match(/^\s*[-–—]?\s*([A-Z][A-Z\s&\/,.'()#-]{2,70})/);
+      console.log('[parseSheetName] found num:', num, 'afterNum:', afterNum.slice(0,40), 'titleMatch:', titleMatch?.[1]?.slice(0,40));
       if(titleMatch){
         let title = titleMatch[1].trim().replace(/\s+/g, ' ');
-        // Prefer matches with construction keywords
         const hasKeyword = titleKeywords.test(title);
-        // Clean trailing junk
         title = title.replace(/\s+(This|The|1163|Tel:|Fax:|Project|Job|Date|Revision|Sheet|Scale|Drawn|Check).*/i, '').trim();
+        console.log('[parseSheetName]   → title:', title, 'hasKeyword:', hasKeyword);
         if(title.length > 2 && title.length < 80){
           if(!bestMatch || hasKeyword) bestMatch = { num, title, hasKeyword };
-          if(hasKeyword) break; // found a keyword match, use it
+          if(hasKeyword) break;
         }
       } else if(!bestMatch){
         bestMatch = { num, title: null, hasKeyword: false };
