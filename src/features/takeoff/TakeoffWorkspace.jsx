@@ -1512,6 +1512,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       }
     }
 
+    console.log('[parseSheetName] title block text:', titleBlockText.slice(0, 300));
+
     const patterns = [
       // "A1.01 - FLOOR PLAN" or "C3.01 - SITE PLAN"
       /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]\s*([A-Z][A-Z\s&\/,.'()-]{3,60})/,
