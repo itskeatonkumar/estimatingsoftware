@@ -4294,10 +4294,16 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           const matches = ocrItems.filter(item=>item.str.toLowerCase().includes(q));
                           console.log('[highlight] matches:', matches.length, matches.slice(0,3));
                           if(!matches.length) return null;
+                          console.log('[highlight] first match coords:', matches[0]);
                           return matches.map((m,i)=>(
                             <g key={`hl${i}`} style={{pointerEvents:'none'}}>
-                              <rect x={m.x-2} y={m.y-2} width={m.w+4} height={m.h+4} rx={2}
-                                fill="rgba(255,235,59,0.35)" stroke="#F9A825" strokeWidth={1.5/zoom}/>
+                              {/* Big visible highlight — yellow fill + red border + pulsing */}
+                              <rect x={m.x-6} y={m.y-6} width={Math.max(m.w+12,40)} height={Math.max(m.h+12,20)} rx={4}
+                                fill="rgba(255,235,59,0.5)" stroke="#F44336" strokeWidth={3/zoom}/>
+                              {/* Label above */}
+                              <text x={m.x} y={m.y-10} fontSize={14/zoom} fill="#F44336" fontWeight={700} style={{pointerEvents:'none'}}>
+                                ▼ {m.str}
+                              </text>
                             </g>
                           ));
                         })()}
