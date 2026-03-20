@@ -78,7 +78,7 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         <button onClick={async (e) => {
           const btn = e.currentTarget; btn.textContent = '…'; btn.disabled = true;
           // Try free text parsing first
-          const textName = H.parseSheetNameFromText?.(p.ocr_text||'');
+          const textName = H.parseSheetNameFromText?.(p.ocr_text||'', p.text_positions);
           let finalName = null;
           if(textName && textName.length > 2 && textName !== p.name) { finalName = textName; }
           else { finalName = await H.aiNameSheet(p.file_url, p.name || 'Sheet'); }
@@ -1494,23 +1494,41 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // That function fetches the image server-side (no CORS), sends to Anthropic directly
   // Client never touches the image data — no canvas, no base64 overhead, no Vercel body limit
   // Parse sheet name from extracted PDF text (FREE — no API call)
-  const parseSheetNameFromText = (rawText) => {
+  // Uses positioned items to only look at the TITLE BLOCK area (bottom-right ~30% of page)
+  const parseSheetNameFromText = (rawText, textPositions) => {
     if(!rawText || rawText.length < 10) return null;
+
+    // If we have positioned items, only search the title block region (bottom-right)
+    let titleBlockText = rawText;
+    if(textPositions && Array.isArray(textPositions) && textPositions.length > 0){
+      // Find page extents
+      let maxX = 0, maxY = 0;
+      for(const item of textPositions){ maxX = Math.max(maxX, item.x+item.w); maxY = Math.max(maxY, item.y+item.h); }
+      // Title block = bottom 35% height, right 55% width
+      const minX = maxX * 0.45, minY = maxY * 0.65;
+      const tbItems = textPositions.filter(item => item.x >= minX && item.y >= minY);
+      if(tbItems.length > 0){
+        titleBlockText = tbItems.map(i => i.str).join(' ');
+      }
+    }
+
     const patterns = [
-      // "A1.01 - FLOOR PLAN" or "C3.01 SITE PLAN"
+      // "A1.01 - FLOOR PLAN" or "C3.01 - SITE PLAN"
       /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]\s*([A-Z][A-Z\s&\/,.'()-]{3,60})/,
-      // "SHEET: A1.01" or "SHEET NO: C-3"
-      /SHEET\s*(?:NO\.?|NUMBER|#)?\s*:?\s*([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]?\s*([A-Z][A-Z\s&\/,.'()-]{3,60})?/i,
-      // Just sheet number like "C-3" or "A1.01" near start of common keywords
-      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s+((?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE)[A-Z\s&\/,.'()-]{0,50})/i,
+      // "SHEET: A1.01" or "SHEET NO.: C-3"
+      /SHEET\s*(?:NO\.?|NUMBER|#)?\s*:?\s*([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—:.]?\s*([A-Z][A-Z\s&\/,.'()-]{3,60})?/i,
+      // Sheet number + construction keyword: "C-3 SITE PLAN" etc.
+      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s+((?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE|DRAINAGE|PAVING|LIGHTING|LIFE SAFETY|FIRE|REFLECTED|ENLARGED|PARTIAL|OVERALL)[A-Z\s&\/,.'()-]{0,50})/i,
     ];
     for(const pat of patterns){
-      const m = rawText.match(pat);
+      const m = titleBlockText.match(pat);
       if(m){
         const num = m[1]?.trim();
-        const title = m[2]?.trim()?.replace(/\s+/g,' ');
+        let title = m[2]?.trim()?.replace(/\s+/g,' ');
+        // Clean up trailing garbage
+        if(title) title = title.replace(/[^A-Z\s&\/,.'()-]+$/i,'').trim();
         if(num && title && title.length > 2 && title.length < 80) return `${num} - ${title}`;
-        if(num) return num;
+        if(num && num.length >= 2) return num;
       }
     }
     return null;
@@ -1710,7 +1728,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       // First pass: try text parsing (instant, free)
       for(let i=0; i<newPlans.length; i++){
         const p = newPlans[i];
-        const textName = parseSheetNameFromText(p.ocr_text||'');
+        const textName = parseSheetNameFromText(p.ocr_text||'', p.text_positions);
         if(textName && textName.length > 2){
           await supabase.from('precon_plans').update({name:textName}).eq('id',p.id);
           setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:textName}:x));
@@ -3280,7 +3298,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   for(const p of realPlans){
                     try{
                       // Try free text parsing first
-                      const textName = parseSheetNameFromText(p.ocr_text||'');
+                      const textName = parseSheetNameFromText(p.ocr_text||'', p.text_positions);
                       if(textName && textName.length > 2 && textName !== p.name){
                         await supabase.from('precon_plans').update({name:textName}).eq('id',p.id);
                         setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:textName}:x));
