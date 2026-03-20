@@ -4519,14 +4519,18 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             const m = (p.name||'').match(/^([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
                             if(m) numToPlan.set(m[1].toUpperCase(), p);
                           }
-                          // Find text items that contain sheet references
-                          const refPattern = /(?:SEE|REFER TO|DETAIL|SECTION|SHEET|ON SHEET|PER)\s+([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/i;
+                          // Find text items that contain or ARE sheet numbers matching other plans
                           const links = [];
+                          const seen = new Set();
                           for(const item of items){
-                            const m = item.str.match(refPattern);
-                            if(m){
-                              const target = numToPlan.get(m[1].toUpperCase());
-                              if(target) links.push({...item, target});
+                            // Check if this text item contains a known sheet number
+                            const str = item.str.toUpperCase().trim();
+                            for(const [num, plan] of numToPlan){
+                              if(str.includes(num) && !seen.has(plan.id)){
+                                seen.add(plan.id);
+                                links.push({...item, target:plan});
+                                break;
+                              }
                             }
                           }
                           console.log('[refs] found', links.length, 'links from', items.length, 'text items, numToPlan has', numToPlan.size, 'entries');
