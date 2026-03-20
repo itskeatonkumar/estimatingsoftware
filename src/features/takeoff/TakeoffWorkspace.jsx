@@ -188,6 +188,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   });
   const [editModal, setEditModal] = useState(null); // 'scope'|'terms'|'client'|'company'|null
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
+  const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
+  const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -5468,88 +5470,136 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           )}
 
           {/* ── WORKSHEET SUB-TAB ── */}
-          {estSubTab==='worksheet'&&(
+          {estSubTab==='worksheet'&&(()=>{
+            // Build groups based on estGroupBy
+            const wsItems = allItems;
+            const wsGroups = [];
+            if(estGroupBy==='none'){
+              wsGroups.push({key:'all',label:'All Items',color:'#666',items:wsItems});
+            } else {
+              const groupMap = new Map();
+              for(const it of wsItems){
+                let key,label,color;
+                if(estGroupBy==='category'){
+                  const cat=TAKEOFF_CATS.find(c=>c.id===it.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                  key=cat.id; label=cat.label; color=cat.color;
+                } else if(estGroupBy==='sheet'){
+                  const p=planMap.get(it.plan_id);
+                  key=it.plan_id||'none'; label=p?.name||'Unassigned'; color='#5B9BD5';
+                } else if(estGroupBy==='trade'){
+                  key=it.trade||'Unassigned'; label=it.trade||'Unassigned'; color='#7B6BA4';
+                } else if(estGroupBy==='location'){
+                  key=it.location||'Unassigned'; label=it.location||'Unassigned'; color='#4A90A4';
+                }
+                if(!groupMap.has(key)) groupMap.set(key,{key,label,color,items:[]});
+                groupMap.get(key).items.push(it);
+              }
+              wsGroups.push(...groupMap.values());
+            }
+            const editCell={fontSize:13,color:'#333',padding:'8px 12px',borderBottom:'1px solid #E0E0E0',verticalAlign:'middle'};
+            const editInput={background:'transparent',border:'none',outline:'none',width:'100%',fontSize:13,color:'#333',padding:0};
+            const thStyle={background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px'};
+            return(
           <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            {/* Toolbar */}
+            <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 16px',borderBottom:'1px solid #E0E0E0',flexShrink:0}}>
+              <span style={{fontSize:12,color:'#666'}}>Group by:</span>
+              <select value={estGroupBy} onChange={e=>setEstGroupBy(e.target.value)}
+                style={{padding:'4px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',cursor:'pointer'}}>
+                <option value="category">Category</option>
+                <option value="sheet">Sheet</option>
+                <option value="trade">Trade</option>
+                <option value="location">Location</option>
+                <option value="none">No Grouping</option>
+              </select>
+              <div style={{flex:1}}/>
+              <span style={{fontSize:12,color:'#999'}}>{wsItems.length} items</span>
+            </div>
             {/* Worksheet table */}
             <div style={{flex:1,overflowY:'auto',overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:1000}}>
                 <thead style={{position:'sticky',top:0,zIndex:2}}>
                   <tr>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 8px',textAlign:'center',width:36}}>#</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'left'}}>Description</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'left',width:80}}>Category</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:90}}>Takeoff Qty</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'center',width:50}}>Unit</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:80}}>Unit Cost</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:100}}>Extended Cost</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:80}}>Markup %</th>
-                    <th style={{background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px',textAlign:'right',width:100}}>Total</th>
-                    <th style={{background:'#4CAF50',width:32}}/>
+                    <th style={{...thStyle,textAlign:'center',width:36}}>#</th>
+                    <th style={{...thStyle,textAlign:'left'}}>Description</th>
+                    <th style={{...thStyle,textAlign:'left',width:80}}>{estGroupBy==='category'?'Category':estGroupBy==='trade'?'Trade':estGroupBy==='location'?'Location':'Sheet'}</th>
+                    <th style={{...thStyle,textAlign:'right',width:90}}>Takeoff Qty</th>
+                    <th style={{...thStyle,textAlign:'center',width:50}}>Unit</th>
+                    <th style={{...thStyle,textAlign:'right',width:80}}>Unit Cost</th>
+                    <th style={{...thStyle,textAlign:'right',width:100}}>Extended Cost</th>
+                    <th style={{...thStyle,textAlign:'right',width:80}}>Markup %</th>
+                    <th style={{...thStyle,textAlign:'right',width:100}}>Total</th>
+                    <th style={{...thStyle,width:32}}/>
                   </tr>
                 </thead>
                 <tbody>
-                  {allCatGroups.map(cat=>(
-                    <React.Fragment key={cat.id}>
-                      <tr><td colSpan={10} style={{background:`${cat.color}10`,padding:'8px 12px',fontSize:12,fontWeight:700,color:cat.color,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${cat.color}`}}>
-                        {cat.label} — ${Math.round(cat.subtotal).toLocaleString()}
-                      </td></tr>
-                      {cat.items.map((it,idx)=>{
-                        const extCost = (it.quantity||0)*(it.unit_cost||0);
-                        const mkp = it.markup_pct!=null ? it.markup_pct : Math.round((GC_OVERHEAD+PROFIT)*100*10)/10;
-                        const total = extCost*(1+mkp/100);
-                        const isSaving = estSaving===it.id;
-                        const editCell = {fontSize:13,color:'#333',padding:'8px 12px',borderBottom:'1px solid #E0E0E0',verticalAlign:'middle'};
-                        const editInput = {background:'transparent',border:'none',outline:'none',width:'100%',fontSize:13,color:'#333',padding:0};
+                  {wsGroups.map(grp=>{
+                    const grpSubtotal=grp.items.reduce((s,i)=>s+(i.total_cost||0),0);
+                    const grpExtended=grp.items.reduce((s,i)=>s+((i.quantity||0)*(i.unit_cost||0)),0);
+                    const collapsed=collapsedEstGroups[grp.key];
+                    return(
+                    <React.Fragment key={grp.key}>
+                      {estGroupBy!=='none'&&(
+                        <tr style={{cursor:'pointer'}} onClick={()=>setCollapsedEstGroups(prev=>({...prev,[grp.key]:!prev[grp.key]}))}>
+                          <td colSpan={10} style={{background:`${grp.color}10`,padding:'8px 12px',fontSize:12,fontWeight:700,color:grp.color,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${grp.color}`}}>
+                            <span style={{fontSize:10,marginRight:6,color:'#999'}}>{collapsed?'▶':'▼'}</span>
+                            {grp.label} <span style={{fontWeight:400,color:'#999',marginLeft:6}}>({grp.items.length})</span>
+                            <span style={{float:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(grpSubtotal).toLocaleString()}</span>
+                          </td>
+                        </tr>
+                      )}
+                      {!collapsed&&grp.items.map((it,idx)=>{
+                        const extCost=(it.quantity||0)*(it.unit_cost||0);
+                        const mkp=it.markup_pct!=null?it.markup_pct:Math.round((GC_OVERHEAD+PROFIT)*100*10)/10;
+                        const total=extCost*(1+mkp/100);
+                        const isSaving=estSaving===it.id;
+                        const cat=TAKEOFF_CATS.find(c=>c.id===it.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                        const grpLabel = estGroupBy==='category'?cat.label:estGroupBy==='sheet'?(planMap.get(it.plan_id)?.name||'—'):estGroupBy==='trade'?(it.trade||'—'):(it.location||'—');
                         return(
-                          <tr key={it.id}
-                            onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
-                            onMouseLeave={e=>e.currentTarget.style.background='#fff'}
-                            style={{background:'#fff'}}>
+                          <tr key={it.id} onMouseEnter={e=>e.currentTarget.style.background='#fafafa'} onMouseLeave={e=>e.currentTarget.style.background='#fff'} style={{background:'#fff'}}>
                             <td style={{...editCell,textAlign:'center',color:'#999',fontSize:11}}>{idx+1}</td>
                             <td style={editCell}>
                               <div style={{display:'flex',alignItems:'center',gap:8}}>
                                 <div style={{width:8,height:8,borderRadius:2,background:it.color||cat.color,flexShrink:0}}/>
-                                <input defaultValue={it.description||''}
-                                  onBlur={e=>{if(e.target.value!==it.description)saveItemField(it.id,'description',e.target.value);}}
-                                  onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
-                                  style={{...editInput,cursor:'text'}}/>
+                                <input defaultValue={it.description||''} onBlur={e=>{if(e.target.value!==it.description)saveItemField(it.id,'description',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,cursor:'text'}}/>
                               </div>
                             </td>
-                            <td style={{...editCell,fontSize:11,color:'#666'}}>{cat.label}</td>
+                            <td style={{...editCell,fontSize:11,color:'#666'}}>
+                              {estGroupBy==='trade'||estGroupBy==='location'?(
+                                <input defaultValue={estGroupBy==='trade'?(it.trade||''):(it.location||'')} onBlur={e=>saveItemField(it.id,estGroupBy,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,fontSize:11,color:'#666'}} placeholder="—"/>
+                              ):grpLabel}
+                            </td>
                             <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{getDisplayQtyUnit(it).qty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                             <td style={{...editCell,textAlign:'center',color:'#666'}}>{getDisplayQtyUnit(it).unit||'—'}</td>
                             <td style={editCell}>
-                              <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)}
-                                onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}}
-                                onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
-                                onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'}
-                                onBlurCapture={e=>e.target.style.borderBottom='none'}
-                                style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
+                              <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'} onBlurCapture={e=>e.target.style.borderBottom='none'} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
                             </td>
                             <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:500}}>${Math.round(extCost).toLocaleString()}</td>
                             <td style={editCell}>
-                              <input type="number" step="0.1" defaultValue={mkp}
-                                onBlur={e=>{saveItemField(it.id,'markup_pct',e.target.value);}}
-                                onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
-                                onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'}
-                                onBlurCapture={e=>e.target.style.borderBottom='none'}
-                                style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
+                              <input type="number" step="0.1" defaultValue={mkp} onBlur={e=>saveItemField(it.id,'markup_pct',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'} onBlurCapture={e=>e.target.style.borderBottom='none'} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
                             </td>
                             <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
                             <td style={{...editCell,textAlign:'center'}}>
-                              <button onClick={async()=>{
-                                if(!window.confirm('Delete '+it.description+'?')) return;
-                                await supabase.from('takeoff_items').delete().eq('id',it.id).select();
-                                setItems(prev=>prev.filter(i=>i.id!==it.id));
-                              }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
+                              <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
                             </td>
                           </tr>
                         );
                       })}
+                      {/* Group subtotal */}
+                      {!collapsed&&estGroupBy!=='none'&&grp.items.length>0&&(
+                        <tr style={{background:'#f9f9f9'}}>
+                          <td colSpan={6} style={{...editCell,fontWeight:600,fontSize:11,color:'#999',borderBottom:'2px solid #E0E0E0'}}>Subtotal: {grp.label}</td>
+                          <td style={{...editCell,textAlign:'right',fontWeight:600,fontVariantNumeric:'tabular-nums',borderBottom:'2px solid #E0E0E0'}}>${Math.round(grpExtended).toLocaleString()}</td>
+                          <td style={{...editCell,borderBottom:'2px solid #E0E0E0'}}/>
+                          <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums',borderBottom:'2px solid #E0E0E0'}}>${Math.round(grpSubtotal).toLocaleString()}</td>
+                          <td style={{...editCell,borderBottom:'2px solid #E0E0E0'}}/>
+                        </tr>
+                      )}
                     </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
-                {allCatGroups.length>0&&(
+                {wsItems.length>0&&(
                   <tfoot>
                     <tr style={{background:'#f5f5f5'}}>
                       <td colSpan={6} style={{padding:'12px',fontSize:13,fontWeight:700,color:'#333'}}>TOTAL</td>
@@ -5561,7 +5611,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   </tfoot>
                 )}
               </table>
-              {allCatGroups.length===0&&<div style={{textAlign:'center',padding:60,color:'#999',fontSize:13}}>No takeoff items yet</div>}
+              {wsItems.length===0&&<div style={{textAlign:'center',padding:60,color:'#999',fontSize:13}}>No takeoff items yet</div>}
             </div>
 
             {/* Bottom summary bar */}
@@ -5593,7 +5643,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               </div>
             </div>
           </div>
-          )}
+          );
+          })()}
         </div>
         );
       })()}

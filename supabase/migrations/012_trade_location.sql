@@ -1,0 +1,2 @@
+ALTER TABLE takeoff_items ADD COLUMN IF NOT EXISTS trade TEXT;
+ALTER TABLE takeoff_items ADD COLUMN IF NOT EXISTS location TEXT;
