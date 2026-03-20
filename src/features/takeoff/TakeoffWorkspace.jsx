@@ -4286,10 +4286,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         {/* Search text highlights on plan */}
                         {planSearch.trim()&&selPlan&&(()=>{
                           const q = planSearch.trim().toLowerCase();
+                          const key = `ocrItems_${selPlan.id}`;
                           let ocrItems = [];
-                          try{ const raw = localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) ocrItems=JSON.parse(raw); }catch(e){}
+                          try{ const raw = localStorage.getItem(key); if(raw) ocrItems=JSON.parse(raw); }catch(e){}
+                          console.log('[highlight] plan:', selPlan.id, 'key:', key, 'ocrItems:', ocrItems.length, 'query:', q);
                           if(!ocrItems.length) return null;
                           const matches = ocrItems.filter(item=>item.str.toLowerCase().includes(q));
+                          console.log('[highlight] matches:', matches.length, matches.slice(0,3));
                           if(!matches.length) return null;
                           return matches.map((m,i)=>(
                             <g key={`hl${i}`} style={{pointerEvents:'none'}}>
