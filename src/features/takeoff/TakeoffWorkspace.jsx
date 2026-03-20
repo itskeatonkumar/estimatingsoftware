@@ -77,11 +77,15 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: `1px solid ${t.border}`, background: 'none', color: t.text4, cursor: 'pointer' }}>✎</button>
         <button onClick={async (e) => {
           const btn = e.currentTarget; btn.textContent = '…'; btn.disabled = true;
-          const aiName = await H.aiNameSheet(p.file_url, p.name || 'Sheet');
-          if (aiName && aiName !== p.name && p.id !== 'preview') {
-            await supabase.from('precon_plans').update({ name: aiName }).eq('id', p.id);
-            H.setPlans(prev => prev.map(x => x.id === p.id ? { ...x, name: aiName } : x));
-            if (H.selPlan?.id === p.id) H.setSelPlan(prev => ({ ...prev, name: aiName }));
+          // Try free text parsing first
+          const textName = H.parseSheetNameFromText?.(p.ocr_text||'');
+          let finalName = null;
+          if(textName && textName.length > 2 && textName !== p.name) { finalName = textName; }
+          else { finalName = await H.aiNameSheet(p.file_url, p.name || 'Sheet'); }
+          if (finalName && finalName !== p.name && p.id !== 'preview') {
+            await supabase.from('precon_plans').update({ name: finalName }).eq('id', p.id);
+            H.setPlans(prev => prev.map(x => x.id === p.id ? { ...x, name: finalName } : x));
+            if (H.selPlan?.id === p.id) H.setSelPlan(prev => ({ ...prev, name: finalName }));
           }
           btn.textContent = '✦'; btn.disabled = false;
         }} style={{ fontSize: 8, padding: '2px 4px', borderRadius: 3, border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.06)', color: '#7B6BA4', cursor: 'pointer' }} title="AI name">✦</button>
@@ -1489,6 +1493,29 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // AI sheet name extraction — delegates entirely to /api/name-sheet serverless function
   // That function fetches the image server-side (no CORS), sends to Anthropic directly
   // Client never touches the image data — no canvas, no base64 overhead, no Vercel body limit
+  // Parse sheet name from extracted PDF text (FREE — no API call)
+  const parseSheetNameFromText = (rawText) => {
+    if(!rawText || rawText.length < 10) return null;
+    const patterns = [
+      // "A1.01 - FLOOR PLAN" or "C3.01 SITE PLAN"
+      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]\s*([A-Z][A-Z\s&\/,.'()-]{3,60})/,
+      // "SHEET: A1.01" or "SHEET NO: C-3"
+      /SHEET\s*(?:NO\.?|NUMBER|#)?\s*:?\s*([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s*[-–—]?\s*([A-Z][A-Z\s&\/,.'()-]{3,60})?/i,
+      // Just sheet number like "C-3" or "A1.01" near start of common keywords
+      /\b([A-Z]{1,2}[-.]?\d{1,3}(?:\.\d{1,3})?)\s+((?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE)[A-Z\s&\/,.'()-]{0,50})/i,
+    ];
+    for(const pat of patterns){
+      const m = rawText.match(pat);
+      if(m){
+        const num = m[1]?.trim();
+        const title = m[2]?.trim()?.replace(/\s+/g,' ');
+        if(num && title && title.length > 2 && title.length < 80) return `${num} - ${title}`;
+        if(num) return num;
+      }
+    }
+    return null;
+  };
+
   const aiNameSheet = async (canvasOrUrl, fallbackName) => {
     try {
       let url;
@@ -1676,44 +1703,60 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       }
       setUploadTargetFolder(null);
 
-      // ── PHASE 2: AI name in batches of 5 — update each plan live as it's named ──
-      const BATCH = 5;
-      let named = 0;
-      for(let i=0; i<newPlans.length; i+=BATCH){
-        const slice = newPlans.slice(i, i+BATCH);
-        setUploading(`Naming ${i+1}–${Math.min(i+BATCH, newPlans.length)} of ${newPlans.length}…`);
-        await Promise.all(slice.map(async(p, bi)=>{
-          const b64 = titleCrops[i+bi];
-          if(!b64) return;
-          try {
-            const resp = await fetch('/api/claude', {
-              method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({
-                model:AI_MODEL_FAST, max_tokens:60,
-                messages:[{role:'user', content:[
-                  {type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},
-                  {type:'text', text:'This is the bottom-right corner of a construction drawing showing the title block. Extract the sheet number and sheet title.\nReply with ONLY this format: SHEET_NUMBER - SHEET_TITLE\nExamples:\n  C3.01 - SITE PLAN\n  A-101 - FLOOR PLAN\n  S2.0 - FOUNDATION PLAN\n  E-201 - ELECTRICAL PLAN\nIf you cannot clearly read a sheet number and title, reply: UNKNOWN'}
-                ]}]
-              })
-            });
-            const j = await resp.json();
-            console.log(`[name pg${i+bi+1}] status:${resp.status}`, j);
-            if(!resp.ok){ console.error(`[name pg${i+bi+1}] API error:`, j); return; }
-            const raw = (j?.content?.find(b=>b.type==='text')?.text||'').trim();
-            console.log(`[name pg${i+bi+1}] result:`, raw);
-            if(!raw || raw.toUpperCase().includes('UNKNOWN') || raw.length < 3) return;
-            const aiName = raw.replace(/^["'`*\s]+|["'`*\s]+$/g,'').trim();
-            if(aiName === p.name) return;
-            // Update DB
-            await supabase.from('precon_plans').update({name:aiName}).eq('id',p.id);
-            // Update UI live — this plan gets its real name immediately
-            setPlans(prev=>prev.map(x=>x.id===p.id ? {...x,name:aiName} : x));
-            named++;
-          } catch(e){ console.warn(`[name pg${i+bi+1}] error:`, e); }
-        }));
+      // ── PHASE 2: Name sheets — try FREE text parsing first, AI fallback ──
+      let namedFromText = 0, namedFromAI = 0;
+      const needsAI = []; // plans that couldn't be named from text
+
+      // First pass: try text parsing (instant, free)
+      for(let i=0; i<newPlans.length; i++){
+        const p = newPlans[i];
+        const textName = parseSheetNameFromText(p.ocr_text||'');
+        if(textName && textName.length > 2){
+          await supabase.from('precon_plans').update({name:textName}).eq('id',p.id);
+          setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:textName}:x));
+          namedFromText++;
+          console.log(`[name pg${i+1}] TEXT: "${textName}"`);
+        } else {
+          needsAI.push({plan:p, cropIdx:i});
+        }
       }
 
-      setUploading(`✓ Done — ${newPlans.length} sheet${newPlans.length!==1?'s':''} uploaded, ${named} named`);
+      // Second pass: AI naming only for sheets that failed text parsing
+      if(needsAI.length > 0){
+        const BATCH = 5;
+        for(let i=0; i<needsAI.length; i+=BATCH){
+          const slice = needsAI.slice(i, i+BATCH);
+          setUploading(`AI naming ${i+1}–${Math.min(i+BATCH, needsAI.length)} of ${needsAI.length} remaining…`);
+          await Promise.all(slice.map(async({plan:p, cropIdx})=>{
+            const b64 = titleCrops[cropIdx];
+            if(!b64) return;
+            try {
+              const resp = await fetch('/api/claude', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                  model:AI_MODEL_FAST, max_tokens:60,
+                  messages:[{role:'user', content:[
+                    {type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},
+                    {type:'text', text:'This is the bottom-right corner of a construction drawing showing the title block. Extract the sheet number and sheet title.\nReply with ONLY this format: SHEET_NUMBER - SHEET_TITLE\nExamples:\n  C3.01 - SITE PLAN\n  A-101 - FLOOR PLAN\n  S2.0 - FOUNDATION PLAN\nIf you cannot clearly read a sheet number and title, reply: UNKNOWN'}
+                  ]}]
+                })
+              });
+              const j = await resp.json();
+              if(!resp.ok) return;
+              const raw = (j?.content?.find(b=>b.type==='text')?.text||'').trim();
+              if(!raw || raw.toUpperCase().includes('UNKNOWN') || raw.length < 3) return;
+              const aiName = raw.replace(/^["'`*\s]+|["'`*\s]+$/g,'').trim();
+              if(aiName === p.name) return;
+              await supabase.from('precon_plans').update({name:aiName}).eq('id',p.id);
+              setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:aiName}:x));
+              namedFromAI++;
+              console.log(`[name AI] "${aiName}"`);
+            } catch(e){ console.warn('[name AI] error:', e); }
+          }));
+        }
+      }
+
+      setUploading(`✓ Done — ${newPlans.length} sheets, ${namedFromText} named from text, ${namedFromAI} via AI`);
       setTimeout(()=>setUploading(false), 3000);
       return;
     }
@@ -2725,7 +2768,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   planHandlersRef.current = {
     setOpenTabs, setSelPlan, setScale, setPresetScale, setLeftTab, setShowOverview,
     planDragRef, setPlanDragOver, setPlans, setItems, savePlanSets,
-    aiNameSheet, openTabs, selPlan, planSets, items, t, planDragOver,
+    aiNameSheet, parseSheetNameFromText, openTabs, selPlan, planSets, items, t, planDragOver,
   };
 
   // ── Memoized visible plans (replaces O(n²) IIFE computation) ──
@@ -3233,18 +3276,29 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 <button disabled={namingAll||plans.length===0} onClick={async()=>{
                   setNamingAll(true);
                   const realPlans=plans.filter(p=>p.id!=='preview');
-                  let renamed=0;
+                  let fromText=0, fromAI=0;
                   for(const p of realPlans){
                     try{
+                      // Try free text parsing first
+                      const textName = parseSheetNameFromText(p.ocr_text||'');
+                      if(textName && textName.length > 2 && textName !== p.name){
+                        await supabase.from('precon_plans').update({name:textName}).eq('id',p.id);
+                        setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:textName}:x));
+                        if(selPlan?.id===p.id) setSelPlan(prev=>({...prev,name:textName}));
+                        fromText++;
+                        continue;
+                      }
+                      // AI fallback
                       const aiName=await aiNameSheet(p.file_url,p.name||'Sheet');
                       if(aiName&&aiName!==p.name){
                         await supabase.from('precon_plans').update({name:aiName}).eq('id',p.id);
                         setPlans(prev=>prev.map(x=>x.id===p.id?{...x,name:aiName}:x));
                         if(selPlan?.id===p.id) setSelPlan(prev=>({...prev,name:aiName}));
-                        renamed++;
+                        fromAI++;
                       }
                     }catch(e){ console.error('naming failed',p.id,e); }
                   }
+                  console.log(`[Name All] ${fromText} from text, ${fromAI} from AI`);
                   setNamingAll(false);
                 }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
                   {namingAll?<span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>:'✦'}
