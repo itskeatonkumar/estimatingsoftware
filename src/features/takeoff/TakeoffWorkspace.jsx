@@ -4530,7 +4530,29 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             }
                           }
                           if(!links.length) return null;
-                          return links.map((lk,i)=>(
+                          // Deduplicate overlapping boxes — merge if they overlap
+                          const deduped = [];
+                          for(const lk of links){
+                            const w = (lk.w && lk.w > 0) ? lk.w : lk.str.length * (lk.h||10) * 0.6;
+                            const h = (lk.h||10) * 0.9;
+                            const box = {x:lk.x, y:lk.y, w, h, target:lk.target};
+                            // Check overlap with existing
+                            let merged = false;
+                            for(const existing of deduped){
+                              if(box.x < existing.x+existing.w && box.x+box.w > existing.x &&
+                                 box.y < existing.y+existing.h && box.y+box.h > existing.y){
+                                // Merge: expand existing to cover both
+                                const nx = Math.min(existing.x, box.x);
+                                const ny = Math.min(existing.y, box.y);
+                                existing.w = Math.max(existing.x+existing.w, box.x+box.w) - nx;
+                                existing.h = Math.max(existing.y+existing.h, box.y+box.h) - ny;
+                                existing.x = nx; existing.y = ny;
+                                merged = true; break;
+                              }
+                            }
+                            if(!merged) deduped.push(box);
+                          }
+                          return deduped.map((lk,i)=>(
                             <g key={`ref${i}`} style={{cursor:'pointer'}} onClick={(e)=>{
                               e.stopPropagation();
                               setShowOverview(false);
@@ -4539,8 +4561,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                               if(lk.target.scale_px_per_ft) setScale(lk.target.scale_px_per_ft);
                               else{setScale(null);setPresetScale('');}
                             }}>
-                              <rect x={lk.x-2} y={lk.y-2} width={Math.max(lk.w+4,40)} height={Math.max(lk.h+4,14)} rx={2}
-                                fill="rgba(91,155,213,0.12)" stroke="#5B9BD5" strokeWidth={1.2/zoom} strokeDasharray={`${3/zoom},${2/zoom}`}/>
+                              <rect x={lk.x} y={lk.y} width={lk.w} height={lk.h} rx={2}
+                                fill="rgba(91,155,213,0.12)" stroke="#5B9BD5" strokeWidth={1/zoom} strokeDasharray={`${3/zoom},${2/zoom}`}/>
                             </g>
                           ));
                         })()}
