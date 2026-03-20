@@ -131,6 +131,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [aiCredits, setAiCredits] = useState(null); // {available, monthly, used, purchased, reset_at}
+  const [showCreditsDD, setShowCreditsDD] = useState(false);
+  const [showSheetSelector, setShowSheetSelector] = useState(false);
+  const [selectedSheets, setSelectedSheets] = useState(new Set());
+  const [aiProgress, setAiProgress] = useState(null); // {current, total} during batch
   const [tool, setTool] = useState('select');
   const [activePts, setActivePts] = useState([]);
   const [hoverPt, setHoverPt] = useState(null);
@@ -346,6 +351,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       setLoading(false);
     });
   },[project.id]);
+
+  // Load AI credits on mount
+  useEffect(()=>{
+    supabase.rpc('get_ai_credits').then(({data})=>{
+      if(data) setAiCredits(data);
+    });
+  },[]);
 
   // Helper: save planSets to localStorage
   const savePlanSets = (sets) => {
@@ -1661,8 +1673,65 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     reader.readAsDataURL(file);
   };
 
+  // Single-sheet AI analysis (called per sheet)
+  const runAISingleSheet = async (plan) => {
+    // Check credit
+    const {data:creditResult, error:creditErr} = await supabase.rpc('use_ai_credit', {p_plan_id:plan.id, p_project_id:project.id});
+    if(creditErr || creditResult?.error){
+      alert(creditResult?.error || 'Credit check failed: ' + (creditErr?.message||''));
+      return null;
+    }
+    setAiCredits(prev=>({...prev, available:creditResult.available, used:creditResult.used}));
+
+    // Get plan image as base64
+    let b64, mime='image/jpeg';
+    const usePdf = plan.id===selPlan?.id && isPdfPlan && canvasRef.current;
+    if(usePdf){
+      const c = canvasRef.current;
+      const maxW = 1500, ratio = Math.min(1, maxW / c.width);
+      const out = document.createElement('canvas');
+      out.width = Math.round(c.width * ratio); out.height = Math.round(c.height * ratio);
+      out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+      b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
+    } else {
+      const res = await fetch(plan.file_url);
+      const blob = await res.blob();
+      const img = new Image();
+      const bUrl = URL.createObjectURL(blob);
+      await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=bUrl;});
+      URL.revokeObjectURL(bUrl);
+      const maxW = 1500, ratio = Math.min(1, maxW / img.naturalWidth);
+      const out = document.createElement('canvas');
+      out.width = Math.round(img.naturalWidth * ratio); out.height = Math.round(img.naturalHeight * ratio);
+      out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
+      b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
+    }
+
+    const catIds = TAKEOFF_CATS.map(c=>c.id).join('|');
+    const apiRes = await fetch('/api/claude',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:AI_MODEL, max_tokens:2000,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+          {type:'text',text:`You are a construction estimator analyzing a plan sheet. Identify all concrete, masonry, curb & gutter, sidewalk, asphalt, grading, and countable items. For each item: description (specific, reference plan labels), category (one of: ${catIds}), unit (SF/LF/CY/EA), measurement_type (area/linear/count), estimated_count (countable items only). Return ONLY a JSON array, no markdown.`}
+        ]}]
+      })
+    });
+    if(!apiRes.ok) return null;
+    const json = await apiRes.json();
+    const text = json?.content?.find(b=>b.type==='text')?.text||'';
+    try {
+      return JSON.parse(text.replace(/```json|```/g,'').trim());
+    } catch { return null; }
+  };
+
   const runAITakeoff=async()=>{
     if(!selPlan) return;
+    if(aiCredits && aiCredits.available <= 0){
+      alert('No AI credits remaining. Purchase more credits to continue.');
+      return;
+    }
+    if(!window.confirm(`Analyze this sheet? (1 credit)\n\nAvailable: ${aiCredits?.available??'?'} credits`)) return;
 
     // Check if items already exist for this plan
     const existingPlanItems = items.filter(i=>i.plan_id===selPlan.id);
@@ -1672,118 +1741,29 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
     setAnalyzing(true);
     try {
-      // Get plan image as base64 — resize to max 1500px for efficiency
-      let b64, mime='image/jpeg';
-      if(isPdfPlan && canvasRef.current){
-        // PDF: grab from rendered canvas
-        const c = canvasRef.current;
-        const maxW = 1500;
-        const ratio = Math.min(1, maxW / c.width);
-        const out = document.createElement('canvas');
-        out.width = Math.round(c.width * ratio);
-        out.height = Math.round(c.height * ratio);
-        out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
-        b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
-      } else {
-        // Image plan: fetch and resize
-        const res = await fetch(selPlan.file_url);
-        const blob = await res.blob();
-        mime = blob.type || 'image/jpeg';
-        const img = new Image();
-        const bUrl = URL.createObjectURL(blob);
-        await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=bUrl;});
-        URL.revokeObjectURL(bUrl);
-        const maxW = 1500;
-        const ratio = Math.min(1, maxW / img.naturalWidth);
-        const out = document.createElement('canvas');
-        out.width = Math.round(img.naturalWidth * ratio);
-        out.height = Math.round(img.naturalHeight * ratio);
-        out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
-        b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
-        mime = 'image/jpeg';
-      }
-
-      const catIds = TAKEOFF_CATS.map(c=>c.id).join('|');
-      const apiRes = await fetch('/api/claude',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          model: AI_MODEL,
-          max_tokens: 2000,
-          messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:mime,data:b64}},
-            {type:'text',text:`You are a construction estimator analyzing a construction plan sheet.
-
-Identify all concrete, masonry, curb & gutter, sidewalk, asphalt, grading, and countable items visible on this plan.
-
-For each item, provide:
-- description: specific name referencing plan labels/callouts if visible (e.g. "Concrete Sidewalk - North Side", "Curb & Gutter at Parking Lot A")
-- category: one of: ${catIds}
-- unit: SF for areas, LF for linear, CY for volume, EA for countable items
-- measurement_type: "area" for SF, "linear" for LF, "count" for EA
-- estimated_count: only for countable items (wheel stops, bollards, etc.)
-
-Also note any dimensions or scale callouts you see on the plan and include them in the description.
-
-Return ONLY a valid JSON array. No markdown, no explanation, no code fences.
-Example: [{"description":"Concrete Sidewalk (typ)","category":"flatwork","unit":"SF","measurement_type":"area"},{"description":"Curb & Gutter - 24in roll","category":"curb_gutter","unit":"LF","measurement_type":"linear"},{"description":"Wheel Stops","category":"other","unit":"EA","measurement_type":"count","estimated_count":15}]`}
-          ]}]
-        })
-      });
-
-      if(!apiRes.ok){
-        const errText = await apiRes.text();
-        console.error('[AI Takeoff] API error:', apiRes.status, errText);
-        alert('AI analysis failed: ' + apiRes.status);
-        setAnalyzing(false);
-        return;
-      }
-
-      const json = await apiRes.json();
-      const text = json?.content?.find(b=>b.type==='text')?.text || '';
-      const aiItems = JSON.parse(text.replace(/```json|```/g,'').trim());
-
-      if(!Array.isArray(aiItems) || !aiItems.length){
+      const aiItems = await runAISingleSheet(selPlan);
+      if(!aiItems || !aiItems.length){
         alert('AI did not find any takeoff items on this plan.');
-        setAnalyzing(false);
-        return;
+        setAnalyzing(false); return;
       }
-
       const costs = getUnitCosts();
       const pid = project.id;
       const toInsert = aiItems.map((it, i) => {
         const catDef = TAKEOFF_CATS.find(c=>c.id===it.category) || TAKEOFF_CATS[TAKEOFF_CATS.length-1];
         const uc = (costs[it.category]?.mat||0) + (costs[it.category]?.lab||0) || catDef.defaultCost;
-        const color = TO_COLORS[i % TO_COLORS.length];
         return {
-          project_id: pid,
-          plan_id: selPlan?.id,
-          category: catDef.id,
-          description: it.description,
-          quantity: it.measurement_type==='count' ? (it.estimated_count||0) : 0,
-          unit: it.unit || catDef.unit,
-          unit_cost: uc,
-          total_cost: it.measurement_type==='count' ? (it.estimated_count||0)*uc : 0,
-          measurement_type: it.measurement_type || 'manual',
-          points: null,
-          color,
-          ai_generated: true,
-          sort_order: items.length + i,
+          project_id:pid, plan_id:selPlan?.id, category:catDef.id, description:it.description,
+          quantity:it.measurement_type==='count'?(it.estimated_count||0):0,
+          unit:it.unit||catDef.unit, unit_cost:uc,
+          total_cost:it.measurement_type==='count'?(it.estimated_count||0)*uc:0,
+          measurement_type:it.measurement_type||'manual', points:null,
+          color:TO_COLORS[i%TO_COLORS.length], ai_generated:true, sort_order:items.length+i,
         };
       });
-
-      const {data, error} = await supabase.from('takeoff_items').insert(toInsert).select();
-      if(error){
-        console.error('[AI Takeoff] insert error:', error);
-        alert('Failed to save AI items: ' + error.message);
-      } else if(data){
-        setItems(prev=>[...prev,...data]);
-        setLeftTab('takeoffs');
-        alert(`AI found ${data.length} items — arm each one and draw measurements to complete the takeoff.`);
-      }
-    } catch(e){
-      console.error('[AI Takeoff] error:', e);
-      alert('AI analysis failed: ' + e.message);
-    }
+      const {data,error} = await supabase.from('takeoff_items').insert(toInsert).select();
+      if(error){ alert('Failed to save: '+error.message); }
+      else if(data){ setItems(prev=>[...prev,...data]); setLeftTab('takeoffs'); alert(`AI found ${data.length} items — draw measurements to complete.`); }
+    } catch(e){ alert('AI failed: '+e.message); }
     setAnalyzing(false);
   };
 
@@ -2744,12 +2724,114 @@ Example: [{"description":"Concrete Sidewalk (typ)","category":"flatwork","unit":
           );
         })}
         <div style={{flex:1}}/>
-        <div style={{display:'flex',alignItems:'center',paddingRight:16,gap:4}}>
-          <span style={{fontSize:11,color:t.text4,fontWeight:400}}>{items.length} conditions</span>
-          <span style={{fontSize:11,color:t.text4}}>·</span>
-          <span style={{fontSize:11,color:t.text4,fontWeight:400}}>{plans.length} sheets</span>
+        <div style={{display:'flex',alignItems:'center',paddingRight:16,gap:8}}>
+          <span style={{fontSize:11,color:t.text4}}>{items.length} conditions · {plans.length} sheets</span>
+          {/* AI Credits */}
+          <div style={{position:'relative'}}>
+            <button onClick={()=>setShowCreditsDD(p=>!p)}
+              style={{background:'none',border:`1px solid ${t.border}`,borderRadius:4,padding:'3px 8px',cursor:'pointer',
+                display:'flex',alignItems:'center',gap:4,fontSize:11,color:'#7B6BA4'}}>
+              <span>✦</span> {aiCredits?.available ?? '—'} credits
+            </button>
+            {showCreditsDD&&<>
+              <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowCreditsDD(false)}/>
+              <div style={{position:'absolute',top:'100%',right:0,zIndex:100,marginTop:4,background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',padding:16,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#333',marginBottom:12}}>AI Credits</div>
+                {[
+                  ['Monthly allowance', aiCredits?.monthly],
+                  ['Used this month', aiCredits?.used],
+                  ['Purchased', aiCredits?.purchased],
+                  ['Available', aiCredits?.available],
+                ].map(([lbl,val])=>(
+                  <div key={lbl} style={{display:'flex',justifyContent:'space-between',marginBottom:6,fontSize:12}}>
+                    <span style={{color:'#666'}}>{lbl}</span>
+                    <span style={{fontWeight:600,color:'#333'}}>{val ?? '—'}</span>
+                  </div>
+                ))}
+                {aiCredits?.reset_at&&<div style={{fontSize:11,color:'#999',marginTop:8}}>Resets: {new Date(aiCredits.reset_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>}
+                <button onClick={()=>{setShowCreditsDD(false);setShowSheetSelector(true);}}
+                  style={{marginTop:12,width:'100%',background:'#7B6BA4',border:'none',color:'#fff',padding:'8px 0',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                  Batch AI Assist
+                </button>
+              </div>
+            </>}
+          </div>
         </div>
       </div>
+
+      {/* ── Sheet Selector Modal for Batch AI ── */}
+      {showSheetSelector&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>{if(!analyzing)setShowSheetSelector(false);}}>
+          <div style={{background:'#fff',borderRadius:8,width:520,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #E0E0E0'}}>
+              <div style={{fontSize:16,fontWeight:600,color:'#333'}}>AI Assist — Select Sheets</div>
+              <div style={{fontSize:12,color:'#999',marginTop:4}}>Select sheets to analyze. Each sheet costs 1 credit.</div>
+            </div>
+            {/* Quick filters */}
+            <div style={{display:'flex',gap:6,padding:'10px 20px',borderBottom:'1px solid #f0f0f0',flexWrap:'wrap'}}>
+              <button onClick={()=>setSelectedSheets(new Set(plans.map(p=>p.id)))} style={{fontSize:11,padding:'3px 10px',border:'1px solid #E0E0E0',borderRadius:4,background:'#fff',color:'#333',cursor:'pointer'}}>Select All</button>
+              <button onClick={()=>setSelectedSheets(new Set())} style={{fontSize:11,padding:'3px 10px',border:'1px solid #E0E0E0',borderRadius:4,background:'#fff',color:'#333',cursor:'pointer'}}>None</button>
+              {['C-','S-','A-','L-','M-'].map(prefix=>(
+                <button key={prefix} onClick={()=>setSelectedSheets(new Set(plans.filter(p=>(p.name||'').toUpperCase().startsWith(prefix)).map(p=>p.id)))}
+                  style={{fontSize:11,padding:'3px 10px',border:'1px solid #E0E0E0',borderRadius:4,background:'#fff',color:'#666',cursor:'pointer'}}>{prefix}*</button>
+              ))}
+            </div>
+            {/* Sheet list */}
+            <div style={{flex:1,overflowY:'auto',padding:'8px 20px'}}>
+              {plans.map((p,idx)=>(
+                <label key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',cursor:'pointer',borderBottom:'1px solid #f8f8f8'}}>
+                  <input type="checkbox" checked={selectedSheets.has(p.id)}
+                    onChange={()=>setSelectedSheets(prev=>{const n=new Set(prev);n.has(p.id)?n.delete(p.id):n.add(p.id);return n;})}
+                    style={{accentColor:'#4CAF50'}}/>
+                  <span style={{flex:1,fontSize:13,color:'#333'}}>{p.name||`Sheet ${idx+1}`}</span>
+                </label>
+              ))}
+            </div>
+            {/* Footer */}
+            <div style={{padding:'12px 20px',borderTop:'1px solid #E0E0E0',display:'flex',alignItems:'center',gap:12}}>
+              <div style={{flex:1,fontSize:12}}>
+                <span style={{color:'#333',fontWeight:500}}>Selected: {selectedSheets.size} sheets</span>
+                <span style={{color:'#999'}}> · Cost: {selectedSheets.size} credits · Remaining: {(aiCredits?.available||0)-selectedSheets.size}</span>
+                {selectedSheets.size > (aiCredits?.available||0) && <span style={{color:'#C0504D',fontWeight:500}}> — Not enough credits!</span>}
+              </div>
+              {aiProgress&&<span style={{fontSize:12,color:'#7B6BA4'}}>Analyzing {aiProgress.current} of {aiProgress.total}...</span>}
+              <button onClick={()=>{if(!analyzing)setShowSheetSelector(false);}} disabled={analyzing}
+                style={{padding:'8px 14px',border:'1px solid #E0E0E0',borderRadius:4,background:'#fff',color:'#666',cursor:'pointer',fontSize:12}}>Cancel</button>
+              <button disabled={!selectedSheets.size || selectedSheets.size>(aiCredits?.available||0) || analyzing}
+                onClick={async()=>{
+                  const sheetsToAnalyze = plans.filter(p=>selectedSheets.has(p.id));
+                  setAnalyzing(true);
+                  let totalFound = 0;
+                  const costs = getUnitCosts();
+                  for(let i=0;i<sheetsToAnalyze.length;i++){
+                    setAiProgress({current:i+1,total:sheetsToAnalyze.length});
+                    const plan = sheetsToAnalyze[i];
+                    const aiItems = await runAISingleSheet(plan);
+                    if(aiItems?.length){
+                      const toInsert = aiItems.map((it,j)=>{
+                        const catDef=TAKEOFF_CATS.find(c=>c.id===it.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                        const uc=(costs[it.category]?.mat||0)+(costs[it.category]?.lab||0)||catDef.defaultCost;
+                        return {project_id:project.id,plan_id:plan.id,category:catDef.id,description:it.description,
+                          quantity:it.measurement_type==='count'?(it.estimated_count||0):0,
+                          unit:it.unit||catDef.unit,unit_cost:uc,
+                          total_cost:it.measurement_type==='count'?(it.estimated_count||0)*uc:0,
+                          measurement_type:it.measurement_type||'manual',points:null,
+                          color:TO_COLORS[(totalFound+j)%TO_COLORS.length],ai_generated:true,sort_order:items.length+totalFound+j};
+                      });
+                      const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
+                      if(data){setItems(prev=>[...prev,...data]);totalFound+=data.length;}
+                    }
+                  }
+                  setAnalyzing(false);setAiProgress(null);setShowSheetSelector(false);setLeftTab('takeoffs');
+                  alert(`Done — found ${totalFound} items across ${sheetsToAnalyze.length} sheets.`);
+                }}
+                style={{padding:'8px 16px',borderRadius:4,border:'none',background:'#4CAF50',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:500,opacity:(!selectedSheets.size||selectedSheets.size>(aiCredits?.available||0)||analyzing)?0.4:1}}>
+                {analyzing?'Analyzing...':'Analyze Selected'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Reports View — STACK style ── */}
       {mainView==='reports'&&(()=>{
