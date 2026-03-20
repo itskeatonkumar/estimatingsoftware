@@ -1541,6 +1541,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       for(let pageN=1; pageN<=numPages; pageN++){
         setUploading(`Rendering ${pageN} / ${numPages}…`);
         const page = await doc.getPage(pageN);
+        // Extract embedded text (free — no AI needed)
+        let pageText = '';
+        try {
+          const textContent = await page.getTextContent();
+          pageText = textContent.items.map(item => item.str).join(' ').slice(0, 10000); // cap at 10k chars
+        } catch(e) { console.warn('text extraction failed p'+pageN, e); }
         const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
         offscreen.width = viewport.width; offscreen.height = viewport.height;
@@ -1572,7 +1578,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
               const publicUrl = ud?.publicUrl || '';
               return supabase.from('precon_plans')
-                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg'}])
+                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', ocr_text:pageText||null}])
                 .select().single()
                 .then(({data:plan}) => plan ? {...plan, _idx:idx} : null);
             })
@@ -2654,7 +2660,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     let filtered = plansFilter === 'marked' ? plans.filter(p => planMarkedSet.has(p.id)) : plans;
     if (planSearch.trim()) {
       const q = planSearch.trim().toLowerCase();
-      filtered = filtered.filter(p => (p.name || '').toLowerCase().includes(q));
+      filtered = filtered.filter(p => (p.name || '').toLowerCase().includes(q) || (p.ocr_text || '').toLowerCase().includes(q));
     }
     return filtered;
   }, [plans, plansFilter, planMarkedSet, planSearch]);
@@ -3969,20 +3975,34 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               };
               return <div style={{position:'absolute',inset:0,overflow:'auto',background:'#f5f5f5',padding:24}}>
                 {/* Header */}
-                <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
+                <div style={{display:'flex',alignItems:'center',marginBottom:16,gap:12}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:18,fontWeight:600,color:'#333'}}>All Sheets</div>
                     <div style={{fontSize:12,color:'#999',marginTop:2}}>{plans.length} sheet{plans.length!==1?'s':''}</div>
                   </div>
+                  <input value={planSearch} onChange={e=>setPlanSearch(e.target.value)} placeholder="Search sheets by name or content..."
+                    style={{width:280,padding:'7px 12px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:13,color:'#333',background:'#fff',outline:'none'}}/>
                   <button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
                     style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 18px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
                     Upload Plans
                   </button>
                 </div>
                 {/* Grid */}
-                {plans.length>0?(
+                {(() => {
+                  const q = planSearch.trim().toLowerCase();
+                  const overviewPlans = q ? plans.filter(p => (p.name||'').toLowerCase().includes(q) || (p.ocr_text||'').toLowerCase().includes(q)) : plans;
+                  const matchCount = (p) => {
+                    if(!q) return 0;
+                    const text = (p.ocr_text||'').toLowerCase();
+                    let count=0, pos=0;
+                    while((pos=text.indexOf(q,pos))!==-1){count++;pos+=q.length;}
+                    return count;
+                  };
+                  return overviewPlans.length>0?(
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:16}}>
-                    {plans.map((p,idx)=>(
+                    {overviewPlans.map((p,idx)=>{
+                      const mc = matchCount(p);
+                      return(
                       <div key={p.id}
                         onClick={()=>{
                           setShowOverview(false);
@@ -4008,22 +4028,26 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         </div>
                         <div style={{padding:'10px 12px'}}>
                           <div style={{fontSize:12,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</div>
-                          <div style={{fontSize:11,color:'#999',marginTop:2}}>Sheet {idx+1} of {plans.length}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2}}>
+                            <span style={{fontSize:11,color:'#999'}}>Sheet {idx+1} of {plans.length}</span>
+                            {mc>0&&<span style={{fontSize:9,background:'#E8F5E9',color:'#4CAF50',padding:'1px 6px',borderRadius:8,fontWeight:600}}>{mc} match{mc!==1?'es':''}</span>}
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 ):(
                   <div style={{textAlign:'center',padding:'80px 20px'}}>
                     <div style={{fontSize:48,color:'#ccc',marginBottom:16}}>&#8862;</div>
-                    <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>No plans yet</div>
-                    <div style={{fontSize:13,color:'#999',marginBottom:24}}>Upload your construction plans to get started</div>
-                    <button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
+                    <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>{q?'No matching sheets':'No plans yet'}</div>
+                    <div style={{fontSize:13,color:'#999',marginBottom:24}}>{q?'Try a different search term':'Upload your construction plans to get started'}</div>
+                    {!q&&<button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
                       style={{background:'#4CAF50',border:'none',color:'#fff',padding:'10px 24px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
                       Upload Plans
-                    </button>
+                    </button>}
                   </div>
-                )}
+                );
+                })()}
               </div>;
             })():(()=>{
               const planW = imgNat.w > 4 ? imgNat.w : (canvasRef.current?.width || 800);
