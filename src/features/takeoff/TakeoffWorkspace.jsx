@@ -1571,30 +1571,28 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         const sheetName = numPages>1 ? `${fallbackBase} — Pg ${pageN}` : fallbackBase;
         const path = `precon/${pid}/${Date.now()}_p${pageN}.jpg`;
         const idx = pageN - 1;
+        // Capture pageText in closure for this iteration
+        const _pageText = pageText;
         uploadPromises.push(
           supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'})
-            .then(({error}) => {
+            .then(async ({error}) => {
               if(error){ console.error('upload fail p'+pageN, error); return null; }
               const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
               const publicUrl = ud?.publicUrl || '';
-              return supabase.from('precon_plans')
-                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', ocr_text:pageText||null}])
-                .select().single()
-                .then(({data:plan, error:insErr}) => {
-                  if(insErr) {
-                    console.error('[upload] plan insert error:', insErr);
-                    // Retry without ocr_text in case column doesn't exist
-                    return supabase.from('precon_plans')
-                      .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg'}])
-                      .select().single()
-                      .then(({data:plan2}) => {
-                        // Save ocr_text as a separate update (will silently fail if column missing)
-                        if(plan2 && pageText) supabase.from('precon_plans').update({ocr_text:pageText}).eq('id',plan2.id);
-                        return plan2 ? {...plan2, ocr_text:pageText, _idx:idx} : null;
-                      });
-                  }
-                  return plan ? {...plan, _idx:idx} : null;
+              // Insert plan row (without ocr_text to avoid column-missing errors)
+              const {data:plan, error:insErr} = await supabase.from('precon_plans')
+                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg'}])
+                .select().single();
+              if(insErr){ console.error('[upload] plan insert error:', insErr); return null; }
+              if(!plan) return null;
+              // Save extracted text separately (best-effort — won't break if column missing)
+              if(_pageText){
+                await supabase.from('precon_plans').update({ocr_text:_pageText}).eq('id',plan.id).then(({error:txtErr})=>{
+                  if(txtErr) console.warn('[upload] ocr_text update skipped:', txtErr.message);
+                  else console.log('[upload] ocr_text saved for', plan.name, '—', _pageText.length, 'chars');
                 });
+              }
+              return {...plan, ocr_text:_pageText||null, _idx:idx};
             })
         );
       }
@@ -3219,9 +3217,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   type="text"
                   value={planSearch}
                   onChange={e=>setPlanSearch(e.target.value)}
-                  placeholder="Search plans…"
+                  placeholder="Search sheet names and content..."
                   style={{width:'100%',padding:'4px 8px',fontSize:10,border:`1px solid ${t.border}`,borderRadius:4,background:t.bg,color:t.text,outline:'none',boxSizing:'border-box'}}
                 />
+                {planSearch.trim()&&<div style={{fontSize:9,color:t.text4,marginTop:3}}>{visiblePlans.length} of {plans.length} sheets match</div>}
               </div>
 
               {/* Folder tree */}
