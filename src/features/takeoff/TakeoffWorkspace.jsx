@@ -1564,14 +1564,25 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       for(let pageN=1; pageN<=numPages; pageN++){
         setUploading(`Rendering ${pageN} / ${numPages}…`);
         const page = await doc.getPage(pageN);
-        // Extract embedded text (free — no AI needed)
+        // Extract embedded text + positions (free — no AI needed)
         let pageText = '';
+        let ocrItems = []; // [{str, x, y, w, h}] for on-plan highlighting
         try {
-          console.log('[OCR] Extracting text for page', pageN);
           const textContent = await page.getTextContent();
-          console.log('[OCR] Raw items count:', textContent.items.length);
-          pageText = textContent.items.filter(item => item.str && item.str.trim()).map(item => item.str).join(' ').replace(/\s+/g, ' ').trim().slice(0, 10000);
-          console.log('[OCR] Page', pageN, 'text length:', pageText.length, 'preview:', pageText.slice(0, 200));
+          const vp = page.getViewport({scale:2.0}); // match render scale
+          for(const item of textContent.items){
+            if(!item.str?.trim()) continue;
+            const tx = item.transform; // [scaleX, skewX, skewY, scaleY, translateX, translateY]
+            if(!tx) continue;
+            // Transform PDF coords to canvas pixel coords (viewport-aware)
+            const x = tx[4] * (vp.width / (vp.viewBox[2]-vp.viewBox[0]));
+            const y = vp.height - tx[5] * (vp.height / (vp.viewBox[3]-vp.viewBox[1]));
+            const fontSize = Math.abs(tx[0]) * (vp.width / (vp.viewBox[2]-vp.viewBox[0]));
+            const w = item.width ? item.width * (vp.width / (vp.viewBox[2]-vp.viewBox[0])) : fontSize * item.str.length * 0.6;
+            const h = fontSize * 1.2;
+            ocrItems.push({str:item.str.trim(), x:Math.round(x), y:Math.round(y-h), w:Math.round(w), h:Math.round(h)});
+          }
+          pageText = ocrItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim().slice(0,10000);
         } catch(e) { console.error('[OCR] text extraction FAILED p'+pageN, e); }
         const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
@@ -1597,8 +1608,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         const sheetName = numPages>1 ? `${fallbackBase} — Pg ${pageN}` : fallbackBase;
         const path = `precon/${pid}/${Date.now()}_p${pageN}.jpg`;
         const idx = pageN - 1;
-        // Capture pageText in closure for this iteration
+        // Capture for closure
         const _pageText = pageText;
+        const _ocrItems = ocrItems;
         uploadPromises.push(
           supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'})
             .then(async ({error}) => {
@@ -1618,7 +1630,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   else console.log('[upload] ocr_text saved for', plan.name, '—', _pageText.length, 'chars');
                 });
               }
-              return {...plan, ocr_text:_pageText||null, _idx:idx};
+              // Store OCR positions for on-plan search highlighting
+              if(_ocrItems.length){
+                try{ localStorage.setItem(`ocrItems_${plan.id}`, JSON.stringify(_ocrItems)); }catch(e){}
+              }
+              return {...plan, ocr_text:_pageText||null, _ocrItems:_ocrItems, _idx:idx};
             })
         );
       }
@@ -4266,6 +4282,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             <circle cx={p1.x} cy={p1.y} r={6/zoom} fill="#4CAF50"/>
                             <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#4CAF50"/>
                           </g>);
+                        })()}
+                        {/* Search text highlights on plan */}
+                        {planSearch.trim()&&selPlan&&(()=>{
+                          const q = planSearch.trim().toLowerCase();
+                          let ocrItems = [];
+                          try{ const raw = localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) ocrItems=JSON.parse(raw); }catch(e){}
+                          if(!ocrItems.length) return null;
+                          const matches = ocrItems.filter(item=>item.str.toLowerCase().includes(q));
+                          if(!matches.length) return null;
+                          return matches.map((m,i)=>(
+                            <g key={`hl${i}`} style={{pointerEvents:'none'}}>
+                              <rect x={m.x-2} y={m.y-2} width={m.w+4} height={m.h+4} rx={2}
+                                fill="rgba(255,235,59,0.35)" stroke="#F9A825" strokeWidth={1.5/zoom}/>
+                            </g>
+                          ));
                         })()}
                         {/* Lasso selection box */}
                         {lassoRect&&(()=>{
