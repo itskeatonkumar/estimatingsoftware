@@ -4520,14 +4520,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           }
                           // Find text items that contain or ARE sheet numbers matching other plans
                           const links = [];
-                          const seen = new Set();
                           for(const item of items){
-                            // Check if this text item contains a known sheet number
                             const str = item.str.toUpperCase().trim();
                             for(const [num, plan] of numToPlan){
-                              if(str.includes(num) && !seen.has(plan.id)){
-                                seen.add(plan.id);
-                                links.push({...item, target:plan});
+                              if(str.includes(num)){
+                                links.push({...item, target:plan, refNum:num});
                                 break;
                               }
                             }
