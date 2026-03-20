@@ -1527,8 +1527,17 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       if(titleMatch){
         let title = titleMatch[1].trim().replace(/\s+/g, ' ');
         const hasKeyword = titleKeywords.test(title);
-        title = title.replace(/\s+(This|The|1163|Tel:|Fax:|Project|Job|Date|Revision|Sheet|Scale|Drawn|Check).*/i, '').trim();
-        console.log('[parseSheetName]   → title:', title, 'hasKeyword:', hasKeyword);
+        title = title
+          .replace(/\s+\d+['"\u2019-].*$/,'')
+          .replace(/\s+(This|The|Tel:|Fax:|Project|Job|Date|Revision|SCALE|BY WHO|BOTTOM OF|EXPOSED|ACTUAL|PRE-FINISHED|VENTED|ROOF SLOPE|TOP OF|NOTE:|PRINTING|FOR |HOURS|INCHES|PROVIDE|COLD-FORMED|RIGHT WALL|SECTION \d).*/i, '')
+          .replace(/\s+[A-Z]\d+\.\d+.*$/,'')
+          .replace(/\s+\d{3,}.*$/,'')
+          .replace(/\s+(SQ\.?\s*FT|A\.?F\.?F|TYP|EQUAL|EXIT|PERMANENT|DRESSING|VESTIBULE|CORRIDOR|EMPLOYEE|PEPSI|ELECTRIC RACEWAY|DISPLAY|CABINET|DRYER|TABLE|JOIST|STOREFRONT|HSS|WF BEAM|CMU|MICROPILE).*$/i,'')
+          .trim();
+        // De-duplicate repeated titles: "GENERAL LIGHTING PLAN GENERAL LIGHTING PLAN" → "GENERAL LIGHTING PLAN"
+        const _w = title.split(' ');
+        const _h = Math.ceil(_w.length / 2);
+        if(_w.length >= 4 && _w.slice(0,_h).join(' ') === _w.slice(_h,_h*2).join(' ')) title = _w.slice(0,_h).join(' ');
         if(title.length > 2 && title.length < 80){
           if(!bestMatch || hasKeyword) bestMatch = { num, title, hasKeyword };
           if(hasKeyword) break;
