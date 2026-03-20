@@ -4510,7 +4510,6 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           let tp = selPlan.text_positions;
                           if(!tp){ try{ const raw=localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) tp=JSON.parse(raw); }catch(e){} }
                           const items = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
-                          console.log('[refs] plan:', selPlan.id, 'text_positions:', !!selPlan.text_positions, 'localStorage:', !!localStorage.getItem(`ocrItems_${selPlan.id}`), 'items:', items.length);
                           if(!items.length || !plans.length) return null;
                           // Build sheet number → plan lookup
                           const numToPlan = new Map();
@@ -4533,8 +4532,6 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                               }
                             }
                           }
-                          console.log('[refs] found', links.length, 'links from', items.length, 'text items, numToPlan has', numToPlan.size, 'entries');
-                          if(links.length) console.log('[refs] first link:', links[0]);
                           if(!links.length) return null;
                           return links.map((lk,i)=>(
                             <g key={`ref${i}`} style={{cursor:'pointer'}} onClick={(e)=>{
