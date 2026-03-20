@@ -1663,52 +1663,127 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
   const runAITakeoff=async()=>{
     if(!selPlan) return;
-    setAnalyzing(true);
-    let b64=planB64; let mime=planMime;
-    if(!b64){
-      try{
-        const res=await fetch(selPlan.file_url);
-        const blob=await res.blob(); mime=blob.type||'image/png';
-        b64=await new Promise(resolve=>{const r=new FileReader();r.onload=e=>resolve(e.target.result.split(',')[1]);r.readAsDataURL(blob);});
-      }catch(e){setAnalyzing(false);alert('Could not load plan');return;}
+
+    // Check if items already exist for this plan
+    const existingPlanItems = items.filter(i=>i.plan_id===selPlan.id);
+    if(existingPlanItems.length > 0){
+      if(!window.confirm(`This plan already has ${existingPlanItems.length} items. Add AI items alongside them?`)) return;
     }
-    const isImg=mime.startsWith('image/');
-    const block=isImg?{type:'image',source:{type:'base64',media_type:mime,data:b64}}:{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}};
-    const costs = getUnitCosts();
-    const res=await fetch('/api/claude',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:3000,
-        messages:[{role:'user',content:[block,{type:'text',text:`You are a senior concrete and masonry construction estimator. Analyze this plan drawing extremely carefully.
 
-Project: "${project.name}" | GC: ${project.gc_name||'N/A'} | Est. Value: ${project.contract_value?'$'+project.contract_value:'TBD'}
+    setAnalyzing(true);
+    try {
+      // Get plan image as base64 — resize to max 1500px for efficiency
+      let b64, mime='image/jpeg';
+      if(isPdfPlan && canvasRef.current){
+        // PDF: grab from rendered canvas
+        const c = canvasRef.current;
+        const maxW = 1500;
+        const ratio = Math.min(1, maxW / c.width);
+        const out = document.createElement('canvas');
+        out.width = Math.round(c.width * ratio);
+        out.height = Math.round(c.height * ratio);
+        out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+        b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
+      } else {
+        // Image plan: fetch and resize
+        const res = await fetch(selPlan.file_url);
+        const blob = await res.blob();
+        mime = blob.type || 'image/jpeg';
+        const img = new Image();
+        const bUrl = URL.createObjectURL(blob);
+        await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=bUrl;});
+        URL.revokeObjectURL(bUrl);
+        const maxW = 1500;
+        const ratio = Math.min(1, maxW / img.naturalWidth);
+        const out = document.createElement('canvas');
+        out.width = Math.round(img.naturalWidth * ratio);
+        out.height = Math.round(img.naturalHeight * ratio);
+        out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
+        b64 = out.toDataURL('image/jpeg', 0.7).split(',')[1];
+        mime = 'image/jpeg';
+      }
 
-Your job: Extract EVERY quantifiable scope item for a concrete/masonry subcontractor bidding this job.
+      const catIds = TAKEOFF_CATS.map(c=>c.id).join('|');
+      const apiRes = await fetch('/api/claude',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model: AI_MODEL,
+          max_tokens: 2000,
+          messages:[{role:'user',content:[
+            {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+            {type:'text',text:`You are a construction estimator analyzing a construction plan sheet.
 
-Instructions:
-- Read ALL dimension strings visible on the plan
-- Identify every concrete element: slabs, footings, walls, columns, piers, curbs
-- Identify masonry: CMU block walls, brick, stone
-- Calculate or estimate quantities from dimensions shown
-- If dimensions aren't visible, estimate from drawing scale and context
-- Separate different areas into individual line items (e.g. "Slab Area A - 2,400 SF", "Slab Area B - 800 SF")
-- Include rebar, formwork, and excavation as separate items
+Identify all concrete, masonry, curb & gutter, sidewalk, asphalt, grading, and countable items visible on this plan.
 
-Return ONLY a valid JSON array, no markdown:
-[{"category":"concrete_slab|concrete_footing|concrete_wall|masonry_cmu|masonry_brick|rebar|formwork|excavation|flatwork|grout|other","description":"specific item with location/reference","quantity":number,"unit":"SF|CY|LF|LB|EA|LS","measurement_type":"area|linear|count|manual","confidence":"high|medium|low"}]`}]}]})
-    });
-    const json=await res.json();
-    const text=json?.content?.find(b=>b.type==='text')?.text||'';
-    try{
-      const aiItems=JSON.parse(text.replace(/```json|```/g,'').trim());
-      const pid=project.id;
-      const toInsert=aiItems.map((it,i)=>{
-        const catDef=TAKEOFF_CATS.find(c=>c.id===it.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
-        const uc=(costs[it.category]?.mat||0)+(costs[it.category]?.lab||0)||catDef.defaultCost;
-        return {project_id:pid,plan_id:selPlan?.id,category:it.category||'other',description:it.description,quantity:it.quantity||0,unit:it.unit||catDef.unit,unit_cost:uc,total_cost:(it.quantity||0)*uc,measurement_type:it.measurement_type||'manual',points:null,color:catDef.color,ai_generated:true,sort_order:items.length+i};
+For each item, provide:
+- description: specific name referencing plan labels/callouts if visible (e.g. "Concrete Sidewalk - North Side", "Curb & Gutter at Parking Lot A")
+- category: one of: ${catIds}
+- unit: SF for areas, LF for linear, CY for volume, EA for countable items
+- measurement_type: "area" for SF, "linear" for LF, "count" for EA
+- estimated_count: only for countable items (wheel stops, bollards, etc.)
+
+Also note any dimensions or scale callouts you see on the plan and include them in the description.
+
+Return ONLY a valid JSON array. No markdown, no explanation, no code fences.
+Example: [{"description":"Concrete Sidewalk (typ)","category":"flatwork","unit":"SF","measurement_type":"area"},{"description":"Curb & Gutter - 24in roll","category":"curb_gutter","unit":"LF","measurement_type":"linear"},{"description":"Wheel Stops","category":"other","unit":"EA","measurement_type":"count","estimated_count":15}]`}
+          ]}]
+        })
       });
-      const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
-      if(data) setItems(prev=>[...prev,...data]);
-    }catch(e){alert('AI parse failed: '+e.message);}
+
+      if(!apiRes.ok){
+        const errText = await apiRes.text();
+        console.error('[AI Takeoff] API error:', apiRes.status, errText);
+        alert('AI analysis failed: ' + apiRes.status);
+        setAnalyzing(false);
+        return;
+      }
+
+      const json = await apiRes.json();
+      const text = json?.content?.find(b=>b.type==='text')?.text || '';
+      const aiItems = JSON.parse(text.replace(/```json|```/g,'').trim());
+
+      if(!Array.isArray(aiItems) || !aiItems.length){
+        alert('AI did not find any takeoff items on this plan.');
+        setAnalyzing(false);
+        return;
+      }
+
+      const costs = getUnitCosts();
+      const pid = project.id;
+      const toInsert = aiItems.map((it, i) => {
+        const catDef = TAKEOFF_CATS.find(c=>c.id===it.category) || TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+        const uc = (costs[it.category]?.mat||0) + (costs[it.category]?.lab||0) || catDef.defaultCost;
+        const color = TO_COLORS[i % TO_COLORS.length];
+        return {
+          project_id: pid,
+          plan_id: selPlan?.id,
+          category: catDef.id,
+          description: it.description,
+          quantity: it.measurement_type==='count' ? (it.estimated_count||0) : 0,
+          unit: it.unit || catDef.unit,
+          unit_cost: uc,
+          total_cost: it.measurement_type==='count' ? (it.estimated_count||0)*uc : 0,
+          measurement_type: it.measurement_type || 'manual',
+          points: null,
+          color,
+          ai_generated: true,
+          sort_order: items.length + i,
+        };
+      });
+
+      const {data, error} = await supabase.from('takeoff_items').insert(toInsert).select();
+      if(error){
+        console.error('[AI Takeoff] insert error:', error);
+        alert('Failed to save AI items: ' + error.message);
+      } else if(data){
+        setItems(prev=>[...prev,...data]);
+        setLeftTab('takeoffs');
+        alert(`AI found ${data.length} items — arm each one and draw measurements to complete the takeoff.`);
+      }
+    } catch(e){
+      console.error('[AI Takeoff] error:', e);
+      alert('AI analysis failed: ' + e.message);
+    }
     setAnalyzing(false);
   };
 
@@ -3534,6 +3609,7 @@ Return ONLY a valid JSON array, no markdown:
                                   <div style={{fontSize:11,fontWeight:isActive?600:400,
                                     color:isActive?'#E8A317':t.text,
                                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                    {item.ai_generated&&<span style={{color:'#7B6BA4',fontSize:9,marginRight:3}} title="AI-generated">✦</span>}
                                     {item.description||'Unnamed'}
                                   </div>
                                   <div style={{display:'flex',alignItems:'center',gap:4,marginTop:1}}>
