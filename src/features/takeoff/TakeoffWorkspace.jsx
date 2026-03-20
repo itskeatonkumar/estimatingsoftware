@@ -10,7 +10,7 @@ import LibraryPanel from "./LibraryPanel.jsx";
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
 // ── PlanRow: file-scope memo'd component (prevents unmount/remount on parent render) ──
-const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, dragOverId, handlersRef }) => {
+const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, dragOverId, handlersRef, searchQuery }) => {
   const H = handlersRef.current;
   const t = H.t;
   return (
@@ -50,7 +50,17 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         transition: 'background 0.1s'
       }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#4CAF50' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || 'Unnamed'}</div>
+        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#4CAF50' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(()=>{
+          const name = p.name||'Unnamed';
+          if(!searchQuery) return name;
+          const re = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');
+          const parts = name.split(re);
+          if(parts.length===1) return name;
+          return parts.map((s,i)=>re.test(s)?<mark key={i} style={{background:'#FFEB3B',color:'#333',padding:'0 1px',borderRadius:1}}>{s}</mark>:s);
+        })()}</div>
+        {searchQuery && p.ocr_text?.toLowerCase().includes(searchQuery.toLowerCase()) && (
+          <div style={{ fontSize: 8, color: '#4CAF50', marginTop: 1 }}>Content match</div>
+        )}
         <div style={{ fontSize: 8, color: t.text4, display: 'flex', alignItems: 'center', gap: 3 }}>
           {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#4CAF50', flexShrink: 0 }} />}
           <span>{cnt ? `${cnt} item${cnt !== 1 ? 's' : ''}` : 'No items'}{isOpen ? ' · open' : ''}</span>
@@ -398,6 +408,19 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       return { qty: rawQty * h, unit: 'SF' };
     }
     return { qty: rawQty, unit: item.unit || '' };
+  };
+
+  // Highlight search term in text
+  const highlightText = (text, query) => {
+    if (!query || !text) return text || '';
+    const q = query.trim();
+    if (!q) return text;
+    const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    if (parts.length === 1) return text;
+    return parts.map((part, i) =>
+      regex.test(part) ? <mark key={i} style={{background:'#FFEB3B',color:'#333',padding:'0 1px',borderRadius:1}}>{part}</mark> : part
+    );
   };
 
   // planItems: strict per-sheet item list. Defined early so all handlers can use it.
@@ -3224,12 +3247,6 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   style={{width:'100%',padding:'4px 8px',fontSize:10,border:`1px solid ${t.border}`,borderRadius:4,background:t.bg,color:t.text,outline:'none',boxSizing:'border-box'}}
                 />
                 {planSearch.trim()&&<div style={{fontSize:9,color:t.text4,marginTop:3}}>{visiblePlans.length} of {plans.length} sheets match</div>}
-                <button onClick={async()=>{
-                  const {data}=await supabase.from('precon_plans').select('id,name,ocr_text').eq('project_id',project.id).limit(5);
-                  const info = data?.map(p=>({name:p.name,hasText:!!p.ocr_text,len:p.ocr_text?.length||0,preview:p.ocr_text?.slice(0,80)}));
-                  console.log('[OCR DEBUG] DB check:', info);
-                  alert(JSON.stringify(info,null,2));
-                }} style={{fontSize:9,color:'#999',background:'none',border:'1px solid #ddd',borderRadius:3,padding:'2px 6px',cursor:'pointer',marginTop:3}}>Debug OCR</button>
               </div>
 
               {/* Folder tree */}
@@ -3258,7 +3275,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       isActive={selPlan?.id===p.id}
                       isOpen={openTabs.includes(p.id)}
                       dragOverId={planDragOver}
-                      handlersRef={planHandlersRef}/>
+                      handlersRef={planHandlersRef}
+                      searchQuery={planSearch.trim()||null}/>
                   );
 
                   const FolderRow=([folderId,folder])=>{
@@ -4049,11 +4067,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           )}
                         </div>
                         <div style={{padding:'10px 12px'}}>
-                          <div style={{fontSize:12,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</div>
+                          <div style={{fontSize:12,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{highlightText(p.name||'Unnamed', q)}</div>
                           <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2}}>
                             <span style={{fontSize:11,color:'#999'}}>Sheet {idx+1} of {plans.length}</span>
                             {mc>0&&<span style={{fontSize:9,background:'#E8F5E9',color:'#4CAF50',padding:'1px 6px',borderRadius:8,fontWeight:600}}>{mc} match{mc!==1?'es':''}</span>}
                           </div>
+                          {q && p.ocr_text && (()=>{
+                            const lc = p.ocr_text.toLowerCase();
+                            const pos = lc.indexOf(q);
+                            if(pos<0) return null;
+                            const start = Math.max(0, pos-30);
+                            const snippet = p.ocr_text.slice(start, pos+q.length+30);
+                            return <div style={{fontSize:10,color:'#666',marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              ...{highlightText(snippet, q)}...
+                            </div>;
+                          })()}
                         </div>
                       </div>
                     );})}
