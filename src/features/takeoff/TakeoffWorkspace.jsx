@@ -2802,6 +2802,50 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     setUploading(false);
     setExporting(false);
   };
+  // ── Cross-references: parse sheet references from OCR text ──
+  const [showRefsDD, setShowRefsDD] = useState(false);
+  const planRefs = useMemo(() => {
+    if (!selPlan?.ocr_text || !plans.length) return [];
+    const text = selPlan.ocr_text;
+    // Build a map of sheet numbers to plans (from plan names)
+    const sheetNumMap = new Map();
+    for (const p of plans) {
+      if (p.id === selPlan.id) continue;
+      const name = p.name || '';
+      // Extract sheet number from name: "A1.0 - FLOOR PLAN" → "A1.0"
+      const m = name.match(/^([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
+      if (m) sheetNumMap.set(m[1].toUpperCase(), p);
+      // Also map the full name
+      sheetNumMap.set(name.toUpperCase(), p);
+    }
+    // Find references in OCR text
+    const refs = new Map(); // planId → {plan, contexts:[]}
+    const refPatterns = /(?:SEE|REFER TO|DETAIL|SECTION|SHEET|ON SHEET|PER)\s+([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/gi;
+    // Also find bare sheet numbers that match known plans
+    const bareNumPattern = /\b([A-Z]{1,3}\d{1,2}(?:\.\d{1,2})?)\b/g;
+    let match;
+    // First pass: explicit references
+    while ((match = refPatterns.exec(text)) !== null) {
+      const num = match[1].toUpperCase();
+      const plan = sheetNumMap.get(num);
+      if (plan && !refs.has(plan.id)) {
+        refs.set(plan.id, { plan, context: match[0].trim() });
+      }
+    }
+    // Second pass: bare sheet numbers (only if they match a known plan)
+    while ((match = bareNumPattern.exec(text)) !== null) {
+      const num = match[1].toUpperCase();
+      const plan = sheetNumMap.get(num);
+      if (plan && !refs.has(plan.id)) {
+        // Get surrounding context
+        const start = Math.max(0, match.index - 20);
+        const end = Math.min(text.length, match.index + num.length + 20);
+        refs.set(plan.id, { plan, context: text.slice(start, end).trim() });
+      }
+    }
+    return [...refs.values()];
+  }, [selPlan?.id, selPlan?.ocr_text, plans]);
+
   // ── Stable handlers ref for PlanRow (avoids re-render on every parent render) ──
   const planHandlersRef = useRef({});
   planHandlersRef.current = {
@@ -4115,6 +4159,44 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+            {/* Referenced Sheets */}
+            {selPlan&&planRefs.length>0&&(
+              <div style={{position:'relative',flexShrink:0}}>
+                <button onClick={()=>setShowRefsDD(p=>!p)}
+                  style={{height:'100%',padding:'0 12px',border:'none',borderLeft:`1px solid ${t.border}`,
+                    background:'none',color:'#5B9BD5',cursor:'pointer',fontSize:11,fontWeight:600,
+                    display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
+                  &#8599; Refs ({planRefs.length})
+                </button>
+                {showRefsDD&&<>
+                  <div style={{position:'fixed',inset:0,zIndex:49}} onClick={()=>setShowRefsDD(false)}/>
+                  <div style={{position:'absolute',top:'100%',right:0,zIndex:50,marginTop:2,
+                    background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,
+                    boxShadow:'0 4px 12px rgba(0,0,0,0.12)',minWidth:240,maxHeight:300,overflowY:'auto'}}>
+                    <div style={{padding:'8px 12px',fontSize:10,fontWeight:600,color:'#999',borderBottom:'1px solid #f0f0f0'}}>
+                      Referenced from this sheet
+                    </div>
+                    {planRefs.map(({plan:rp, context})=>(
+                      <button key={rp.id} onClick={()=>{
+                        setShowRefsDD(false);
+                        setShowOverview(false);
+                        if(!openTabs.includes(rp.id)) setOpenTabs(prev=>[...prev,rp.id]);
+                        setSelPlan(rp);
+                        if(rp.scale_px_per_ft) setScale(rp.scale_px_per_ft);
+                        else{setScale(null);setPresetScale('');}
+                      }}
+                        style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',border:'none',
+                          background:'#fff',cursor:'pointer',borderBottom:'1px solid #f8f8f8'}}
+                        onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
+                        onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
+                        <div style={{fontSize:12,fontWeight:500,color:'#333'}}>{rp.name||'Unnamed'}</div>
+                        <div style={{fontSize:10,color:'#999',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>...{context}...</div>
+                      </button>
+                    ))}
+                  </div>
+                </>}
               </div>
             )}
             {/* AI Takeoff */}
