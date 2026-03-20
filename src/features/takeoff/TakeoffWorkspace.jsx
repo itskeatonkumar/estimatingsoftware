@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
 import { generateProposalPdf } from "./proposalPdf.js";
+import LibraryPanel from "./LibraryPanel.jsx";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
@@ -247,7 +248,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [openTabs, setOpenTabs] = useState([]); // plan IDs open as browser tabs
   const planDragRef = useRef(null);
   const [planDragOver, setPlanDragOver] = useState(null);
-  const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs'
+  const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs' | 'library'
   const [showOverview, setShowOverview] = useState(true); // plan overview grid
   const [markupMode, setMarkupMode] = useState(null); // null | 'highlight' | 'cloud' | 'callout' | 'dimension' | 'text' | 'legend'
   const [markups, setMarkups] = useState(() => {
@@ -3110,7 +3111,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
           {/* Left panel tab strip */}
           <div style={{display:'flex',alignItems:'stretch',borderBottom:`1px solid ${t.border}`,flexShrink:0,height:36}}>
-            {[['plans','Plans'],['takeoffs','Takeoffs']].map(([id,lbl])=>(
+            {[['plans','Plans'],['takeoffs','Takeoffs'],['library','Library']].map(([id,lbl])=>(
               <button key={id} onClick={()=>setLeftTab(id)}
                 style={{flex:1,height:'100%',border:'none',background:'none',cursor:'pointer',
                   fontSize:13,fontWeight:leftTab===id?600:400,
@@ -3787,6 +3788,43 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             </button>
           </div>
         </div>
+
+          {/* ── LIBRARY tab ── */}
+          {leftTab==='library'&&(
+            <LibraryPanel
+              onClose={()=>setLeftTab('takeoffs')}
+              onApplyItem={async(libItem)=>{
+                const catDef = TAKEOFF_CATS.find(c=>c.id===libItem.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                const uc = libItem.unit_cost || catDef.defaultCost;
+                const mt = {SF:'area',LF:'linear',CY:'area',EA:'count'}[libItem.unit]||'manual';
+                const payload = {
+                  project_id:project.id, plan_id:selPlan?.id, category:catDef.id,
+                  description:libItem.name, quantity:0, unit:libItem.unit||catDef.unit,
+                  unit_cost:uc, total_cost:0, measurement_type:mt, points:null,
+                  color:catDef.color, ai_generated:false, sort_order:items.length,
+                };
+                const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
+                if(data){ setItems(prev=>[...prev,data]); setLeftTab('takeoffs'); }
+              }}
+              onApplyAssembly={async(assembly, aItems)=>{
+                const toInsert = (aItems||[]).map((ai,i)=>{
+                  const li = ai.library_items || {};
+                  const catDef = TAKEOFF_CATS.find(c=>c.id===li.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                  return {
+                    project_id:project.id, plan_id:selPlan?.id, category:catDef.id,
+                    description:ai.custom_name||li.name||assembly.name, quantity:0,
+                    unit:ai.unit||li.unit||'SF', unit_cost:ai.unit_cost||li.unit_cost||0,
+                    total_cost:0, measurement_type:{SF:'area',LF:'linear',EA:'count'}[ai.unit||li.unit]||'manual',
+                    points:null, color:catDef.color, ai_generated:false, sort_order:items.length+i,
+                  };
+                });
+                if(toInsert.length){
+                  const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
+                  if(data){ setItems(prev=>[...prev,...data]); setLeftTab('takeoffs'); }
+                }
+              }}
+            />
+          )}
 
         {/* ── Center: Tabs + Canvas ── */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0,position:'relative'}}>
