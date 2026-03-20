@@ -1569,18 +1569,21 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         let ocrItems = []; // [{str, x, y, w, h}] for on-plan highlighting
         try {
           const textContent = await page.getTextContent();
-          const vp = page.getViewport({scale:2.0}); // match render scale
+          const vp = page.getViewport({scale:2.0}); // MUST match the render scale used for JPEG
           for(const item of textContent.items){
-            if(!item.str?.trim()) continue;
-            const tx = item.transform; // [scaleX, skewX, skewY, scaleY, translateX, translateY]
-            if(!tx) continue;
-            // Transform PDF coords to canvas pixel coords (viewport-aware)
-            const x = tx[4] * (vp.width / (vp.viewBox[2]-vp.viewBox[0]));
-            const y = vp.height - tx[5] * (vp.height / (vp.viewBox[3]-vp.viewBox[1]));
-            const fontSize = Math.abs(tx[0]) * (vp.width / (vp.viewBox[2]-vp.viewBox[0]));
-            const w = item.width ? item.width * (vp.width / (vp.viewBox[2]-vp.viewBox[0])) : fontSize * item.str.length * 0.6;
-            const h = fontSize * 1.2;
-            ocrItems.push({str:item.str.trim(), x:Math.round(x), y:Math.round(y-h), w:Math.round(w), h:Math.round(h)});
+            if(!item.str?.trim() || !item.transform) continue;
+            // Use PDF.js built-in coordinate conversion (handles rotation, skew, etc.)
+            const [px, py] = vp.convertToViewportPoint(item.transform[4], item.transform[5]);
+            const fontSize = Math.sqrt(item.transform[0]**2 + item.transform[1]**2);
+            const heightPx = fontSize * vp.scale;
+            const widthPx = item.width ? item.width * vp.scale : heightPx * item.str.length * 0.6;
+            ocrItems.push({
+              str: item.str.trim(),
+              x: Math.round(px),
+              y: Math.round(py - heightPx), // PDF y = baseline, move up by height
+              w: Math.round(widthPx),
+              h: Math.round(heightPx),
+            });
           }
           pageText = ocrItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim().slice(0,10000);
         } catch(e) { console.error('[OCR] text extraction FAILED p'+pageN, e); }
@@ -1624,17 +1627,16 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               if(insErr){ console.error('[upload] plan insert error:', insErr); return null; }
               if(!plan) return null;
               // Save extracted text separately (best-effort — won't break if column missing)
-              if(_pageText){
-                await supabase.from('precon_plans').update({ocr_text:_pageText}).eq('id',plan.id).then(({error:txtErr})=>{
-                  if(txtErr) console.warn('[upload] ocr_text update skipped:', txtErr.message);
-                  else console.log('[upload] ocr_text saved for', plan.name, '—', _pageText.length, 'chars');
-                });
+              // Save text + positions (best-effort)
+              const updatePayload = {};
+              if(_pageText) updatePayload.ocr_text = _pageText;
+              if(_ocrItems.length) updatePayload.text_positions = _ocrItems;
+              if(Object.keys(updatePayload).length){
+                const {error:txtErr} = await supabase.from('precon_plans').update(updatePayload).eq('id',plan.id);
+                if(txtErr) console.warn('[upload] text save skipped:', txtErr.message);
+                else console.log('[upload] text saved for', plan.name, '—', _pageText.length, 'chars,', _ocrItems.length, 'positioned items');
               }
-              // Store OCR positions for on-plan search highlighting
-              if(_ocrItems.length){
-                try{ localStorage.setItem(`ocrItems_${plan.id}`, JSON.stringify(_ocrItems)); }catch(e){}
-              }
-              return {...plan, ocr_text:_pageText||null, _ocrItems:_ocrItems, _idx:idx};
+              return {...plan, ocr_text:_pageText||null, text_positions:_ocrItems.length?_ocrItems:null, _idx:idx};
             })
         );
       }
@@ -4017,6 +4019,33 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
           {/* Plan canvas + floating overlays */}
           <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
+          {/* Find on page bar */}
+          {planSearch.trim()&&selPlan&&!showOverview&&(()=>{
+            const tp = selPlan.text_positions;
+            const items = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
+            const q = planSearch.trim().toLowerCase();
+            const matches = items.filter(item=>item.str.toLowerCase().includes(q));
+            if(!matches.length && !q) return null;
+            return(
+              <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',zIndex:30,
+                background:'#fff',border:'1px solid #E0E0E0',borderRadius:6,padding:'6px 14px',
+                boxShadow:'0 2px 8px rgba(0,0,0,0.15)',display:'flex',alignItems:'center',gap:10,fontSize:12}}>
+                <span style={{color:matches.length?'#4CAF50':'#999',fontWeight:500}}>
+                  {matches.length?`${matches.length} match${matches.length!==1?'es':''} on this sheet`:'No matches on this sheet'}
+                </span>
+                {matches.length>0&&<>
+                  <button onClick={()=>{
+                    const m=matches[0];
+                    const c=containerRef.current;
+                    if(c) c.scrollTo({left:m.x*zoom-c.clientWidth/2, top:m.y*zoom-c.clientHeight/2, behavior:'smooth'});
+                  }} style={{background:'none',border:'1px solid #E0E0E0',borderRadius:3,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#333'}}>
+                    Go to first
+                  </button>
+                </>}
+                <button onClick={()=>setPlanSearch('')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:14,padding:0,lineHeight:1}}>×</button>
+              </div>
+            );
+          })()}
           <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
             {showOverview||!selPlan?(()=>{
               const getThumbnailUrl = (plan) => {
@@ -4286,24 +4315,15 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         {/* Search text highlights on plan */}
                         {planSearch.trim()&&selPlan&&(()=>{
                           const q = planSearch.trim().toLowerCase();
-                          const key = `ocrItems_${selPlan.id}`;
-                          let ocrItems = [];
-                          try{ const raw = localStorage.getItem(key); if(raw) ocrItems=JSON.parse(raw); }catch(e){}
-                          console.log('[highlight] plan:', selPlan.id, 'key:', key, 'ocrItems:', ocrItems.length, 'query:', q);
-                          if(!ocrItems.length) return null;
-                          const matches = ocrItems.filter(item=>item.str.toLowerCase().includes(q));
-                          console.log('[highlight] matches:', matches.length, matches.slice(0,3));
+                          const tp = selPlan.text_positions;
+                          const items = Array.isArray(tp) ? tp : (typeof tp==='string' ? (()=>{try{return JSON.parse(tp);}catch{return[];}})() : []);
+                          if(!items.length) return null;
+                          const matches = items.filter(item=>item.str.toLowerCase().includes(q));
                           if(!matches.length) return null;
-                          console.log('[highlight] first match coords:', matches[0]);
                           return matches.map((m,i)=>(
                             <g key={`hl${i}`} style={{pointerEvents:'none'}}>
-                              {/* Big visible highlight — yellow fill + red border + pulsing */}
-                              <rect x={m.x-6} y={m.y-6} width={Math.max(m.w+12,40)} height={Math.max(m.h+12,20)} rx={4}
-                                fill="rgba(255,235,59,0.5)" stroke="#F44336" strokeWidth={3/zoom}/>
-                              {/* Label above */}
-                              <text x={m.x} y={m.y-10} fontSize={14/zoom} fill="#F44336" fontWeight={700} style={{pointerEvents:'none'}}>
-                                ▼ {m.str}
-                              </text>
+                              <rect x={m.x-3} y={m.y-2} width={Math.max(m.w+6,30)} height={Math.max(m.h+4,12)} rx={2}
+                                fill="rgba(255,235,59,0.4)" stroke="rgba(255,180,0,0.7)" strokeWidth={1.5/zoom}/>
                             </g>
                           ));
                         })()}
