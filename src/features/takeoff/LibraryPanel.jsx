@@ -28,8 +28,47 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
     Promise.all([
       supabase.from('library_items').select('*').order('name'),
       supabase.from('library_assemblies').select('*').order('name'),
-    ]).then(([{ data: li }, { data: la }]) => {
-      setItems(li || []);
+    ]).then(async ([{ data: li }, { data: la }]) => {
+      let myItems = li || [];
+      // Auto-populate starter items on first use
+      if (myItems.length === 0) {
+        const starters = [
+          {name:'4" Sidewalk',category:'flatwork',unit:'SF',unit_cost:6.50,trade:'Concrete',source:'starter'},
+          {name:'6" Slab on Grade',category:'flatwork',unit:'SF',unit_cost:7.75,trade:'Concrete',source:'starter'},
+          {name:'4" Concrete Driveway',category:'flatwork',unit:'SF',unit_cost:7.00,trade:'Concrete',source:'starter'},
+          {name:'Concrete Steps',category:'flatwork',unit:'SF',unit_cost:18.00,trade:'Concrete',source:'starter'},
+          {name:'ADA Ramp',category:'flatwork',unit:'SF',unit_cost:12.00,trade:'Concrete',source:'starter'},
+          {name:'Transformer Pad',category:'site_concrete',unit:'EA',unit_cost:1050.00,trade:'Concrete',source:'starter'},
+          {name:'Rolled Curb 18"',category:'curb_gutter',unit:'LF',unit_cost:22.00,trade:'Curb & Gutter',source:'starter'},
+          {name:'Barrier Curb 24"',category:'curb_gutter',unit:'LF',unit_cost:28.00,trade:'Curb & Gutter',source:'starter'},
+          {name:'Curb Ramp (ADA)',category:'curb_gutter',unit:'EA',unit_cost:2000.00,trade:'Curb & Gutter',source:'starter'},
+          {name:'Detectable Warning Mat',category:'curb_gutter',unit:'EA',unit_cost:350.00,trade:'Curb & Gutter',source:'starter'},
+          {name:'Rebar #4',category:'foundations',unit:'LF',unit_cost:0.75,trade:'Reinforcement',source:'starter'},
+          {name:'Rebar #5',category:'foundations',unit:'LF',unit_cost:1.02,trade:'Reinforcement',source:'starter'},
+          {name:'Wire Mesh 6x6',category:'flatwork',unit:'SF',unit_cost:0.35,trade:'Reinforcement',source:'starter'},
+          {name:'Fiber Mesh',category:'site_concrete',unit:'CY',unit_cost:6.00,trade:'Reinforcement',source:'starter'},
+          {name:'8" CMU Wall',category:'masonry',unit:'SF',unit_cost:13.00,trade:'Masonry',source:'starter'},
+          {name:'12" CMU Wall',category:'masonry',unit:'SF',unit_cost:15.75,trade:'Masonry',source:'starter'},
+          {name:'Brick Veneer',category:'masonry',unit:'SF',unit_cost:16.00,trade:'Masonry',source:'starter'},
+          {name:'Grout Fill 8" Cells',category:'masonry',unit:'LF',unit_cost:3.00,trade:'Masonry',source:'starter'},
+          {name:'Bond Beam',category:'masonry',unit:'LF',unit_cost:12.00,trade:'Masonry',source:'starter'},
+          {name:'Bulk Excavation',category:'grading',unit:'CY',unit_cost:5.50,trade:'Earthwork',source:'starter'},
+          {name:'Fine Grading',category:'grading',unit:'SF',unit_cost:0.50,trade:'Earthwork',source:'starter'},
+          {name:'GAB Base',category:'grading',unit:'CY',unit_cost:55.00,trade:'Earthwork',source:'starter'},
+          {name:'Silt Fence',category:'grading',unit:'LF',unit_cost:2.50,trade:'Earthwork',source:'starter'},
+          {name:'Topsoil',category:'grading',unit:'CY',unit_cost:42.00,trade:'Earthwork',source:'starter'},
+          {name:'HMA 3"',category:'asphalt',unit:'SF',unit_cost:3.25,trade:'Asphalt',source:'starter'},
+          {name:'Parking Stripe 4"',category:'asphalt',unit:'LF',unit_cost:0.25,trade:'Asphalt',source:'starter'},
+          {name:'Wheel Stop',category:'asphalt',unit:'EA',unit_cost:95.00,trade:'Asphalt',source:'starter'},
+          {name:'Steel Bollard',category:'other',unit:'EA',unit_cost:700.00,trade:'Asphalt',source:'starter'},
+          {name:'TPO 60mil',category:'other',unit:'SF',unit_cost:6.75,trade:'Roofing',source:'starter'},
+          {name:'Polyiso 2"',category:'other',unit:'SF',unit_cost:1.65,trade:'Roofing',source:'starter'},
+          {name:'Base Flashing',category:'other',unit:'LF',unit_cost:13.50,trade:'Roofing',source:'starter'},
+        ];
+        const { data: inserted } = await supabase.from('library_items').insert(starters).select();
+        if (inserted) myItems = inserted;
+      }
+      setItems(myItems);
       setAssemblies(la || []);
       setLoading(false);
     });
@@ -61,7 +100,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
         name: item.name, category: item.category, unit: item.unit,
         unit_cost: Number(item.unit_cost) || 0, labor_cost: Number(item.labor_cost) || 0,
         material_cost: Number(item.material_cost) || 0, description: item.description,
-        trade: item.trade, updated_at: new Date().toISOString(),
+        trade: item.trade, source: 'custom', updated_at: new Date().toISOString(),
       }).eq('id', item.id).select().single();
       if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
     } else {
@@ -146,6 +185,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.source === 'stock' && <span style={{ color: '#999', fontSize: 9, marginRight: 4 }}>STK</span>}
+                      {item.source === 'starter' && <span style={{ color: '#5B9BD5', fontSize: 8, marginRight: 4, background: '#EBF5FB', padding: '0 3px', borderRadius: 2 }}>Starter</span>}
                       {item.name}
                     </div>
                   </div>
