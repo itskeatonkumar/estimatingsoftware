@@ -69,7 +69,14 @@ export function getRegionForState(stateCode) {
 export function getRegionalCost(pricingItem, region, multipliers) {
   const mult = multipliers.find(m => m.region === region) || multipliers.find(m => m.region === 'National') || {};
   const matMult = mult.material_multiplier || 1;
-  const labMult = mult.labor_multiplier || 1;
+  // Use trade-specific labor multiplier based on item category
+  const cat = (pricingItem.category || '').toLowerCase();
+  let labMult = mult.overall_multiplier || 1;
+  if (cat.includes('concrete')) labMult = mult.concrete_multiplier || labMult;
+  else if (cat.includes('masonry')) labMult = mult.masonry_multiplier || labMult;
+  else if (cat.includes('earthwork')) labMult = mult.earthwork_multiplier || labMult;
+  else if (cat.includes('asphalt') || cat.includes('paving')) labMult = mult.paving_multiplier || labMult;
+  else if (cat.includes('roofing')) labMult = mult.roofing_multiplier || labMult;
   const material = (pricingItem.material_cost || 0) * matMult * INFLATION_FACTOR;
   const labor = (pricingItem.labor_cost || 0) * labMult * INFLATION_FACTOR;
   return { material: Math.round(material * 100) / 100, labor: Math.round(labor * 100) / 100, total: Math.round((material + labor) * 100) / 100 };

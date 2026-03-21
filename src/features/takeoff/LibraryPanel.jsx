@@ -10,6 +10,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
   const [regionalPricing, setRegionalPricing] = useState(null);
   const [rpSearch, setRpSearch] = useState('');
   const [collapsedRPCats, setCollapsedRPCats] = useState({});
+  const [rpRegionOverride, setRpRegionOverride] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [expandedTemplate, setExpandedTemplate] = useState(null);
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -191,7 +192,8 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
 
       {/* Regional Pricing Tab */}
       {tab === 'regional' && (()=>{
-        const region = projectRegion || 'National';
+        const region = rpRegionOverride || projectRegion || 'National';
+        const availableRegions = regionalPricing?.multipliers?.map(m=>m.region) || ['National'];
         const allRP = regionalPricing?.pricing || [];
         const filtered = allRP.filter(p => !rpSearch || p.item_name.toLowerCase().includes(rpSearch.toLowerCase()) || p.category.toLowerCase().includes(rpSearch.toLowerCase()));
         // Group by category
@@ -217,7 +219,10 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
           <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, alignItems: 'center' }}>
             <input value={rpSearch} onChange={e => setRpSearch(e.target.value)} placeholder="Search regional items..."
               style={{ flex: 1, padding: '6px 10px', border: '1px solid #E0E0E0', borderRadius: 4, fontSize: 12, outline: 'none', color: '#333' }} />
-            <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, flexShrink: 0 }}>{region}</span>
+            <select value={region} onChange={e=>setRpRegionOverride(e.target.value)}
+              style={{padding:'4px 6px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#4CAF50',fontWeight:600,background:'#fff',outline:'none',cursor:'pointer',flexShrink:0}}>
+              {availableRegions.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
             <span style={{ fontSize: 10, color: '#999', flexShrink: 0 }}>{filtered.length} items</span>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
