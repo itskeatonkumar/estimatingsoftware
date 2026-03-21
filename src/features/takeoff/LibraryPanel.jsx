@@ -99,9 +99,17 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
             style={{ flex: 1, padding: '8px', border: 'none', background: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#4CAF50' : '#666',
               borderBottom: tab === t ? '2px solid #4CAF50' : '2px solid transparent' }}>
-            {t==='items'?'Items':t==='assemblies'?'Assemblies':t==='regional'?'Regional':'Templates'}
+            {t==='items'?'My Items':t==='assemblies'?'My Assemblies':t==='regional'?'Cost Database':'Templates'}
           </button>
         ))}
+      </div>
+
+      {/* Tab description */}
+      <div style={{padding:'4px 12px',fontSize:10,color:'#999',borderBottom:'1px solid #f0f0f0',background:'#fafafa'}}>
+        {tab==='items'&&'Your saved prices from previous bids'}
+        {tab==='assemblies'&&'Your saved item groups'}
+        {tab==='regional'&&'Industry average pricing adjusted by region'}
+        {tab==='templates'&&'Reusable takeoff setups'}
       </div>
 
       {/* Search + Filter */}
@@ -296,6 +304,18 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                       <button onClick={() => onApplyItem({ name: p.item_name, category: catToApp(p.category), unit: p.unit, unit_cost: rc.total })}
                         style={{ padding: '2px 7px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
                         Use
+                      </button>
+                      <button onClick={async()=>{
+                        const {data}=await supabase.from('library_items').insert([{
+                          name:p.item_name, category:catToApp(p.category), unit:p.unit,
+                          unit_cost:rc.total, material_cost:rc.material, labor_cost:rc.labor,
+                          trade:p.category.split(' - ')[0]||'', source:'regional',
+                        }]).select().single();
+                        if(data){setItems(prev=>[...prev,data]);alert('Saved to My Items');}
+                      }}
+                        style={{padding:'2px 5px',background:'none',border:'1px solid #E0E0E0',color:'#999',borderRadius:3,cursor:'pointer',fontSize:8,flexShrink:0}}
+                        title="Save to My Items">
+                        +
                       </button>
                     </div>
                   );
