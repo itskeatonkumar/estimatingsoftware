@@ -3858,8 +3858,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   + New Takeoff
                 </button>
                 <button onClick={()=>setShowCatManager(true)} title="Manage Categories"
-                  style={{background:'none',border:`1px solid ${t.border}`,color:t.text3,padding:'6px 8px',borderRadius:4,cursor:'pointer',fontSize:12,flexShrink:0}}>
-                  &#9881;
+                  style={{background:'none',border:`1px solid ${t.border}`,color:t.text2,padding:'6px 8px',borderRadius:4,cursor:'pointer',fontSize:11,flexShrink:0,display:'flex',alignItems:'center',gap:3}}>
+                  <span style={{fontSize:13}}>&#9881;</span> Categories
                 </button>
               </div>
 
