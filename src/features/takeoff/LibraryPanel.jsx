@@ -9,6 +9,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
   const [tab, setTab] = useState('items');
   const [regionalPricing, setRegionalPricing] = useState(null);
   const [rpSearch, setRpSearch] = useState('');
+  const [collapsedRPCats, setCollapsedRPCats] = useState({});
   const [items, setItems] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [search, setSearch] = useState('');
@@ -185,43 +186,76 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
       )}
 
       {/* Regional Pricing Tab */}
-      {tab === 'regional' && (
+      {tab === 'regional' && (()=>{
+        const region = projectRegion || 'National';
+        const allRP = regionalPricing?.pricing || [];
+        const filtered = allRP.filter(p => !rpSearch || p.item_name.toLowerCase().includes(rpSearch.toLowerCase()) || p.category.toLowerCase().includes(rpSearch.toLowerCase()));
+        // Group by category
+        const grouped = {};
+        for(const p of filtered){
+          const cat = p.category || 'Other';
+          if(!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(p);
+        }
+        const catToApp = (cat) => {
+          const lc = cat.toLowerCase();
+          if(lc.includes('concrete')) return 'site_concrete';
+          if(lc.includes('masonry')||lc.includes('block')||lc.includes('brick')) return 'masonry';
+          if(lc.includes('asphalt')||lc.includes('paving')) return 'asphalt';
+          if(lc.includes('earthwork')||lc.includes('grading')||lc.includes('excavat')) return 'grading';
+          if(lc.includes('curb')) return 'curb_gutter';
+          if(lc.includes('foundation')||lc.includes('footing')) return 'foundations';
+          if(lc.includes('flatwork')||lc.includes('slab')||lc.includes('sidewalk')) return 'flatwork';
+          return 'other';
+        };
+        return(
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, alignItems: 'center' }}>
             <input value={rpSearch} onChange={e => setRpSearch(e.target.value)} placeholder="Search regional items..."
               style={{ flex: 1, padding: '6px 10px', border: '1px solid #E0E0E0', borderRadius: 4, fontSize: 12, outline: 'none', color: '#333' }} />
-            <span style={{ fontSize: 11, color: '#999', flexShrink: 0 }}>{projectRegion || 'National'}</span>
+            <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, flexShrink: 0 }}>{region}</span>
+            <span style={{ fontSize: 10, color: '#999', flexShrink: 0 }}>{filtered.length} items</span>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {regionalPricing?.pricing?.filter(p => !rpSearch || p.item_name.toLowerCase().includes(rpSearch.toLowerCase()) || p.category.toLowerCase().includes(rpSearch.toLowerCase()))
-              .map(p => {
-                const rc = getRegionalCost(p, projectRegion || 'National', regionalPricing.multipliers);
-                return (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f0f0', gap: 8 }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: '#333' }}>{p.item_name}</div>
-                      <div style={{ fontSize: 10, color: '#999' }}>{p.category} · {p.unit}</div>
+            {Object.entries(grouped).map(([cat, catItems]) => {
+              const isCollapsed = collapsedRPCats?.[cat];
+              return(
+              <div key={cat}>
+                <div onClick={()=>setCollapsedRPCats(prev=>({...prev,[cat]:!prev?.[cat]}))}
+                  style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, color: '#666', background: '#f8f8f8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #f0f0f0', userSelect: 'none' }}>
+                  <span style={{ fontSize: 9, color: '#999' }}>{isCollapsed ? '▶' : '▼'}</span>
+                  {cat}
+                  <span style={{ fontWeight: 400, color: '#bbb', marginLeft: 'auto' }}>{catItems.length}</span>
+                </div>
+                {!isCollapsed && catItems.map(p => {
+                  const rc = getRegionalCost(p, region, regionalPricing?.multipliers || []);
+                  return (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '6px 12px 6px 20px', borderBottom: '1px solid #f8f8f8', gap: 6 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.item_name}</div>
+                        <div style={{ fontSize: 10, color: '#bbb' }}>{p.unit}</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: '#999', fontVariantNumeric: 'tabular-nums', width: 50, textAlign: 'right', flexShrink: 0 }}>M: ${rc.material.toFixed(0)}</span>
+                      <span style={{ fontSize: 10, color: '#999', fontVariantNumeric: 'tabular-nums', width: 45, textAlign: 'right', flexShrink: 0 }}>L: ${rc.labor.toFixed(0)}</span>
+                      <span style={{ fontWeight: 600, fontSize: 11, color: '#333', fontVariantNumeric: 'tabular-nums', width: 55, textAlign: 'right', flexShrink: 0 }}>${rc.total.toFixed(2)}</span>
+                      <button onClick={() => onApplyItem({ name: p.item_name, category: catToApp(p.category), unit: p.unit, unit_cost: rc.total })}
+                        style={{ padding: '2px 7px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
+                        Use
+                      </button>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 8 }}>
-                      <div style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums' }}>Mat: ${rc.material.toFixed(2)}</div>
-                      <div style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums' }}>Lab: ${rc.labor.toFixed(2)}</div>
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: '#333', fontVariantNumeric: 'tabular-nums', width: 60, textAlign: 'right', flexShrink: 0 }}>
-                      ${rc.total.toFixed(2)}
-                    </div>
-                    <button onClick={() => onApplyItem({ name: p.item_name, category: p.category === 'Concrete' ? 'site_concrete' : p.category === 'Masonry' ? 'masonry' : p.category === 'Paving' ? 'asphalt' : p.category === 'Earthwork' ? 'grading' : 'other', unit: p.unit, unit_cost: rc.total })}
-                      style={{ padding: '3px 8px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500, flexShrink: 0 }}>
-                      Use
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              );
+            })}
             {!regionalPricing && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>Loading regional pricing...</div>}
+            {regionalPricing && !filtered.length && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>No items match your search</div>}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Edit Item Modal */}
       {editItem && (
