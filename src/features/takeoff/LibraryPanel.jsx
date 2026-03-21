@@ -218,17 +218,33 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {(()=>{
-              const TRADE_ORDER = [
-                {trade:'CONCRETE',color:'#D4A04A',cats:['Concrete - Ready Mix','Concrete - Flatwork','Concrete - Curb & Gutter','Concrete - Foundations','Concrete - Reinforcement','Concrete - Formwork','Concrete - Finishing','Concrete - Accessories','Concrete - Demo & Sawcut']},
-                {trade:'MASONRY',color:'#7B6BA4',cats:['Masonry - Block','Masonry - Brick','Masonry - Stone','Masonry - Reinforcement','Masonry - Accessories']},
-                {trade:'EARTHWORK',color:'#6B8E23',cats:['Earthwork - Excavation','Earthwork - Fill & Grade','Earthwork - Base & Aggregate','Earthwork - Erosion Control','Earthwork - Utilities']},
-                {trade:'ASPHALT',color:'#808080',cats:['Asphalt - Paving','Asphalt - Removal','Asphalt - Striping & Signs','Asphalt - Accessories']},
-                {trade:'ROOFING',color:'#C87941',cats:['Roofing - Membrane','Roofing - Metal','Roofing - Shingles','Roofing - Insulation','Roofing - Flashing & Trim','Roofing - Accessories']},
-              ];
-              // Collect categories not in the defined order
-              const allDefinedCats = new Set(TRADE_ORDER.flatMap(t=>t.cats));
-              const extraCats = Object.keys(grouped).filter(c=>!allDefinedCats.has(c)).sort();
-              if(extraCats.length) TRADE_ORDER.push({trade:'OTHER',color:'#999',cats:extraCats});
+              // Trade colors and display order
+              const TRADE_COLORS = {
+                'Concrete':'#D4A04A','Masonry':'#C87941','Earthwork':'#6B8E23','Asphalt':'#808080',
+                'Roofing':'#C0504D','Painting':'#5B9BD5','Flooring':'#4A90A4','Drywall':'#7B6BA4',
+                'HVAC':'#4A90A4','Landscaping':'#4CAF50','Remodeling':'#E8A317',
+              };
+              const TRADE_DISPLAY_ORDER = ['Concrete','Masonry','Earthwork','Asphalt','Roofing','Painting','Flooring','Drywall','HVAC','Landscaping','Remodeling'];
+
+              // Auto-group categories by their prefix (everything before " - ")
+              const tradeMap = new Map();
+              const allCats = Object.keys(grouped);
+              for(const cat of allCats){
+                const prefix = cat.includes(' - ') ? cat.split(' - ')[0].trim() : cat;
+                if(!tradeMap.has(prefix)) tradeMap.set(prefix, []);
+                tradeMap.get(prefix).push(cat);
+              }
+
+              // Build ordered trade groups
+              const TRADE_ORDER = [];
+              const added = new Set();
+              for(const trade of TRADE_DISPLAY_ORDER){
+                if(tradeMap.has(trade)){ TRADE_ORDER.push({trade:trade.toUpperCase(), color:TRADE_COLORS[trade]||'#999', cats:tradeMap.get(trade)}); added.add(trade); }
+              }
+              // Add any remaining trades not in the display order
+              for(const [trade, cats] of tradeMap){
+                if(!added.has(trade)) TRADE_ORDER.push({trade:trade.toUpperCase(), color:'#999', cats});
+              }
 
               return TRADE_ORDER.map(tg=>{
                 const tradeCats = tg.cats.filter(c=>grouped[c]);
