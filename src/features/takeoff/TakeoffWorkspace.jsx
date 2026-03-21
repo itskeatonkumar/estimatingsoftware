@@ -4072,6 +4072,24 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   if(data){ setItems(prev=>[...prev,...data]); setLeftTab('takeoffs'); }
                 }
               }}
+              projectItems={items}
+              onApplyTemplate={async(tmpl)=>{
+                const tmplItems=Array.isArray(tmpl.items)?tmpl.items:[];
+                if(!tmplItems.length){alert('Template has no items.');return;}
+                const toInsert=tmplItems.map((it,i)=>{
+                  const catDef=TAKEOFF_CATS.find(c=>c.id===it.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
+                  return {
+                    project_id:project.id, plan_id:selPlan?.id, category:it.category||catDef.id,
+                    description:it.description, quantity:0, unit:it.unit||catDef.unit,
+                    unit_cost:it.unit_cost||catDef.defaultCost, total_cost:0,
+                    measurement_type:it.measurement_type||'manual', points:null,
+                    color:it.color||catDef.color, ai_generated:false, sort_order:items.length+i,
+                    waste_percent:it.waste_percent||0,
+                  };
+                });
+                const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
+                if(data){setItems(prev=>[...prev,...data]);setLeftTab('takeoffs');alert(`Applied ${data.length} items from "${tmpl.name}"`);}
+              }}
             />
           )}
 

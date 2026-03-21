@@ -5,11 +5,14 @@ import { loadRegionalPricing, getRegionalCost, getRegionForState } from '../../l
 
 const CAT_MAP = Object.fromEntries(TAKEOFF_CATS.map(c => [c.id, c]));
 
-export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, projectRegion }) {
+export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemplate, onSaveTemplate, onClose, projectRegion, projectItems }) {
   const [tab, setTab] = useState('items');
   const [regionalPricing, setRegionalPricing] = useState(null);
   const [rpSearch, setRpSearch] = useState('');
   const [collapsedRPCats, setCollapsedRPCats] = useState({});
+  const [templates, setTemplates] = useState([]);
+  const [expandedTemplate, setExpandedTemplate] = useState(null);
+  const [newTemplateName, setNewTemplateName] = useState('');
   const [items, setItems] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [search, setSearch] = useState('');
@@ -30,6 +33,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
       setLoading(false);
     });
     loadRegionalPricing().then(d => setRegionalPricing(d)).catch(() => {});
+    supabase.from('takeoff_templates').select('*').order('created_at',{ascending:false}).then(({data})=>setTemplates(data||[]));
   }, []);
 
   const loadAssemblyItems = async (assemblyId) => {
@@ -89,12 +93,12 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #E0E0E0' }}>
-        {['items', 'assemblies', 'regional'].map(t => (
+        {['items', 'assemblies', 'regional', 'templates'].map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ flex: 1, padding: '8px', border: 'none', background: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#4CAF50' : '#666',
               borderBottom: tab === t ? '2px solid #4CAF50' : '2px solid transparent' }}>
-            {t === 'items' ? 'Items' : t === 'assemblies' ? 'Assemblies' : 'Regional'}
+            {t==='items'?'Items':t==='assemblies'?'Assemblies':t==='regional'?'Regional':'Templates'}
           </button>
         ))}
       </div>
@@ -304,6 +308,70 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
         </div>
         );
       })()}
+
+      {/* Templates Tab */}
+      {tab === 'templates' && (
+        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+          {/* Save current project as template */}
+          {projectItems?.length>0&&(
+            <div style={{padding:'10px 12px',borderBottom:'1px solid #f0f0f0',display:'flex',gap:6,alignItems:'center'}}>
+              <input value={newTemplateName} onChange={e=>setNewTemplateName(e.target.value)} placeholder="Template name..."
+                style={{flex:1,padding:'6px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,outline:'none',color:'#333'}}/>
+              <button disabled={!newTemplateName.trim()} onClick={async()=>{
+                const tItems = projectItems.filter(i=>i.plan_id!=null).map(i=>({
+                  category:i.category,description:i.description,unit:i.unit,unit_cost:i.unit_cost,
+                  color:i.color,measurement_type:i.measurement_type,waste_percent:i.waste_percent||0,
+                }));
+                const {data}=await supabase.from('takeoff_templates').insert([{name:newTemplateName.trim(),items:tItems}]).select().single();
+                if(data){setTemplates(prev=>[data,...prev]);setNewTemplateName('');}
+              }} style={{padding:'6px 12px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,opacity:newTemplateName.trim()?1:0.4}}>
+                Save Current
+              </button>
+            </div>
+          )}
+          <div style={{flex:1,overflowY:'auto'}}>
+            {templates.map(tmpl=>{
+              const tmplItems = Array.isArray(tmpl.items)?tmpl.items:[];
+              const isExpanded = expandedTemplate===tmpl.id;
+              return(
+                <div key={tmpl.id} style={{borderBottom:'1px solid #f0f0f0'}}>
+                  <div style={{display:'flex',alignItems:'center',padding:'10px 12px',cursor:'pointer',gap:8}}
+                    onClick={()=>setExpandedTemplate(isExpanded?null:tmpl.id)}>
+                    <span style={{fontSize:10,color:'#999'}}>{isExpanded?'▼':'▶'}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:500,color:'#333'}}>{tmpl.name}</div>
+                      <div style={{fontSize:10,color:'#999'}}>{tmplItems.length} items{tmpl.description?' · '+tmpl.description:''}</div>
+                    </div>
+                    <button onClick={e=>{e.stopPropagation();onApplyTemplate?.(tmpl);}}
+                      style={{padding:'4px 10px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:3,cursor:'pointer',fontSize:10,fontWeight:500}}>
+                      Apply
+                    </button>
+                    <button onClick={async e=>{
+                      e.stopPropagation();
+                      if(!window.confirm('Delete template "'+tmpl.name+'"?'))return;
+                      await supabase.from('takeoff_templates').delete().eq('id',tmpl.id);
+                      setTemplates(prev=>prev.filter(t=>t.id!==tmpl.id));
+                    }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:14}}>&#10005;</button>
+                  </div>
+                  {isExpanded&&(
+                    <div style={{padding:'0 12px 10px 28px'}}>
+                      {tmplItems.map((it,i)=>(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'3px 0',fontSize:11,color:'#666'}}>
+                          <div style={{width:6,height:6,borderRadius:1,background:it.color||'#999',flexShrink:0}}/>
+                          <span style={{flex:1}}>{it.description}</span>
+                          <span style={{color:'#999'}}>{it.unit}</span>
+                          <span style={{fontVariantNumeric:'tabular-nums'}}>${(it.unit_cost||0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!templates.length&&<div style={{padding:30,color:'#999',fontSize:12,textAlign:'center'}}>No templates yet. Save your current takeoff items as a template above.</div>}
+          </div>
+        </div>
+      )}
 
       {/* Edit Item Modal */}
       {editItem && (
