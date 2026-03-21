@@ -5804,7 +5804,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               })}
             </div>
             <div style={{padding:'12px 16px',borderTop:'1px solid #E0E0E0',display:'flex',gap:8}}>
-              <button onClick={()=>setEditCat({id:'cat_'+Date.now(),label:'',color:TO_COLORS[TAKEOFF_CATS.length%TO_COLORS.length],unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
+              <button onClick={()=>setEditCat({id:null,label:'',color:TO_COLORS[TAKEOFF_CATS.length%TO_COLORS.length],unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
                 style={{background:'#4CAF50',border:'none',color:'#fff',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
                 + Add Category
               </button>
@@ -5854,13 +5854,20 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
               <button onClick={()=>setEditCat(null)} style={{padding:'8px 14px',border:'1px solid #E0E0E0',background:'#fff',color:'#666',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
               <button disabled={!editCat.label?.trim()} onClick={async()=>{
-                const payload={id:editCat.id,label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0};
-                const existing=dynamicCats?.find(c=>c.id===editCat.id);
+                const existing=editCat.id ? dynamicCats?.find(c=>c.id===editCat.id) : null;
+                console.log('[cat save]', existing?'UPDATE':'INSERT', editCat);
                 if(existing){
-                  await supabase.from('takeoff_categories').update(payload).eq('id',editCat.id);
+                  const payload={label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0};
+                  const {error}=await supabase.from('takeoff_categories').update(payload).eq('id',editCat.id);
+                  if(error){console.error('[cat save] update error:',error);alert('Save failed: '+error.message);return;}
                   setDynamicCats(prev=>prev.map(c=>c.id===editCat.id?{...c,...payload}:c));
                 } else {
-                  const {data}=await supabase.from('takeoff_categories').insert([{...payload,is_default:false}]).select().single();
+                  // New category — generate slug ID from label
+                  const slug = editCat.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('cat_'+Date.now());
+                  const payload={id:slug,label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0,is_default:false};
+                  const {data,error}=await supabase.from('takeoff_categories').insert([payload]).select().single();
+                  console.log('[cat save] insert result:', data, error);
+                  if(error){alert('Add failed: '+error.message);return;}
                   if(data) setDynamicCats(prev=>[...prev,data]);
                 }
                 setEditCat(null);
