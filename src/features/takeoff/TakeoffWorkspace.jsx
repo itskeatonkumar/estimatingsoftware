@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTheme } from "../../lib/theme.jsx";
-import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
+import { TAKEOFF_CATS as STATIC_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
+import { loadCategories, getCachedCategories, findCategory } from "../../lib/categories.js";
 import { supabase } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
@@ -192,6 +193,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
+  const [dynamicCats, setDynamicCats] = useState(null);
+  const TAKEOFF_CATS = dynamicCats || STATIC_CATS;
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [editCat, setEditCat] = useState(null);
   const projectRegion = regionalData ? getRegionForState(project.state_code) : 'National';
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
@@ -372,8 +377,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     });
   },[project.id]);
 
-  // Load regional pricing data
+  // Load dynamic categories + regional pricing
   useEffect(()=>{
+    loadCategories().then(cats=>setDynamicCats(cats)).catch(()=>{});
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
   },[]);
 
@@ -3851,6 +3857,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:3,flexShrink:0,whiteSpace:'nowrap'}}>
                   + New Takeoff
                 </button>
+                <button onClick={()=>setShowCatManager(true)} title="Manage Categories"
+                  style={{background:'none',border:`1px solid ${t.border}`,color:t.text3,padding:'6px 8px',borderRadius:4,cursor:'pointer',fontSize:12,flexShrink:0}}>
+                  &#9881;
+                </button>
               </div>
 
               {/* Column headers */}
@@ -5721,6 +5731,92 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         </div>
         );
       })()}
+      {/* Category Manager Modal */}
+      {showCatManager&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowCatManager(false)}>
+          <div style={{background:'#fff',borderRadius:8,width:500,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #E0E0E0',display:'flex',alignItems:'center'}}>
+              <span style={{fontSize:16,fontWeight:600,color:'#333',flex:1}}>Manage Categories</span>
+              <button onClick={()=>setShowCatManager(false)} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:18}}>&times;</button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+              {TAKEOFF_CATS.map(cat=>(
+                <div key={cat.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 20px',borderBottom:'1px solid #f0f0f0'}}>
+                  <div style={{width:16,height:16,borderRadius:3,background:cat.color,flexShrink:0,cursor:'pointer'}}
+                    onClick={()=>setEditCat({...cat})}/>
+                  <span style={{flex:1,fontSize:13,color:'#333'}}>{cat.label}</span>
+                  <span style={{fontSize:11,color:'#999',width:30,textAlign:'center'}}>{cat.unit}</span>
+                  <span style={{fontSize:11,color:'#666',fontVariantNumeric:'tabular-nums',width:55,textAlign:'right'}}>${(cat.default_cost||cat.defaultCost||0).toLocaleString()}</span>
+                  <button onClick={()=>setEditCat({...cat})} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:11}}>Edit</button>
+                  <button onClick={async()=>{
+                    const used=items.filter(i=>i.category===cat.id).length;
+                    if(used>0){alert(`Cannot delete — ${used} items use this category.`);return;}
+                    if(!window.confirm('Delete "'+cat.label+'"?'))return;
+                    await supabase.from('takeoff_categories').delete().eq('id',cat.id);
+                    setDynamicCats(prev=>prev.filter(c=>c.id!==cat.id));
+                  }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:14}}>&times;</button>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'12px 20px',borderTop:'1px solid #E0E0E0',display:'flex',gap:8}}>
+              <button onClick={()=>setEditCat({id:'cat_'+Date.now(),label:'',color:'#94A3B8',unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
+                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                + Add Category
+              </button>
+              <div style={{flex:1}}/>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Category Modal */}
+      {editCat&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:210,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditCat(null)}>
+          <div style={{background:'#fff',borderRadius:8,padding:24,width:380}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>{dynamicCats?.find(c=>c.id===editCat.id)?'Edit Category':'New Category'}</div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:12,color:'#666',marginBottom:4}}>Name</div>
+              <input value={editCat.label} onChange={e=>setEditCat(prev=>({...prev,label:e.target.value}))}
+                style={{width:'100%',padding:'8px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:13,color:'#333',outline:'none',boxSizing:'border-box'}}/>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:12,color:'#666',marginBottom:4}}>Color</div>
+                <input type="color" value={editCat.color||'#94A3B8'} onChange={e=>setEditCat(prev=>({...prev,color:e.target.value}))}
+                  style={{width:'100%',height:36,border:'1px solid #E0E0E0',borderRadius:4,cursor:'pointer'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:'#666',marginBottom:4}}>Unit</div>
+                <select value={editCat.unit||'SF'} onChange={e=>setEditCat(prev=>({...prev,unit:e.target.value}))}
+                  style={{width:'100%',padding:'8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,outline:'none'}}>
+                  {['SF','LF','CY','EA','LS','TN','LB','HR'].map(u=><option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:12,color:'#666',marginBottom:4}}>Default Cost</div>
+                <input type="number" step="0.01" value={editCat.default_cost||editCat.defaultCost||''} onChange={e=>setEditCat(prev=>({...prev,default_cost:Number(e.target.value)||0}))}
+                  style={{width:'100%',padding:'8px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
+              <button onClick={()=>setEditCat(null)} style={{padding:'8px 14px',border:'1px solid #E0E0E0',background:'#fff',color:'#666',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
+              <button disabled={!editCat.label?.trim()} onClick={async()=>{
+                const payload={id:editCat.id,label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0};
+                const existing=dynamicCats?.find(c=>c.id===editCat.id);
+                if(existing){
+                  await supabase.from('takeoff_categories').update(payload).eq('id',editCat.id);
+                  setDynamicCats(prev=>prev.map(c=>c.id===editCat.id?{...c,...payload}:c));
+                } else {
+                  const {data}=await supabase.from('takeoff_categories').insert([{...payload,is_default:false}]).select().single();
+                  if(data) setDynamicCats(prev=>[...prev,data]);
+                }
+                setEditCat(null);
+              }} style={{padding:'8px 16px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,opacity:editCat.label?.trim()?1:0.4}}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {editItem&&<TakeoffItemModal item={editItem} onSave={(data,type)=>{
         if(type==='delete'){setItems(prev=>prev.filter(i=>i.id!==editItem.id));}
         else if(type===true){setItems(prev=>[...prev.filter(i=>i.id!==data.id),data]);}
