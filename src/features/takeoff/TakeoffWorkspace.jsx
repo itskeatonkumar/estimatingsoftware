@@ -415,13 +415,29 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   // Linear items with height → SF (LF × height = SF wall area)
   // DB stores raw LF — height conversion is display-time only
   const getDisplayQtyUnit = (item) => {
-    const rawQty = (item.quantity || 0) * (item.multiplier || 1);
+    let rawQty = (item.quantity || 0) * (item.multiplier || 1);
     const mt = item.measurement_type;
     const h = item.height || 0;
-    if (mt === 'linear' && h > 0) {
-      return { qty: rawQty * h, unit: 'SF' };
-    }
-    return { qty: rawQty, unit: item.unit || '' };
+    let unit = item.unit || '';
+    // Linear × height → SF
+    if (mt === 'linear' && h > 0) { rawQty = rawQty * h; unit = 'SF'; }
+    // Pitch multiplier (roofing)
+    const pitchMult = item.pitch_multiplier || 1;
+    if (pitchMult !== 1) rawQty = rawQty * pitchMult;
+    // Waste factor
+    const waste = item.waste_percent || 0;
+    if (waste > 0) rawQty = rawQty * (1 + waste / 100);
+    return { qty: rawQty, unit };
+  };
+
+  // Compute total cost for an item using all factors
+  const computeTotalCost = (item, qty) => {
+    const q = qty != null ? qty : (item.quantity || 0);
+    const mult = item.multiplier || 1;
+    const hFactor = (item.measurement_type === 'linear' && item.height > 0) ? item.height : 1;
+    const pitchMult = item.pitch_multiplier || 1;
+    const wasteFactor = 1 + (item.waste_percent || 0) / 100;
+    return q * mult * hFactor * pitchMult * wasteFactor * (item.unit_cost || 0);
   };
 
   // Highlight search term in text
@@ -647,7 +663,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); }
           else if(mt==='count') qty = newPoints.length;
           qty = Math.round(qty*10)/10;
-          const total_cost = qty*(existing.multiplier||1)*((existing.measurement_type==='linear'&&existing.height>0)?existing.height:1)*(existing.unit_cost||0);
+          const total_cost = computeTotalCost(existing, qty);
           setItems(prev=>prev.map(i=>String(i.id)===String(item.id)?{...i,points:newPoints,quantity:qty,total_cost}:i));
           supabase.from('takeoff_items').update({points:newPoints,quantity:qty,total_cost}).eq('id',item.id);
           // Select the newly pasted shapes
@@ -855,8 +871,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       qty = shapes.length;
     }
 
-    const hFactor = (item.measurement_type==='linear' && item.height > 0) ? item.height : 1;
-    const total_cost = qty * (item.multiplier||1) * hFactor * (item.unit_cost||0);
+    const total_cost = computeTotalCost(item, qty);
     const updated = {...item, points:shapes, quantity:qty, total_cost};
     const {error:updErr} = await supabase.from('takeoff_items').update({points:shapes, quantity:qty, total_cost}).eq('id', item.id);
     if(updErr) console.error('[appendMeasurement] update error:', updErr);
@@ -911,7 +926,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
     // Recompute area
     const qty = Math.round(newShapes.reduce((s,sh) => s + calcShapeNetArea(sh), 0)*10)/10;
-    const total_cost = Math.max(0, qty) * (item.multiplier||1) * ((item.measurement_type==='linear'&&item.height>0)?item.height:1) * (item.unit_cost||0);
+    const total_cost = computeTotalCost(item, Math.max(0, qty));
     const updated = {...item, points:newShapes, quantity:Math.max(0,qty), total_cost};
     await supabase.from('takeoff_items').update({points:newShapes, quantity:Math.max(0,qty), total_cost}).eq('id', condId);
     setItems(prev=>prev.map(i=>String(i.id)===String(condId)?updated:i));
@@ -1056,7 +1071,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           else if(mt==='linear'){ qty=newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); }
           else if(mt==='count') qty=newShapes.length;
           qty=Math.round(qty*10)/10;
-          const total_cost=qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+          const total_cost=computeTotalCost(item, qty);
           setItems(prev=>prev.map(i=>i.id===itemId?{...i,points:newShapes,quantity:qty,total_cost}:i));
           supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',itemId).then(({error})=>{ if(error) console.error('eraser upd',error); });
         }
@@ -1132,7 +1147,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); }
           else if(mt==='count') qty=newShapes.length;
           qty=Math.round(qty*10)/10;
-          const total_cost=qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+          const total_cost=computeTotalCost(item, qty);
           setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
           supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
         }
@@ -1145,7 +1160,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); }
         else if(mt==='count') qty=newShapes.length;
         qty=Math.round(qty*10)/10;
-        const total_cost=qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+        const total_cost=computeTotalCost(item, qty);
         setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
         supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
       }
@@ -1283,7 +1298,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       else if(mt==='linear'){ qty=newShapes.reduce((s,s2)=>{let t=0;for(let i=1;i<s2.length;i++)t+=calcLinear(s2[i-1],s2[i]);return s+t;},0); }
       else if(mt==='count') qty=newShapes.length;
       qty=Math.round(qty*10)/10;
-      const total_cost=qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+      const total_cost=computeTotalCost(item, qty);
       setItems(prev=>prev.map(i=>String(i.id)===String(iid)?{...i,points:newShapes,quantity:qty,total_cost}:i));
       supabase.from('takeoff_items').update({points:newShapes,quantity:qty,total_cost}).eq('id',iid);
       return;
@@ -2182,7 +2197,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       else if(mt==='linear'){ qty = newShapes.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++){const a=sh[i-1],b=sh[i];if(!a._ctrl&&!b._ctrl) t+=calcLinear(a,b);}return s+t;},0); }
       else if(mt==='count') qty = newShapes.length;
       qty = Math.round(Math.abs(qty)*10)/10;
-      const total_cost = qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+      const total_cost = computeTotalCost(item, qty);
       supabase.from('takeoff_items').update({points:newShapes, quantity:qty, total_cost}).eq('id',item.id);
       return {...item, points:newShapes, quantity:qty, total_cost};
     }));
@@ -4664,7 +4679,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   else if(mt==='linear'){ qty = newPoints.reduce((s,sh)=>{let t=0;for(let i=1;i<sh.length;i++)t+=calcLinear(sh[i-1],sh[i]);return s+t;},0); }
                   else if(mt==='count') qty = newPoints.length;
                   qty = Math.round(qty*10)/10;
-                  const total_cost = qty*(item.multiplier||1)*((item.measurement_type==='linear'&&item.height>0)?item.height:1)*(item.unit_cost||0);
+                  const total_cost = computeTotalCost(item, qty);
                   setItems(prev=>prev.map(i=>String(i.id)===String(id)?{...i,points:newPoints,quantity:qty,total_cost}:i));
                   supabase.from('takeoff_items').update({points:newPoints,quantity:qty,total_cost}).eq('id',item.id);
                   // Select the new shapes
@@ -5203,8 +5218,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 for(const it of itemsToUpdate){
                   const newCost = getDefaultCostForCategory(it.category, region, regionalData.pricing, regionalData.multipliers);
                   if(newCost!=null && newCost !== it.unit_cost){
-                    const hFactor = (it.measurement_type==='linear'&&it.height>0)?it.height:1;
-                    const total_cost = (it.quantity||0)*(it.multiplier||1)*hFactor*newCost;
+                    const total_cost = computeTotalCost({...it, unit_cost:newCost});
                     await supabase.from('takeoff_items').update({unit_cost:newCost,total_cost}).eq('id',it.id);
                     setItems(prev=>prev.map(x=>x.id===it.id?{...x,unit_cost:newCost,total_cost}:x));
                     updated++;

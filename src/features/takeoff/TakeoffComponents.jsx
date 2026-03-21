@@ -5,6 +5,18 @@ import { supabase } from "../../lib/supabase.js";
 import { US_STATES } from "../../lib/regionalPricing.js";
 import { APMModal, APMField } from "../../components/ui/Modal.jsx";
 
+const PITCH_OPTIONS = [
+  {label:'Flat (0/12)',value:'0/12',mult:1.000},{label:'1/12',value:'1/12',mult:1.003},{label:'2/12',value:'2/12',mult:1.014},
+  {label:'3/12',value:'3/12',mult:1.031},{label:'4/12',value:'4/12',mult:1.054},{label:'5/12',value:'5/12',mult:1.083},
+  {label:'6/12',value:'6/12',mult:1.118},{label:'7/12',value:'7/12',mult:1.158},{label:'8/12',value:'8/12',mult:1.202},
+  {label:'9/12',value:'9/12',mult:1.250},{label:'10/12',value:'10/12',mult:1.302},{label:'11/12',value:'11/12',mult:1.357},
+  {label:'12/12',value:'12/12',mult:1.414},
+];
+
+const WASTE_DEFAULTS = {
+  flatwork:5, site_concrete:5, building_concrete:5, foundations:8, masonry:5, asphalt:5, grading:10, curb_gutter:3, other:0,
+};
+
 function TakeoffItemModal({ item, onSave, onClose }) {
   const { t } = useTheme();
   const isNew = !item?.id;
@@ -18,13 +30,17 @@ function TakeoffItemModal({ item, onSave, onClose }) {
   const _rawQty = (Number(form.quantity)||0) * (Number(form.multiplier)||1);
   const _h = Number(form.height)||0;
   const _isLH = form.measurement_type==='linear' && _h > 0;
-  const _effQty = _isLH ? _rawQty * _h : _rawQty;
+  let _effQty = _isLH ? _rawQty * _h : _rawQty;
   const _effUnit = _isLH ? 'SF' : (form.unit||'');
+  const _pitchMult = Number(form.pitch_multiplier)||1;
+  const _wastePct = Number(form.waste_percent)||0;
+  if(_pitchMult!==1) _effQty = _effQty * _pitchMult;
+  if(_wastePct>0) _effQty = _effQty * (1+_wastePct/100);
   const total = _effQty * (Number(form.unit_cost)||0);
   const dynInput = {...inputStyle, background:t.input, borderColor:t.inputBorder, color:t.inputText, fontSize:13};
 
   const handleSave = async () => {
-    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, height:Number(form.height)||0, total_cost:total};
+    const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, height:Number(form.height)||0, pitch_multiplier:_pitchMult, waste_percent:_wastePct, total_cost:total};
     if (isNew) {
       const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
       if (data) onSave(data, true);
@@ -68,9 +84,34 @@ function TakeoffItemModal({ item, onSave, onClose }) {
             <APMField label="Wall Height (ft)"><input type="number" value={form.height||''} onChange={e=>set('height',e.target.value)} placeholder="0 = LF only" style={{...dynInput}} /></APMField>
           )}
         </div>
+        {/* Pitch + Waste row */}
+        <div style={{display:'grid',gridTemplateColumns:form.measurement_type==='area'?'1fr 1fr':'1fr',gap:10}}>
+          {form.measurement_type==='area'&&(
+            <APMField label="Roof Pitch">
+              <select value={form.pitch||''} onChange={e=>{
+                const opt=PITCH_OPTIONS.find(o=>o.value===e.target.value);
+                set('pitch',e.target.value);set('pitch_multiplier',opt?.mult||1);
+              }} style={{...dynInput}}>
+                <option value="">None</option>
+                {PITCH_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label} ({o.mult}x)</option>)}
+              </select>
+            </APMField>
+          )}
+          <APMField label="Waste %">
+            <input type="number" step="1" value={form.waste_percent||''} onChange={e=>set('waste_percent',e.target.value)} placeholder={WASTE_DEFAULTS[form.category]||0} style={{...dynInput}}/>
+          </APMField>
+        </div>
+        {/* Calculation breakdown */}
         {_isLH&&(
           <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:11,color:'#4CAF50'}}>{Number(form.quantity)||0} LF × {_h} ft = <strong>{Math.round(_effQty*10)/10} SF</strong></span>
+            <span style={{fontSize:11,color:'#4CAF50'}}>{Number(form.quantity)||0} LF × {_h} ft = <strong>{Math.round(_rawQty*_h*10)/10} SF</strong></span>
+          </div>
+        )}
+        {(_pitchMult!==1||_wastePct>0)&&(
+          <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',fontSize:11,color:'#4CAF50'}}>
+            {_pitchMult!==1&&<span>{form.pitch} pitch ({_pitchMult}x) </span>}
+            {_wastePct>0&&<span>+ {_wastePct}% waste </span>}
+            = <strong>{Math.round(_effQty*10)/10} {_effUnit||form.unit}</strong>
           </div>
         )}
         <div style={{background:t.bg5,borderRadius:6,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>

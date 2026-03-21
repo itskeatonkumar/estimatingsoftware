@@ -156,8 +156,11 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
       const planName = planMap.get(it.plan_id)?.name;
       const desc = '   ' + (it.description || 'Unnamed') + (planName ? ` (${planName})` : '');
       const h = it.height || 0;
-      const rawQty = (it.quantity || 0) * (it.multiplier || 1);
+      let rawQty = (it.quantity || 0) * (it.multiplier || 1);
       const effectiveUnit = (it.measurement_type === 'linear' && h > 0) ? 'SF' : (it.unit || '');
+      if(h > 0 && it.measurement_type === 'linear') rawQty *= h;
+      if(it.pitch_multiplier && it.pitch_multiplier !== 1) rawQty *= it.pitch_multiplier;
+      if(it.waste_percent > 0) rawQty *= (1 + it.waste_percent / 100);
       const qty = rawQty.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const unit = UNIT_MAP[effectiveUnit] || effectiveUnit || '';
       const amt = '$' + fmtNum(it.total_cost || 0);
