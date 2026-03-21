@@ -217,16 +217,44 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
             <span style={{ fontSize: 10, color: '#999', flexShrink: 0 }}>{filtered.length} items</span>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {Object.entries(grouped).map(([cat, catItems]) => {
-              const isCollapsed = collapsedRPCats?.[cat] !== true; // default closed
-              return(
-              <div key={cat}>
-                <div onClick={()=>setCollapsedRPCats(prev=>({...prev,[cat]:!prev?.[cat]}))}
-                  style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, color: '#666', background: '#f8f8f8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #f0f0f0', userSelect: 'none' }}>
-                  <span style={{ fontSize: 9, color: '#999' }}>{isCollapsed ? '▶' : '▼'}</span>
-                  {cat}
-                  <span style={{ fontWeight: 400, color: '#bbb', marginLeft: 'auto' }}>{catItems.length}</span>
-                </div>
+            {(()=>{
+              const TRADE_ORDER = [
+                {trade:'CONCRETE',color:'#D4A04A',cats:['Concrete - Ready Mix','Concrete - Flatwork','Concrete - Curb & Gutter','Concrete - Foundations','Concrete - Reinforcement','Concrete - Formwork','Concrete - Finishing','Concrete - Accessories','Concrete - Demo & Sawcut']},
+                {trade:'MASONRY',color:'#7B6BA4',cats:['Masonry - Block','Masonry - Brick','Masonry - Stone','Masonry - Reinforcement','Masonry - Accessories']},
+                {trade:'EARTHWORK',color:'#6B8E23',cats:['Earthwork - Excavation','Earthwork - Fill & Grade','Earthwork - Base & Aggregate','Earthwork - Erosion Control','Earthwork - Utilities']},
+                {trade:'ASPHALT',color:'#808080',cats:['Asphalt - Paving','Asphalt - Removal','Asphalt - Striping & Signs','Asphalt - Accessories']},
+                {trade:'ROOFING',color:'#C87941',cats:['Roofing - Membrane','Roofing - Metal','Roofing - Shingles','Roofing - Insulation','Roofing - Flashing & Trim','Roofing - Accessories']},
+              ];
+              // Collect categories not in the defined order
+              const allDefinedCats = new Set(TRADE_ORDER.flatMap(t=>t.cats));
+              const extraCats = Object.keys(grouped).filter(c=>!allDefinedCats.has(c)).sort();
+              if(extraCats.length) TRADE_ORDER.push({trade:'OTHER',color:'#999',cats:extraCats});
+
+              return TRADE_ORDER.map(tg=>{
+                const tradeCats = tg.cats.filter(c=>grouped[c]);
+                if(!tradeCats.length) return null;
+                const tradeCollapsed = collapsedRPCats?.['_trade_'+tg.trade] !== true; // default closed
+                const tradeTotal = tradeCats.reduce((s,c)=>s+(grouped[c]?.length||0),0);
+                return(
+                <div key={tg.trade}>
+                  {/* Trade header */}
+                  <div onClick={()=>setCollapsedRPCats(prev=>({...prev,['_trade_'+tg.trade]:!prev?.['_trade_'+tg.trade]}))}
+                    style={{padding:'8px 12px',fontSize:12,fontWeight:700,color:tg.color,background:'#f0f0f0',cursor:'pointer',display:'flex',alignItems:'center',gap:6,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${tg.color}`,userSelect:'none'}}>
+                    <span style={{fontSize:10}}>{tradeCollapsed?'▶':'▼'}</span>
+                    {tg.trade}
+                    <span style={{fontWeight:400,color:'#bbb',marginLeft:'auto',fontSize:11}}>{tradeTotal}</span>
+                  </div>
+                  {!tradeCollapsed && tradeCats.map(cat=>{
+                    const catItems = grouped[cat];
+                    const isCollapsed = collapsedRPCats?.[cat] !== true; // default closed
+                    return(
+                    <div key={cat}>
+                      <div onClick={()=>setCollapsedRPCats(prev=>({...prev,[cat]:!prev?.[cat]}))}
+                        style={{padding:'5px 12px 5px 24px',fontSize:11,fontWeight:600,color:'#666',background:'#f8f8f8',cursor:'pointer',display:'flex',alignItems:'center',gap:6,borderBottom:'1px solid #f0f0f0',userSelect:'none'}}>
+                        <span style={{fontSize:8,color:'#bbb'}}>{isCollapsed?'▶':'▼'}</span>
+                        {cat.split(' - ')[1]||cat}
+                        <span style={{fontWeight:400,color:'#ccc',marginLeft:'auto'}}>{catItems.length}</span>
+                      </div>
                 {!isCollapsed && catItems.map(p => {
                   const rc = getRegionalCost(p, region, regionalPricing?.multipliers || []);
                   return (
@@ -248,8 +276,12 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
                   );
                 })}
               </div>
-              );
-            })}
+                    );
+                  })}
+                </div>
+                );
+              });
+            })()}
             {!regionalPricing && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>Loading regional pricing...</div>}
             {regionalPricing && !filtered.length && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>No items match your search</div>}
           </div>
