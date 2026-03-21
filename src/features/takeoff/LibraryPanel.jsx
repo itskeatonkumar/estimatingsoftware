@@ -61,9 +61,47 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
           {name:'Parking Stripe 4"',category:'asphalt',unit:'LF',unit_cost:0.25,trade:'Asphalt',source:'starter'},
           {name:'Wheel Stop',category:'asphalt',unit:'EA',unit_cost:95.00,trade:'Asphalt',source:'starter'},
           {name:'Steel Bollard',category:'other',unit:'EA',unit_cost:700.00,trade:'Asphalt',source:'starter'},
-          {name:'TPO 60mil',category:'other',unit:'SF',unit_cost:6.75,trade:'Roofing',source:'starter'},
-          {name:'Polyiso 2"',category:'other',unit:'SF',unit_cost:1.65,trade:'Roofing',source:'starter'},
-          {name:'Base Flashing',category:'other',unit:'LF',unit_cost:13.50,trade:'Roofing',source:'starter'},
+          {name:'TPO 60mil',category:'roofing',unit:'SF',unit_cost:6.75,trade:'Roofing',source:'starter'},
+          {name:'Polyiso 2"',category:'roofing',unit:'SF',unit_cost:1.65,trade:'Roofing',source:'starter'},
+          {name:'Base Flashing',category:'roofing',unit:'LF',unit_cost:13.50,trade:'Roofing',source:'starter'},
+          // Painting
+          {name:'Interior Wall Paint (2 coats)',category:'painting',unit:'SF',unit_cost:1.60,trade:'Painting',source:'starter'},
+          {name:'Exterior Paint (2 coats)',category:'painting',unit:'SF',unit_cost:2.00,trade:'Painting',source:'starter'},
+          {name:'Trim/Baseboard Paint',category:'painting',unit:'LF',unit_cost:1.50,trade:'Painting',source:'starter'},
+          {name:'Cabinet Painting',category:'painting',unit:'LF',unit_cost:30.00,trade:'Painting',source:'starter'},
+          {name:'Pressure Washing',category:'painting',unit:'SF',unit_cost:0.25,trade:'Painting',source:'starter'},
+          // Flooring
+          {name:'LVP (Luxury Vinyl Plank)',category:'flooring',unit:'SF',unit_cost:5.00,trade:'Flooring',source:'starter'},
+          {name:'Ceramic Tile',category:'flooring',unit:'SF',unit_cost:7.00,trade:'Flooring',source:'starter'},
+          {name:'Carpet (commercial)',category:'flooring',unit:'SF',unit_cost:4.00,trade:'Flooring',source:'starter'},
+          {name:'Hardwood (engineered)',category:'flooring',unit:'SF',unit_cost:8.00,trade:'Flooring',source:'starter'},
+          {name:'Rubber Cove Base',category:'flooring',unit:'LF',unit_cost:1.50,trade:'Flooring',source:'starter'},
+          // Drywall
+          {name:'Drywall 1/2" Complete (hang+L4)',category:'drywall',unit:'SF',unit_cost:2.00,trade:'Drywall',source:'starter'},
+          {name:'Drywall 5/8" Type X Complete',category:'drywall',unit:'SF',unit_cost:2.50,trade:'Drywall',source:'starter'},
+          {name:'Metal Stud Wall 3-5/8"',category:'drywall',unit:'SF',unit_cost:3.00,trade:'Drywall',source:'starter'},
+          {name:'Fiberglass Batt R-13',category:'drywall',unit:'SF',unit_cost:1.05,trade:'Drywall',source:'starter'},
+          {name:'Corner Bead',category:'drywall',unit:'LF',unit_cost:1.00,trade:'Drywall',source:'starter'},
+          // HVAC
+          {name:'RTU per Ton',category:'hvac',unit:'EA',unit_cost:2000.00,trade:'HVAC',source:'starter'},
+          {name:'Sheet Metal Duct',category:'hvac',unit:'LF',unit_cost:25.00,trade:'HVAC',source:'starter'},
+          {name:'Flex Duct 6"',category:'hvac',unit:'LF',unit_cost:6.00,trade:'HVAC',source:'starter'},
+          {name:'Supply Diffuser 2x2',category:'hvac',unit:'EA',unit_cost:100.00,trade:'HVAC',source:'starter'},
+          {name:'Thermostat (programmable)',category:'hvac',unit:'EA',unit_cost:150.00,trade:'HVAC',source:'starter'},
+          // Landscaping
+          {name:'Bermuda Sod',category:'landscaping',unit:'SF',unit_cost:0.75,trade:'Landscaping',source:'starter'},
+          {name:'Shade Tree 3" cal',category:'landscaping',unit:'EA',unit_cost:400.00,trade:'Landscaping',source:'starter'},
+          {name:'Shrub 5 gal',category:'landscaping',unit:'EA',unit_cost:45.00,trade:'Landscaping',source:'starter'},
+          {name:'Mulch (3" depth)',category:'landscaping',unit:'SF',unit_cost:0.35,trade:'Landscaping',source:'starter'},
+          {name:'Irrigation per SF',category:'irrigation',unit:'SF',unit_cost:1.25,trade:'Landscaping',source:'starter'},
+          {name:'Wood Privacy Fence 6ft',category:'fencing',unit:'LF',unit_cost:25.00,trade:'Landscaping',source:'starter'},
+          // Remodeling
+          {name:'Interior Door (hollow)',category:'other',unit:'EA',unit_cost:250.00,trade:'Remodeling',source:'starter'},
+          {name:'Window (vinyl DH)',category:'other',unit:'EA',unit_cost:525.00,trade:'Remodeling',source:'starter'},
+          {name:'Crown Molding',category:'other',unit:'LF',unit_cost:6.00,trade:'Remodeling',source:'starter'},
+          {name:'Countertop Quartz',category:'other',unit:'LF',unit_cost:75.00,trade:'Remodeling',source:'starter'},
+          {name:'Electrical Outlet',category:'electrical',unit:'EA',unit_cost:100.00,trade:'Remodeling',source:'starter'},
+          {name:'Recessed Light',category:'electrical',unit:'EA',unit_cost:150.00,trade:'Remodeling',source:'starter'},
         ];
         const { data: inserted } = await supabase.from('library_items').insert(starters).select();
         if (inserted) myItems = inserted;
