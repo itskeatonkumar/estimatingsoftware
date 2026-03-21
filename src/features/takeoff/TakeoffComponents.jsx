@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme, labelStyle, inputStyle } from "../../lib/theme.jsx";
 import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES } from "../../lib/constants.js";
 import { supabase } from "../../lib/supabase.js";
+import { US_STATES } from "../../lib/regionalPricing.js";
 import { APMModal, APMField } from "../../components/ui/Modal.jsx";
 
 function TakeoffItemModal({ item, onSave, onClose }) {
@@ -342,7 +343,15 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
           <APMField label="GC / Owner"><input value={form.gc_name||''} onChange={e=>set('gc_name',e.target.value)} style={{...dynInput}}/></APMField>
           <APMField label="Bid Due Date"><input type="date" value={form.bid_date||''} onChange={e=>set('bid_date',e.target.value)} style={{...dynInput}}/></APMField>
         </div>
-        <APMField label="Estimated Contract Value"><input type="number" value={form.contract_value||''} onChange={e=>set('contract_value',e.target.value)} placeholder="0" style={{...dynInput}}/></APMField>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <APMField label="State">
+            <select value={form.state_code||''} onChange={e=>set('state_code',e.target.value)} style={{...dynInput}}>
+              <option value="">Select state...</option>
+              {US_STATES.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}
+            </select>
+          </APMField>
+          <APMField label="Estimated Contract Value"><input type="number" value={form.contract_value||''} onChange={e=>set('contract_value',e.target.value)} placeholder="0" style={{...dynInput}}/></APMField>
+        </div>
         {apmProjects?.length>0&&(
           <APMField label="Link to APM Project (optional)">
             <select value={form.apm_project_id||''} onChange={e=>set('apm_project_id',e.target.value||null)} style={{...dynInput}}>

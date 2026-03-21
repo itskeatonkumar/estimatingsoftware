@@ -6,6 +6,7 @@ import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeL
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
 import { generateProposalPdf } from "./proposalPdf.js";
 import LibraryPanel from "./LibraryPanel.jsx";
+import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
@@ -190,6 +191,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
+  const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
+  const projectRegion = regionalData ? getRegionForState(project.state_code) : 'National';
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -368,6 +371,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       setLoading(false);
     });
   },[project.id]);
+
+  // Load regional pricing data
+  useEffect(()=>{
+    loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
+  },[]);
 
   // Load AI credits on mount (skip silently if org tables don't exist)
   useEffect(()=>{
@@ -778,7 +786,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const saveItem = async (itemData) => {
     const catDef = TAKEOFF_CATS.find(c=>c.id===itemData.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
     const costs = getUnitCosts();
-    const uc = itemData.unit_cost ?? ((costs[itemData.category]?.mat||0)+(costs[itemData.category]?.lab||0));
+    // Try regional pricing first, fall back to local costs
+    let uc = itemData.unit_cost;
+    if(uc == null && regionalData){
+      uc = getDefaultCostForCategory(itemData.category, projectRegion, regionalData.pricing, regionalData.multipliers);
+    }
+    if(uc == null) uc = (costs[itemData.category]?.mat||0)+(costs[itemData.category]?.lab||0);
     const total_cost = (itemData.quantity||0)*(itemData.multiplier||1)*uc;
     const pid = project.id;
     const payload = {...itemData, project_id:pid, plan_id:selPlan?.id, unit_cost:uc, total_cost, color:catDef.color, ai_generated:false, sort_order:items.length};
@@ -4013,6 +4026,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           {leftTab==='library'&&(
             <LibraryPanel
               onClose={()=>setLeftTab('takeoffs')}
+              projectRegion={projectRegion}
               onApplyItem={async(libItem)=>{
                 const catDef = TAKEOFF_CATS.find(c=>c.id===libItem.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
                 const uc = libItem.unit_cost || catDef.defaultCost;
@@ -5175,6 +5189,33 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
               &#8595; CSV
             </button>
+            {regionalData&&(
+              <button onClick={async()=>{
+                const region = projectRegion;
+                const itemsToUpdate = allItems.filter(i=>i.plan_id!=null);
+                if(!itemsToUpdate.length){alert('No items to update.');return;}
+                const preview = itemsToUpdate.slice(0,5).map(i=>{
+                  const newCost = getDefaultCostForCategory(i.category, region, regionalData.pricing, regionalData.multipliers);
+                  return `${i.description}: $${(i.unit_cost||0).toFixed(2)} → $${(newCost||i.unit_cost||0).toFixed(2)}`;
+                }).join('\n');
+                if(!window.confirm(`Update unit costs for ${itemsToUpdate.length} items to ${region} regional pricing?\n\nPreview:\n${preview}${itemsToUpdate.length>5?'\n... and '+(itemsToUpdate.length-5)+' more':''}\n\nThis will overwrite existing costs.`)) return;
+                let updated = 0;
+                for(const it of itemsToUpdate){
+                  const newCost = getDefaultCostForCategory(it.category, region, regionalData.pricing, regionalData.multipliers);
+                  if(newCost!=null && newCost !== it.unit_cost){
+                    const hFactor = (it.measurement_type==='linear'&&it.height>0)?it.height:1;
+                    const total_cost = (it.quantity||0)*(it.multiplier||1)*hFactor*newCost;
+                    await supabase.from('takeoff_items').update({unit_cost:newCost,total_cost}).eq('id',it.id);
+                    setItems(prev=>prev.map(x=>x.id===it.id?{...x,unit_cost:newCost,total_cost}:x));
+                    updated++;
+                  }
+                }
+                alert(`Updated ${updated} of ${itemsToUpdate.length} items to ${region} pricing.`);
+              }}
+                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#5B9BD5',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                &#9733; Regional Pricing ({projectRegion})
+              </button>
+            )}
           </div>
 
           {/* ── SUMMARY SUB-TAB ── */}

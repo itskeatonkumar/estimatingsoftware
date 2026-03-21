@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { TAKEOFF_CATS } from '../../lib/constants.js';
+import { loadRegionalPricing, getRegionalCost, getRegionForState } from '../../lib/regionalPricing.js';
 
 const CAT_MAP = Object.fromEntries(TAKEOFF_CATS.map(c => [c.id, c]));
 
-export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose }) {
+export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, projectRegion }) {
   const [tab, setTab] = useState('items');
+  const [regionalPricing, setRegionalPricing] = useState(null);
+  const [rpSearch, setRpSearch] = useState('');
   const [items, setItems] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [search, setSearch] = useState('');
@@ -25,6 +28,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose }) 
       setAssemblies(la || []);
       setLoading(false);
     });
+    loadRegionalPricing().then(d => setRegionalPricing(d)).catch(() => {});
   }, []);
 
   const loadAssemblyItems = async (assemblyId) => {
@@ -84,12 +88,12 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose }) 
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #E0E0E0' }}>
-        {['items', 'assemblies'].map(t => (
+        {['items', 'assemblies', 'regional'].map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ flex: 1, padding: '8px', border: 'none', background: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#4CAF50' : '#666',
               borderBottom: tab === t ? '2px solid #4CAF50' : '2px solid transparent' }}>
-            {t === 'items' ? 'Items' : 'Assemblies'}
+            {t === 'items' ? 'Items' : t === 'assemblies' ? 'Assemblies' : 'Regional'}
           </button>
         ))}
       </div>
@@ -177,6 +181,45 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose }) 
             </div>
           ))}
           {!assemblies.length && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>No assemblies yet</div>}
+        </div>
+      )}
+
+      {/* Regional Pricing Tab */}
+      {tab === 'regional' && (
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input value={rpSearch} onChange={e => setRpSearch(e.target.value)} placeholder="Search regional items..."
+              style={{ flex: 1, padding: '6px 10px', border: '1px solid #E0E0E0', borderRadius: 4, fontSize: 12, outline: 'none', color: '#333' }} />
+            <span style={{ fontSize: 11, color: '#999', flexShrink: 0 }}>{projectRegion || 'National'}</span>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {regionalPricing?.pricing?.filter(p => !rpSearch || p.item_name.toLowerCase().includes(rpSearch.toLowerCase()) || p.category.toLowerCase().includes(rpSearch.toLowerCase()))
+              .map(p => {
+                const rc = getRegionalCost(p, projectRegion || 'National', regionalPricing.multipliers);
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f0f0', gap: 8 }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: '#333' }}>{p.item_name}</div>
+                      <div style={{ fontSize: 10, color: '#999' }}>{p.category} · {p.unit}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginRight: 8 }}>
+                      <div style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums' }}>Mat: ${rc.material.toFixed(2)}</div>
+                      <div style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums' }}>Lab: ${rc.labor.toFixed(2)}</div>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: '#333', fontVariantNumeric: 'tabular-nums', width: 60, textAlign: 'right', flexShrink: 0 }}>
+                      ${rc.total.toFixed(2)}
+                    </div>
+                    <button onClick={() => onApplyItem({ name: p.item_name, category: p.category === 'Concrete' ? 'site_concrete' : p.category === 'Masonry' ? 'masonry' : p.category === 'Paving' ? 'asphalt' : p.category === 'Earthwork' ? 'grading' : 'other', unit: p.unit, unit_cost: rc.total })}
+                      style={{ padding: '3px 8px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500, flexShrink: 0 }}>
+                      Use
+                    </button>
+                  </div>
+                );
+              })}
+            {!regionalPricing && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>Loading regional pricing...</div>}
+          </div>
         </div>
       )}
 
