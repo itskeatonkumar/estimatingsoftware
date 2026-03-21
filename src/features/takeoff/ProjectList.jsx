@@ -32,15 +32,34 @@ function ProjectList({ onSelectProject, user }) {
   const [viewMode, setViewMode] = useState(()=>{ try{return localStorage.getItem('projectView')||'grid';}catch{return 'grid';} });
   const [calMonth, setCalMonth] = useState(()=>{ const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()}; });
   const [dragCard, setDragCard] = useState(null);
+  const [shareProject, setShareProject] = useState(null); // project being shared
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState('editor');
+  const [shareMembers, setShareMembers] = useState([]);
 
   useEffect(() => {
-    supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) console.error('[projects] load error:', error);
-        setProjects(data || []);
-        setLoading(false);
-      })
-      .catch(e => { console.error('[projects] fetch failed:', e); setLoading(false); });
+    (async()=>{
+      const {data:{user:me}}=await supabase.auth.getUser();
+      // My projects
+      const {data:myProjects,error}=await supabase.from('precon_projects').select('*').order('created_at',{ascending:false});
+      if(error) console.error('[projects] load error:',error);
+      let all=myProjects||[];
+      // Shared projects
+      if(me){
+        const {data:shares}=await supabase.from('project_shares').select('project_id').eq('user_id',me.id);
+        if(shares?.length){
+          const sharedIds=shares.map(s=>s.project_id);
+          const myIds=new Set(all.map(p=>p.id));
+          const missing=sharedIds.filter(id=>!myIds.has(id));
+          if(missing.length){
+            const {data:sharedProjects}=await supabase.from('precon_projects').select('*').in('id',missing);
+            if(sharedProjects) all=[...all,...sharedProjects.map(p=>({...p,_shared:true}))];
+          }
+        }
+      }
+      setProjects(all);
+      setLoading(false);
+    })();
     // Fetch team members from profiles table (skip silently if table doesn't exist)
     supabase.from('profiles').select('id, email, full_name')
       .then(({ data, error }) => {
@@ -347,13 +366,19 @@ function ProjectList({ onSelectProject, user }) {
                 <div style={{ marginLeft: 22 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <input
-                        defaultValue={p.name || ''}
-                        onClick={e => e.stopPropagation()}
-                        onBlur={e => { const v = e.target.value.trim(); if (v && v !== p.name) updateField(p.id, 'name', v); }}
-                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-                        style={{ fontSize: 14, fontWeight: 500, color: t.text, background: 'transparent', border: 'none', outline: 'none', width: '100%', padding: 0, cursor: 'text' }}
-                      />
+                      <div style={{display:'flex',alignItems:'center',gap:4}}>
+                        <input
+                          defaultValue={p.name || ''}
+                          onClick={e => e.stopPropagation()}
+                          onBlur={e => { const v = e.target.value.trim(); if (v && v !== p.name) updateField(p.id, 'name', v); }}
+                          onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                          style={{ fontSize: 14, fontWeight: 500, color: t.text, background: 'transparent', border: 'none', outline: 'none', flex:1, padding: 0, cursor: 'text', minWidth:0 }}
+                        />
+                        {p._shared&&<span style={{fontSize:8,background:'#EBF5FB',color:'#5B9BD5',padding:'1px 5px',borderRadius:8,flexShrink:0}}>Shared</span>}
+                        <button onClick={e=>{e.stopPropagation();setShareProject(p);
+                          supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',p.id).then(({data})=>setShareMembers(data||[]));
+                        }} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',fontSize:12,flexShrink:0,padding:'0 2px'}} title="Share">&#128279;</button>
+                      </div>
                       <div style={{ fontSize: 12, color: t.text3, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.address || p.gc_name || ''}
                       </div>
@@ -418,6 +443,59 @@ function ProjectList({ onSelectProject, user }) {
           onSave={handleSave}
           onClose={() => setNewModal(false)}
         />
+      )}
+      {/* Share Modal */}
+      {shareProject&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShareProject(null)}>
+          <div style={{background:'#fff',borderRadius:8,width:440,maxHeight:'70vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #E0E0E0',display:'flex',alignItems:'center'}}>
+              <span style={{flex:1,fontSize:15,fontWeight:600,color:'#333'}}>Share "{shareProject.name}"</span>
+              <button onClick={()=>setShareProject(null)} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:18}}>&times;</button>
+            </div>
+            {/* Invite row */}
+            <div style={{padding:'12px 20px',borderBottom:'1px solid #f0f0f0',display:'flex',gap:6}}>
+              <input value={shareEmail} onChange={e=>setShareEmail(e.target.value)} placeholder="Email address..."
+                style={{flex:1,padding:'7px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,outline:'none',color:'#333'}}/>
+              <select value={shareRole} onChange={e=>setShareRole(e.target.value)}
+                style={{padding:'7px 8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,outline:'none',color:'#666'}}>
+                <option value="editor">Editor</option>
+                <option value="viewer">Viewer</option>
+              </select>
+              <button onClick={async()=>{
+                if(!shareEmail.trim()) return;
+                const {data:profile}=await supabase.from('profiles').select('id,email,full_name').eq('email',shareEmail.trim().toLowerCase()).single();
+                if(!profile){alert('User not found — they need to create an account first.');return;}
+                const {data:{user:me}}=await supabase.auth.getUser();
+                const {error}=await supabase.from('project_shares').insert([{project_id:shareProject.id,user_id:profile.id,role:shareRole,invited_by:me?.id}]);
+                if(error){alert('Share failed: '+error.message);return;}
+                setShareMembers(prev=>[...prev,{user_id:profile.id,role:shareRole,profiles:profile}]);
+                setShareEmail('');
+              }} style={{padding:'7px 14px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,flexShrink:0}}>
+                Invite
+              </button>
+            </div>
+            {/* Members list */}
+            <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
+              {shareMembers.map((m,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 20px',borderBottom:'1px solid #f8f8f8'}}>
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12,flexShrink:0}}>
+                    {(m.profiles?.email||'?')[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:'#333'}}>{m.profiles?.full_name||m.profiles?.email||'Unknown'}</div>
+                    <div style={{fontSize:10,color:'#999'}}>{m.profiles?.email}</div>
+                  </div>
+                  <span style={{fontSize:10,color:'#5B9BD5',fontWeight:500}}>{m.role}</span>
+                  <button onClick={async()=>{
+                    await supabase.from('project_shares').delete().eq('project_id',shareProject.id).eq('user_id',m.user_id);
+                    setShareMembers(prev=>prev.filter(x=>x.user_id!==m.user_id));
+                  }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&times;</button>
+                </div>
+              ))}
+              {shareMembers.length===0&&<div style={{padding:20,color:'#999',fontSize:12,textAlign:'center'}}>No collaborators yet</div>}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -197,6 +197,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const TAKEOFF_CATS = dynamicCats || STATIC_CATS;
   const [showCatManager, setShowCatManager] = useState(false);
   const [editCat, setEditCat] = useState(null);
+  const [projectCollabs, setProjectCollabs] = useState([]);
   const projectRegion = regionalData ? getRegionForState(project.state_code) : 'National';
   const [overheadPct, setOverheadPct] = useState(0);
   const [profitPct, setProfitPct] = useState(0);
@@ -377,10 +378,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     });
   },[project.id]);
 
-  // Load dynamic categories + regional pricing
+  // Load dynamic categories + regional pricing + collaborators
   useEffect(()=>{
     loadCategories().then(cats=>setDynamicCats(cats)).catch(()=>{});
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
+    supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',project.id)
+      .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
   },[]);
 
   // Load AI credits on mount (skip silently if org tables don't exist)
@@ -2913,8 +2916,20 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         {onExitToOps&&<button onClick={onExitToOps} style={{background:'none',border:'none',color:t.text3,cursor:'pointer',fontSize:11,padding:'0 12px',height:'100%',display:'flex',alignItems:'center',fontWeight:600,flexShrink:0,borderLeft:`1px solid ${t.border}`}}>
           OPS
         </button>}
-        <div style={{padding:'0 20px',height:'100%',display:'flex',alignItems:'center',minWidth:0,maxWidth:300,flexShrink:0,borderLeft:`1px solid ${t.border}`}}>
-          <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</div>
+        <div style={{padding:'0 20px',height:'100%',display:'flex',alignItems:'center',gap:8,minWidth:0,maxWidth:400,flexShrink:0,borderLeft:`1px solid ${t.border}`}}>
+          <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{project.name}</div>
+          {/* Collaborator avatars */}
+          {projectCollabs.length>0&&<div style={{display:'flex',marginLeft:4}}>
+            {projectCollabs.slice(0,4).map((c,i)=>(
+              <div key={i} title={`${c.profiles?.email||'?'} (${c.role})`}
+                style={{width:24,height:24,borderRadius:'50%',background:['#4CAF50','#5B9BD5','#E8A317','#7B6BA4'][i%4],
+                  display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:10,
+                  border:'2px solid #fff',marginLeft:i>0?-6:0,zIndex:4-i}}>
+                {(c.profiles?.email||'?')[0].toUpperCase()}
+              </div>
+            ))}
+            {projectCollabs.length>4&&<div style={{width:24,height:24,borderRadius:'50%',background:'#999',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:9,border:'2px solid #fff',marginLeft:-6}}>+{projectCollabs.length-4}</div>}
+          </div>}
         </div>
         <div style={{flex:1}}/>
         <div style={{display:'flex',alignItems:'center',gap:4,padding:'0 12px',height:'100%',flexShrink:0}}>
