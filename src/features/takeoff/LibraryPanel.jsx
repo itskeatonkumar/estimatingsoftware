@@ -30,9 +30,10 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
       supabase.from('library_assemblies').select('*').order('name'),
     ]).then(async ([{ data: li }, { data: la }]) => {
       let myItems = li || [];
-      // Auto-populate starter items on first use
-      if (myItems.length === 0) {
-        const starters = [
+      // Add any missing starter items (by name)
+      {
+        const existingNames = new Set(myItems.map(i => i.name));
+        const allStarters = [
           {name:'4" Sidewalk',category:'flatwork',unit:'SF',unit_cost:6.50,trade:'Concrete',source:'starter'},
           {name:'6" Slab on Grade',category:'flatwork',unit:'SF',unit_cost:7.75,trade:'Concrete',source:'starter'},
           {name:'4" Concrete Driveway',category:'flatwork',unit:'SF',unit_cost:7.00,trade:'Concrete',source:'starter'},
@@ -103,8 +104,11 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
           {name:'Electrical Outlet',category:'electrical',unit:'EA',unit_cost:100.00,trade:'Remodeling',source:'starter'},
           {name:'Recessed Light',category:'electrical',unit:'EA',unit_cost:150.00,trade:'Remodeling',source:'starter'},
         ];
-        const { data: inserted } = await supabase.from('library_items').insert(starters).select();
-        if (inserted) myItems = inserted;
+        const newStarters = allStarters.filter(s => !existingNames.has(s.name));
+        if (newStarters.length > 0) {
+          const { data: inserted } = await supabase.from('library_items').insert(newStarters).select();
+          if (inserted) myItems = [...myItems, ...inserted];
+        }
       }
       setItems(myItems);
       setAssemblies(la || []);
