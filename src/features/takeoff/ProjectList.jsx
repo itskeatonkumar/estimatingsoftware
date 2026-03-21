@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../lib/theme.jsx';
 import { ThemeToggle } from '../../lib/theme.jsx';
 import { supabase } from '../../lib/supabase.js';
+import { useOrg } from '../../lib/OrgContext.jsx';
 import { TakeoffProjectModal } from './TakeoffComponents.jsx';
 
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '';
@@ -20,6 +21,7 @@ const STATUS_OPTIONS = ['estimating', 'pending_approval', 'approved', 'bid_submi
 
 function ProjectList({ onSelectProject, user }) {
   const { t } = useTheme();
+  const { orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter } = useOrg();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newModal, setNewModal] = useState(false);
@@ -40,8 +42,10 @@ function ProjectList({ onSelectProject, user }) {
   useEffect(() => {
     (async()=>{
       const {data:{user:me}}=await supabase.auth.getUser();
-      // My projects
-      const {data:myProjects,error}=await supabase.from('precon_projects').select('*').order('created_at',{ascending:false});
+      // My projects (org-filtered)
+      let q=supabase.from('precon_projects').select('*').order('created_at',{ascending:false});
+      if(orgId && !(isSuperAdmin&&viewAllOrgs)) q=q.or(`org_id.eq.${orgId},org_id.is.null`);
+      const {data:myProjects,error}=await q;
       if(error) console.error('[projects] load error:',error);
       let all=myProjects||[];
       // Shared projects
@@ -131,6 +135,21 @@ function ProjectList({ onSelectProject, user }) {
         <div style={{ fontSize: 15, fontWeight: 600, color: t.text }}>
           Estimating
         </div>
+        {/* Org switcher */}
+        {orgs.length>1&&(
+          <select value={orgId||''} onChange={e=>switchOrg(e.target.value)}
+            style={{padding:'4px 8px',border:`1px solid ${t.border}`,borderRadius:4,fontSize:11,color:t.text2,background:t.bg,outline:'none',cursor:'pointer'}}>
+            {orgs.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
+        {orgs.length===1&&<span style={{fontSize:11,color:t.text3}}>{orgs[0]?.name}</span>}
+        {/* Super admin toggle */}
+        {isSuperAdmin&&(
+          <label style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#7B6BA4',cursor:'pointer'}}>
+            <input type="checkbox" checked={viewAllOrgs} onChange={e=>setViewAllOrgs(e.target.checked)} style={{accentColor:'#7B6BA4'}}/>
+            All Orgs
+          </label>
+        )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: t.text3 }}>{user?.email}</span>
         <ThemeToggle />

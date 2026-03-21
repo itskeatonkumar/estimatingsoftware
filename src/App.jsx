@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ThemeProvider, ThemeToggle, useTheme } from './lib/theme.jsx';
 import { supabase } from './lib/supabase.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.jsx';
+import { OrgProvider } from './lib/OrgContext.jsx';
 import LoginScreen from './features/auth/LoginScreen.jsx';
 import ProjectList from './features/takeoff/ProjectList.jsx';
 import TakeoffWorkspace from './features/takeoff/TakeoffWorkspace.jsx';
@@ -68,7 +69,9 @@ function AppShell() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppShell />
+      <OrgProvider>
+        <AppShell />
+      </OrgProvider>
     </ThemeProvider>
   );
 }
