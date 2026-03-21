@@ -11,6 +11,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
   const [rpSearch, setRpSearch] = useState('');
   const [collapsedRPCats, setCollapsedRPCats] = useState({});
   const [rpRegionOverride, setRpRegionOverride] = useState(null);
+  const [collapsedItemTrades, setCollapsedItemTrades] = useState({});
   const [templates, setTemplates] = useState([]);
   const [expandedTemplate, setExpandedTemplate] = useState(null);
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -214,10 +215,17 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
       {tab === 'items' && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading && <div style={{ padding: 20, color: '#999', fontSize: 12, textAlign: 'center' }}>Loading...</div>}
-          {Object.entries(grouped).map(([trade, tradeItems]) => (
+          {Object.entries(grouped).map(([trade, tradeItems]) => {
+            const isOpen = collapsedItemTrades[trade] === true; // default closed
+            return(
             <div key={trade}>
-              <div style={{ padding: '6px 16px', fontSize: 10, fontWeight: 700, color: '#999', background: '#f8f8f8', letterSpacing: 0.5 }}>{trade.toUpperCase()}</div>
-              {tradeItems.map(item => (
+              <div onClick={()=>setCollapsedItemTrades(prev=>({...prev,[trade]:!prev[trade]}))}
+                style={{ padding: '6px 16px', fontSize: 10, fontWeight: 700, color: '#999', background: '#f8f8f8', letterSpacing: 0.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ fontSize: 8 }}>{isOpen ? '▼' : '▶'}</span>
+                {trade.toUpperCase()}
+                <span style={{ fontWeight: 400, color: '#ccc', marginLeft: 'auto' }}>{tradeItems.length}</span>
+              </div>
+              {isOpen && tradeItems.map(item => (
                 <div key={item.id}
                   style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f0f0f0', cursor: 'pointer', gap: 10 }}
                   onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
@@ -240,7 +248,8 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                 </div>
               ))}
             </div>
-          ))}
+            );
+          })}
           {!loading && !filtered.length && <div style={{ padding: 30, color: '#999', fontSize: 12, textAlign: 'center' }}>No items found</div>}
         </div>
       )}
