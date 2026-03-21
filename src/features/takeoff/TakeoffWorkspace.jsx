@@ -5783,17 +5783,20 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   </div>
                   {/* Delete */}
                   <button onClick={async()=>{
+                    console.log('[cat delete]', cat.id, cat.label, 'used by', usedCount, 'items');
                     if(usedCount>0){
-                      const moveTo=window.prompt(`${usedCount} items use "${cat.label}". Move them to which category ID? (${TAKEOFF_CATS.filter(c=>c.id!==cat.id).map(c=>c.id).join(', ')})`);
-                      if(!moveTo) return;
-                      await supabase.from('takeoff_items').update({category:moveTo}).eq('category',cat.id);
-                      setItems(prev=>prev.map(i=>i.category===cat.id?{...i,category:moveTo}:i));
+                      if(!window.confirm(`${usedCount} items use "${cat.label}". Delete and move them to "Other"?`)) return;
+                      const {error:moveErr}=await supabase.from('takeoff_items').update({category:'other'}).eq('category',cat.id);
+                      if(moveErr) console.error('[cat delete] move error:', moveErr);
+                      setItems(prev=>prev.map(i=>i.category===cat.id?{...i,category:'other'}:i));
                     } else {
                       if(!window.confirm('Delete "'+cat.label+'"?')) return;
                     }
-                    await supabase.from('takeoff_categories').delete().eq('id',cat.id);
+                    const {error:delErr}=await supabase.from('takeoff_categories').delete().eq('id',cat.id);
+                    if(delErr){console.error('[cat delete] error:', delErr);alert('Delete failed: '+delErr.message);return;}
+                    console.log('[cat delete] success');
                     setDynamicCats(prev=>prev.filter(c=>c.id!==cat.id));
-                  }} style={{background:'none',border:'none',color:'#ddd',cursor:'pointer',fontSize:14,flexShrink:0}} title={usedCount?`${usedCount} items use this`:'Delete'}>
+                  }} style={{background:'none',border:'none',color:'#C0504D',cursor:'pointer',fontSize:14,flexShrink:0,opacity:0.6}} title={usedCount?`${usedCount} items use this`:'Delete'}>
                     &times;
                   </button>
                 </div>
