@@ -218,7 +218,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onClose, pr
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {Object.entries(grouped).map(([cat, catItems]) => {
-              const isCollapsed = collapsedRPCats?.[cat];
+              const isCollapsed = collapsedRPCats?.[cat] !== true; // default closed
               return(
               <div key={cat}>
                 <div onClick={()=>setCollapsedRPCats(prev=>({...prev,[cat]:!prev?.[cat]}))}
