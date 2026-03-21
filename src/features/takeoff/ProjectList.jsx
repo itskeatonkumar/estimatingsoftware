@@ -29,6 +29,9 @@ function ProjectList({ onSelectProject, user }) {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [orgMembers, setOrgMembers] = useState([]);
+  const [viewMode, setViewMode] = useState(()=>{ try{return localStorage.getItem('projectView')||'grid';}catch{return 'grid';} });
+  const [calMonth, setCalMonth] = useState(()=>{ const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()}; });
+  const [dragCard, setDragCard] = useState(null);
 
   useEffect(() => {
     supabase.from('precon_projects').select('*').order('created_at', { ascending: false })
@@ -152,6 +155,16 @@ function ProjectList({ onSelectProject, user }) {
               style={{ background: '#4CAF50', border: 'none', color: '#fff', padding: '8px 20px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
               New Project
             </button>
+            {/* View toggle */}
+            <div style={{ display: 'flex', border: `1px solid ${t.border}`, borderRadius: 4, overflow: 'hidden', marginLeft: 8 }}>
+              {[['grid','Grid'],['pipeline','Pipeline'],['calendar','Calendar']].map(([id,lbl])=>(
+                <button key={id} onClick={()=>{setViewMode(id);try{localStorage.setItem('projectView',id);}catch{}}}
+                  style={{padding:'6px 12px',border:'none',cursor:'pointer',fontSize:11,fontWeight:viewMode===id?600:400,
+                    background:viewMode===id?'#4CAF50':'transparent',color:viewMode===id?'#fff':t.text3}}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -187,8 +200,108 @@ function ProjectList({ onSelectProject, user }) {
         </div>
       </div>
 
+      {/* Pipeline View */}
+      {viewMode==='pipeline'&&(
+        <div style={{flex:1,overflowX:'auto',overflowY:'hidden',display:'flex',gap:12,padding:'16px 16px'}}>
+          {STATUS_OPTIONS.map(status=>{
+            const col=filtered.filter(p=>p.status===status);
+            const colTotal=col.reduce((s,p)=>s+(Number(p.contract_value)||0),0);
+            const sc=STATUS_COLORS[status]||'#999';
+            return(
+              <div key={status} style={{minWidth:200,width:200,flexShrink:0,display:'flex',flexDirection:'column',background:'#f5f5f5',borderRadius:6,overflow:'hidden'}}
+                onDragOver={e=>{e.preventDefault();e.currentTarget.style.background='#e8f5e9';}}
+                onDragLeave={e=>{e.currentTarget.style.background='#f5f5f5';}}
+                onDrop={async e=>{
+                  e.currentTarget.style.background='#f5f5f5';
+                  if(!dragCard) return;
+                  await supabase.from('precon_projects').update({status}).eq('id',dragCard);
+                  setProjects(prev=>prev.map(p=>p.id===dragCard?{...p,status}:p));
+                  setDragCard(null);
+                }}>
+                <div style={{padding:'10px 12px',borderBottom:`2px solid ${sc}`,display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{width:8,height:8,borderRadius:'50%',background:sc,flexShrink:0}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:'#333',flex:1}}>{status.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</span>
+                  <span style={{fontSize:10,color:'#999'}}>{col.length}</span>
+                </div>
+                <div style={{flex:1,overflowY:'auto',padding:6,display:'flex',flexDirection:'column',gap:6}}>
+                  {col.sort((a,b)=>(a.bid_date||'z').localeCompare(b.bid_date||'z')).map(p=>(
+                    <div key={p.id} draggable onDragStart={()=>setDragCard(p.id)}
+                      onClick={()=>onSelectProject(p)}
+                      style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,padding:'10px 12px',cursor:'grab',borderLeft:`3px solid ${sc}`}}
+                      onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'}
+                      onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
+                      <div style={{fontSize:12,fontWeight:500,color:'#333',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
+                      {p.gc_name&&<div style={{fontSize:10,color:'#999',marginBottom:2}}>{p.gc_name}</div>}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        {p.contract_value?<span style={{fontSize:11,fontWeight:600,color:'#333'}}>${Number(p.contract_value).toLocaleString()}</span>:<span/>}
+                        {p.bid_date&&<span style={{fontSize:10,color:p.bid_date<new Date().toISOString().slice(0,10)?'#C0504D':'#999'}}>{fmtDate(p.bid_date)}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{padding:'6px 12px',borderTop:'1px solid #E0E0E0',fontSize:10,color:'#999',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>
+                  ${colTotal.toLocaleString()}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Calendar View */}
+      {viewMode==='calendar'&&(()=>{
+        const {year,month}=calMonth;
+        const firstDay=new Date(year,month,1).getDay();
+        const daysInMonth=new Date(year,month+1,0).getDate();
+        const today=new Date().toISOString().slice(0,10);
+        const monthLabel=new Date(year,month).toLocaleString('en-US',{month:'long',year:'numeric'});
+        const cells=[];
+        for(let i=0;i<firstDay;i++) cells.push(null);
+        for(let d=1;d<=daysInMonth;d++) cells.push(d);
+        while(cells.length%7!==0) cells.push(null);
+        // Group projects by bid_date
+        const byDate={};
+        filtered.forEach(p=>{if(p.bid_date) {if(!byDate[p.bid_date])byDate[p.bid_date]=[];byDate[p.bid_date].push(p);}});
+        return(
+        <div style={{flex:1,overflowY:'auto',padding:24}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+            <button onClick={()=>setCalMonth(prev=>{const m=prev.month-1;return m<0?{year:prev.year-1,month:11}:{...prev,month:m};})}
+              style={{background:'none',border:`1px solid ${t.border}`,color:t.text3,padding:'4px 10px',borderRadius:4,cursor:'pointer',fontSize:14}}>&#8249;</button>
+            <span style={{fontSize:16,fontWeight:600,color:'#333',minWidth:160,textAlign:'center'}}>{monthLabel}</span>
+            <button onClick={()=>setCalMonth(prev=>{const m=prev.month+1;return m>11?{year:prev.year+1,month:0}:{...prev,month:m};})}
+              style={{background:'none',border:`1px solid ${t.border}`,color:t.text3,padding:'4px 10px',borderRadius:4,cursor:'pointer',fontSize:14}}>&#8250;</button>
+            <button onClick={()=>{const d=new Date();setCalMonth({year:d.getFullYear(),month:d.getMonth()});}}
+              style={{background:'none',border:`1px solid ${t.border}`,color:t.text3,padding:'4px 10px',borderRadius:4,cursor:'pointer',fontSize:11}}>Today</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:1,background:'#E0E0E0',border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>(
+              <div key={d} style={{padding:'6px',fontSize:10,fontWeight:600,color:'#999',textAlign:'center',background:'#f5f5f5'}}>{d}</div>
+            ))}
+            {cells.map((day,i)=>{
+              const dateStr=day?`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`:null;
+              const dayProjects=dateStr?byDate[dateStr]||[]:[];
+              const isToday=dateStr===today;
+              return(
+                <div key={i} style={{minHeight:80,padding:4,background:'#fff',border:isToday?'2px solid #4CAF50':'none',position:'relative'}}>
+                  {day&&<div style={{fontSize:11,fontWeight:isToday?700:400,color:isToday?'#4CAF50':'#666',marginBottom:2}}>{day}</div>}
+                  {dayProjects.slice(0,3).map(p=>(
+                    <div key={p.id} onClick={()=>onSelectProject(p)}
+                      style={{fontSize:9,padding:'2px 4px',marginBottom:2,borderRadius:3,cursor:'pointer',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                        background:(STATUS_COLORS[p.status]||'#999')+'20',color:STATUS_COLORS[p.status]||'#999',borderLeft:`2px solid ${STATUS_COLORS[p.status]||'#999'}`}}>
+                      {p.name}
+                    </div>
+                  ))}
+                  {dayProjects.length>3&&<div style={{fontSize:8,color:'#999',padding:'0 4px'}}>+{dayProjects.length-3} more</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        );
+      })()}
+
       {/* Project grid */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+      {viewMode==='grid'&&<div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         {loading && (
           <div style={{ textAlign: 'center', padding: 60, color: t.text3, fontSize: 13 }}>Loading projects...</div>
         )}
@@ -296,7 +409,7 @@ function ProjectList({ onSelectProject, user }) {
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {newModal && (
         <TakeoffProjectModal
