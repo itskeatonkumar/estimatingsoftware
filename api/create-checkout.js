@@ -1,41 +1,40 @@
-/**
- * Create Stripe Checkout Session — Vercel API Route
- * Place at: api/create-checkout.js
- * 
- * Env vars: STRIPE_SECRET_KEY
- */
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { org_id, price_id, success_url, cancel_url } = req.body;
-
-  if (!org_id || !price_id) {
-    return res.status(400).json({ error: 'Missing org_id or price_id' });
-  }
+  const { email, org_id, user_id, seats, success_url, cancel_url } = req.body;
 
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{ price: price_id, quantity: 1 }],
-      success_url: success_url || `${req.headers.origin}/#/estimate`,
-      cancel_url: cancel_url || `${req.headers.origin}/#/estimate`,
-      metadata: { org_id },
-      subscription_data: {
-        metadata: { org_id },
-        trial_period_days: 14,
-      },
-    });
+    // Find or create Stripe customer
+    let customer;
+    if (email) {
+      const customers = await stripe.customers.list({ email, limit: 1 });
+      customer = customers.data[0];
+      if (!customer) {
+        customer = await stripe.customers.create({ email, metadata: { org_id: org_id || '', user_id: user_id || '' } });
+      }
+    }
 
-    return res.status(200).json({ url: session.url });
+    const sessionParams = {
+      payment_method_types: ['card'],
+      line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: seats || 1 }],
+      mode: 'subscription',
+      subscription_data: {
+        trial_period_days: 7,
+        metadata: { org_id: org_id || '', user_id: user_id || '' }
+      },
+      success_url: success_url || 'https://app.scopetakeoff.com/#/onboarding',
+      cancel_url: cancel_url || 'https://app.scopetakeoff.com/#/signup',
+    };
+    if (customer) sessionParams.customer = customer.id;
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url });
   } catch (err) {
-    console.error('Stripe checkout error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Checkout error:', err);
+    res.status(500).json({ error: err.message });
   }
 }
