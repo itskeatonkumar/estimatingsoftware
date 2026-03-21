@@ -5734,36 +5734,87 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       {/* Category Manager Modal */}
       {showCatManager&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowCatManager(false)}>
-          <div style={{background:'#fff',borderRadius:8,width:500,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:'#fff',borderRadius:8,width:540,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden'}} onClick={e=>e.stopPropagation()}>
             <div style={{padding:'16px 20px',borderBottom:'1px solid #E0E0E0',display:'flex',alignItems:'center'}}>
               <span style={{fontSize:16,fontWeight:600,color:'#333',flex:1}}>Manage Categories</span>
               <button onClick={()=>setShowCatManager(false)} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:18}}>&times;</button>
             </div>
-            <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
-              {TAKEOFF_CATS.map(cat=>(
-                <div key={cat.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 20px',borderBottom:'1px solid #f0f0f0'}}>
-                  <div style={{width:16,height:16,borderRadius:3,background:cat.color,flexShrink:0,cursor:'pointer'}}
-                    onClick={()=>setEditCat({...cat})}/>
-                  <span style={{flex:1,fontSize:13,color:'#333'}}>{cat.label}</span>
-                  <span style={{fontSize:11,color:'#999',width:30,textAlign:'center'}}>{cat.unit}</span>
-                  <span style={{fontSize:11,color:'#666',fontVariantNumeric:'tabular-nums',width:55,textAlign:'right'}}>${(cat.default_cost||cat.defaultCost||0).toLocaleString()}</span>
-                  <button onClick={()=>setEditCat({...cat})} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:11}}>Edit</button>
+            <div style={{flex:1,overflowY:'auto',padding:'4px 0'}}>
+              {TAKEOFF_CATS.map((cat,idx)=>{
+                const usedCount = items.filter(i=>i.category===cat.id).length;
+                return(
+                <div key={cat.id} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 16px',borderBottom:'1px solid #f0f0f0'}}>
+                  {/* Color */}
+                  <input type="color" value={cat.color||'#94A3B8'} onChange={async e=>{
+                    const c=e.target.value;
+                    await supabase.from('takeoff_categories').update({color:c}).eq('id',cat.id);
+                    setDynamicCats(prev=>prev.map(x=>x.id===cat.id?{...x,color:c}:x));
+                  }} style={{width:22,height:22,border:'1px solid #E0E0E0',borderRadius:3,cursor:'pointer',padding:0,flexShrink:0}}/>
+                  {/* Name — inline edit */}
+                  <input defaultValue={cat.label} onBlur={async e=>{
+                    const v=e.target.value.trim();
+                    if(v&&v!==cat.label){
+                      await supabase.from('takeoff_categories').update({label:v}).eq('id',cat.id);
+                      setDynamicCats(prev=>prev.map(x=>x.id===cat.id?{...x,label:v}:x));
+                    }
+                  }} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}
+                    style={{flex:1,fontSize:12,color:'#333',border:'none',outline:'none',background:'transparent',padding:'4px 0',minWidth:0}}/>
+                  {/* Unit dropdown */}
+                  <select value={cat.unit||'SF'} onChange={async e=>{
+                    await supabase.from('takeoff_categories').update({unit:e.target.value}).eq('id',cat.id);
+                    setDynamicCats(prev=>prev.map(x=>x.id===cat.id?{...x,unit:e.target.value}:x));
+                  }} style={{width:50,padding:'2px',border:'1px solid #E0E0E0',borderRadius:3,fontSize:10,outline:'none',color:'#666',flexShrink:0}}>
+                    {['SF','LF','CY','EA','SQ','LS','TON'].map(u=><option key={u}>{u}</option>)}
+                  </select>
+                  {/* Reorder arrows */}
+                  <div style={{display:'flex',flexDirection:'column',gap:0,flexShrink:0}}>
+                    <button disabled={idx===0} onClick={async()=>{
+                      const prev=TAKEOFF_CATS[idx-1];
+                      await supabase.from('takeoff_categories').update({sort_order:idx-1}).eq('id',cat.id);
+                      await supabase.from('takeoff_categories').update({sort_order:idx}).eq('id',prev.id);
+                      setDynamicCats(p=>{const n=[...p];[n[idx-1],n[idx]]=[n[idx],n[idx-1]];return n.map((c,i)=>({...c,sort_order:i}));});
+                    }} style={{background:'none',border:'none',color:idx===0?'#eee':'#999',cursor:idx===0?'default':'pointer',fontSize:9,padding:0,lineHeight:1}}>&#9650;</button>
+                    <button disabled={idx===TAKEOFF_CATS.length-1} onClick={async()=>{
+                      const next=TAKEOFF_CATS[idx+1];
+                      await supabase.from('takeoff_categories').update({sort_order:idx+1}).eq('id',cat.id);
+                      await supabase.from('takeoff_categories').update({sort_order:idx}).eq('id',next.id);
+                      setDynamicCats(p=>{const n=[...p];[n[idx],n[idx+1]]=[n[idx+1],n[idx]];return n.map((c,i)=>({...c,sort_order:i}));});
+                    }} style={{background:'none',border:'none',color:idx===TAKEOFF_CATS.length-1?'#eee':'#999',cursor:idx===TAKEOFF_CATS.length-1?'default':'pointer',fontSize:9,padding:0,lineHeight:1}}>&#9660;</button>
+                  </div>
+                  {/* Delete */}
                   <button onClick={async()=>{
-                    const used=items.filter(i=>i.category===cat.id).length;
-                    if(used>0){alert(`Cannot delete — ${used} items use this category.`);return;}
-                    if(!window.confirm('Delete "'+cat.label+'"?'))return;
+                    if(usedCount>0){
+                      const moveTo=window.prompt(`${usedCount} items use "${cat.label}". Move them to which category ID? (${TAKEOFF_CATS.filter(c=>c.id!==cat.id).map(c=>c.id).join(', ')})`);
+                      if(!moveTo) return;
+                      await supabase.from('takeoff_items').update({category:moveTo}).eq('category',cat.id);
+                      setItems(prev=>prev.map(i=>i.category===cat.id?{...i,category:moveTo}:i));
+                    } else {
+                      if(!window.confirm('Delete "'+cat.label+'"?')) return;
+                    }
                     await supabase.from('takeoff_categories').delete().eq('id',cat.id);
                     setDynamicCats(prev=>prev.filter(c=>c.id!==cat.id));
-                  }} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:14}}>&times;</button>
+                  }} style={{background:'none',border:'none',color:'#ddd',cursor:'pointer',fontSize:14,flexShrink:0}} title={usedCount?`${usedCount} items use this`:'Delete'}>
+                    &times;
+                  </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
-            <div style={{padding:'12px 20px',borderTop:'1px solid #E0E0E0',display:'flex',gap:8}}>
-              <button onClick={()=>setEditCat({id:'cat_'+Date.now(),label:'',color:'#94A3B8',unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
-                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
+            <div style={{padding:'12px 16px',borderTop:'1px solid #E0E0E0',display:'flex',gap:8}}>
+              <button onClick={()=>setEditCat({id:'cat_'+Date.now(),label:'',color:TO_COLORS[TAKEOFF_CATS.length%TO_COLORS.length],unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
+                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
                 + Add Category
               </button>
               <div style={{flex:1}}/>
+              <button onClick={async()=>{
+                if(!window.confirm('Reset all categories to defaults? This will NOT delete your takeoff items.')) return;
+                await supabase.from('takeoff_categories').delete().neq('id','_never_');
+                const {loadCategories}=await import('../../lib/categories.js');
+                const cats=await loadCategories();
+                setDynamicCats(cats);
+              }} style={{background:'none',border:'1px solid #E0E0E0',color:'#999',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:11}}>
+                Reset to Defaults
+              </button>
             </div>
           </div>
         </div>
