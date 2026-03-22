@@ -8,13 +8,22 @@ import { TakeoffProjectModal } from './TakeoffComponents.jsx';
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '';
 
 const STATUS_COLORS = {
-  estimating: '#E8A317',
-  pending_approval: '#7B6BA4',
-  approved: '#4A90A4',
-  bid_submitted: '#5B9BD5',
-  awarded: '#4CAF50',
-  lost: '#C0504D',
-  hold: '#808080',
+  estimating: '#92400E',
+  pending_approval: '#6B21A8',
+  approved: '#065F46',
+  bid_submitted: '#1E40AF',
+  awarded: '#065F46',
+  lost: '#991B1B',
+  hold: '#6B7280',
+};
+const STATUS_BG = {
+  estimating: '#FEF3C7',
+  pending_approval: '#F3E8FF',
+  approved: '#D1FAE5',
+  bid_submitted: '#DBEAFE',
+  awarded: '#D1FAE5',
+  lost: '#FEE2E2',
+  hold: '#F3F4F6',
 };
 
 const STATUS_OPTIONS = ['estimating', 'pending_approval', 'approved', 'bid_submitted', 'awarded', 'lost', 'hold'];
@@ -131,9 +140,10 @@ function ProjectList({ onSelectProject, user }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: t.bg }}>
 
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', height: 48, borderBottom: `1px solid ${t.border}`, background: t.bg2, flexShrink: 0, padding: '0 24px', gap: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: t.text }}>
-          Estimating
+      <div style={{ display: 'flex', alignItems: 'center', height: 56, borderBottom: '1px solid #E5E7EB', background: '#fff', flexShrink: 0, padding: '0 24px', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13 }}>S</div>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1A1A1A', letterSpacing: -0.3 }}>ScopeTakeoff</span>
         </div>
         {/* Org switcher */}
         {orgs.length>1&&(
@@ -190,7 +200,7 @@ function ProjectList({ onSelectProject, user }) {
               </button>
             )}
             <button onClick={() => setNewModal(true)}
-              style={{ background: '#4CAF50', border: 'none', color: '#fff', padding: '8px 20px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+              style={{ background: '#10B981', border: 'none', color: '#fff', padding: '8px 20px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
               New Project
             </button>
             {/* View toggle */}
@@ -198,7 +208,7 @@ function ProjectList({ onSelectProject, user }) {
               {[['grid','Grid'],['pipeline','Pipeline'],['calendar','Calendar']].map(([id,lbl])=>(
                 <button key={id} onClick={()=>{setViewMode(id);try{localStorage.setItem('projectView',id);}catch{}}}
                   style={{padding:'6px 12px',border:'none',cursor:'pointer',fontSize:11,fontWeight:viewMode===id?600:400,
-                    background:viewMode===id?'#4CAF50':'transparent',color:viewMode===id?'#fff':t.text3}}>
+                    background:viewMode===id?'#10B981':'transparent',color:viewMode===id?'#fff':t.text3}}>
                   {lbl}
                 </button>
               ))}
@@ -320,8 +330,8 @@ function ProjectList({ onSelectProject, user }) {
               const dayProjects=dateStr?byDate[dateStr]||[]:[];
               const isToday=dateStr===today;
               return(
-                <div key={i} style={{minHeight:80,padding:4,background:'#fff',border:isToday?'2px solid #4CAF50':'none',position:'relative'}}>
-                  {day&&<div style={{fontSize:11,fontWeight:isToday?700:400,color:isToday?'#4CAF50':'#666',marginBottom:2}}>{day}</div>}
+                <div key={i} style={{minHeight:80,padding:4,background:'#fff',border:isToday?'2px solid #10B981':'none',position:'relative'}}>
+                  {day&&<div style={{fontSize:11,fontWeight:isToday?700:400,color:isToday?'#10B981':'#666',marginBottom:2}}>{day}</div>}
                   {dayProjects.slice(0,3).map(p=>(
                     <div key={p.id} onClick={()=>onSelectProject(p)}
                       style={{fontSize:9,padding:'2px 4px',marginBottom:2,borderRadius:3,cursor:'pointer',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
@@ -354,7 +364,7 @@ function ProjectList({ onSelectProject, user }) {
             </div>
             {!search && filterStatus === 'all' && (
               <button onClick={() => setNewModal(true)}
-                style={{ background: '#4CAF50', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+                style={{ background: '#10B981', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
                 New Project
               </button>
             )}
@@ -368,12 +378,12 @@ function ProjectList({ onSelectProject, user }) {
             return (
               <div key={p.id} onClick={() => onSelectProject(p)}
                 style={{
-                  background: t.bg2, border: `1px solid ${isSelected ? '#5B9BD5' : t.border}`, borderRadius: 4, padding: '16px 18px',
+                  background: '#fff', border: `1px solid ${isSelected ? '#10B981' : '#E5E7EB'}`, borderRadius: 8, padding: '16px 18px',
                   cursor: 'pointer', transition: 'border-color 0.15s',
                   position: 'relative',
                 }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = '#4CAF50'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = isSelected ? '#5B9BD5' : ''; }}>
+                onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = '#10B981'; e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)'; e.currentTarget.style.transform='translateY(-1px)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = isSelected ? '#10B981' : '#E5E7EB'; e.currentTarget.style.boxShadow='none'; e.currentTarget.style.transform='none'; }}>
                 {/* Checkbox */}
                 <div onClick={e => toggleSelect(p.id, e)}
                   style={{ position: 'absolute', top: 12, left: 12, width: 16, height: 16, borderRadius: 2,
@@ -407,10 +417,10 @@ function ProjectList({ onSelectProject, user }) {
                       onClick={e => e.stopPropagation()}
                       onChange={e => { e.stopPropagation(); updateField(p.id, 'status', e.target.value); }}
                       style={{
-                        fontSize: 11, padding: '3px 6px', borderRadius: 4,
-                        background: statusColor + '18', color: statusColor, textAlign: 'center',
-                        border: `1px solid ${statusColor}40`, cursor: 'pointer',
-                        fontWeight: 500, flexShrink: 0,
+                        fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                        background: STATUS_BG[p.status] || '#F3F4F6', color: statusColor, textAlign: 'center',
+                        border: 'none', cursor: 'pointer',
+                        fontWeight: 600, flexShrink: 0,
                       }}>
                       {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
                     </select>
@@ -489,7 +499,7 @@ function ProjectList({ onSelectProject, user }) {
                 if(error){alert('Share failed: '+error.message);return;}
                 setShareMembers(prev=>[...prev,{user_id:profile.id,role:shareRole,profiles:profile}]);
                 setShareEmail('');
-              }} style={{padding:'7px 14px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,flexShrink:0}}>
+              }} style={{padding:'7px 14px',background:'#10B981',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,flexShrink:0}}>
                 Invite
               </button>
             </div>
@@ -497,7 +507,7 @@ function ProjectList({ onSelectProject, user }) {
             <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
               {shareMembers.map((m,i)=>(
                 <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 20px',borderBottom:'1px solid #f8f8f8'}}>
-                  <div style={{width:28,height:28,borderRadius:'50%',background:'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12,flexShrink:0}}>
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12,flexShrink:0}}>
                     {(m.profiles?.email||'?')[0].toUpperCase()}
                   </div>
                   <div style={{flex:1,minWidth:0}}>

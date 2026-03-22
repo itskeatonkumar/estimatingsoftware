@@ -3,18 +3,30 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   background: #ffffff;
-  color: #333333;
+  color: #1A1A1A;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-input, textarea, select, button {
-  font-family: inherit;
+input, textarea, select, button { font-family: inherit; }
+
+/* Focus rings */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #10B981 !important;
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
 }
 
+/* Transitions */
+button, a, input, select { transition: all 0.15s ease; }
+
+/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

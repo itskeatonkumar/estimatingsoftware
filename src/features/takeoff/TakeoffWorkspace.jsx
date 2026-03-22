@@ -48,12 +48,12 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         display: 'flex', alignItems: 'center', gap: 7, padding: '5px 6px 5px 20px', borderRadius: 5,
         cursor: 'grab', marginBottom: 1,
         background: isActive ? 'rgba(16,185,129,0.1)' : dragOverId === p.id ? 'rgba(59,130,246,0.1)' : 'transparent',
-        borderLeft: isActive ? '2px solid #4CAF50' : isMarked ? '2px solid rgba(16,185,129,0.35)' : '2px solid transparent',
+        borderLeft: isActive ? '2px solid #10B981' : isMarked ? '2px solid rgba(16,185,129,0.35)' : '2px solid transparent',
         borderTop: dragOverId === p.id ? '2px solid #5B9BD5' : '2px solid transparent',
         transition: 'background 0.1s'
       }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#4CAF50' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(()=>{
+        <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#10B981' : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(()=>{
           const name = p.name||'Unnamed';
           if(!searchQuery) return name;
           const re = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');
@@ -62,10 +62,10 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
           return parts.map((s,i)=>re.test(s)?<mark key={i} style={{background:'#FFEB3B',color:'#333',padding:'0 1px',borderRadius:1}}>{s}</mark>:s);
         })()}</div>
         {searchQuery && p.ocr_text?.toLowerCase().includes(searchQuery.toLowerCase()) && (
-          <div style={{ fontSize: 8, color: '#4CAF50', marginTop: 1 }}>Content match</div>
+          <div style={{ fontSize: 8, color: '#10B981', marginTop: 1 }}>Content match</div>
         )}
         <div style={{ fontSize: 8, color: t.text4, display: 'flex', alignItems: 'center', gap: 3 }}>
-          {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#4CAF50', flexShrink: 0 }} />}
+          {isMarked && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#10B981', flexShrink: 0 }} />}
           <span>{cnt ? `${cnt} item${cnt !== 1 ? 's' : ''}` : 'No items'}{isOpen ? ' · open' : ''}</span>
         </div>
       </div>
@@ -263,7 +263,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [newTOType, setNewTOType] = useState(null);
   const [newTOName, setNewTOName] = useState('');
   const [newTODesc, setNewTODesc] = useState('');
-  const [newTOColor, setNewTOColor] = useState('#4CAF50');
+  const [newTOColor, setNewTOColor] = useState('#10B981');
   const [newTOCat, setNewTOCat] = useState('other');
   const [newTOSize, setNewTOSize] = useState('medium');
   const [creatingTO, setCreatingTO] = useState(false);
@@ -2258,7 +2258,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         if(!shapes.length) return [];
         const isActive = it.id===activeCondId;
         const isSelected = false; // resolved per-shape below using selectedShapes
-        const c = isActive ? '#E8A317' : isSelected ? '#5B9BD5' : (it.color||'#4CAF50');
+        const c = isActive ? '#E8A317' : isSelected ? '#5B9BD5' : (it.color||'#10B981');
         const mt = it.measurement_type;
 
         return shapes.map((pts, shapeIdx)=>{
@@ -2419,7 +2419,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const renderActive=()=>{
     const pts=(tool==='scale'&&scaleStep==='picking')?scalePts:activePts;
     if(!pts.length&&!archMode) return null;
-    const c=tool==='scale'?'#4CAF50':tool==='cutout'?'#C0504D':archMode?'#7B6BA4':tool==='area'?'#F59E0B':tool==='perimeter'?'#E8A317':'#4A90A4';
+    const c=tool==='scale'?'#10B981':tool==='cutout'?'#C0504D':archMode?'#7B6BA4':tool==='area'?'#F59E0B':tool==='perimeter'?'#E8A317':'#4A90A4';
     const sw=2.5/zoom, r0=10/zoom, r1=5/zoom, r2=4/zoom, fs=10/zoom;
     const all=hoverPt?[...pts,hoverPt]:pts;
     const activeCond = itemsRef.current.find(i=>String(i.id)===String(activeCondId));
@@ -2540,11 +2540,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const toolCursor=(markupMode==='dimension'||markupMode==='legend')?'crosshair':(spaceHeld||tool==='select')?'grab':(tool==='cutout'&&!activeCondId)?'pointer':{area:'crosshair',linear:'crosshair',count:'cell',scale:'crosshair',cutout:'crosshair',eraser:'cell'}[tool]||'default';
 
   const co = COMPANIES.find(c=>c.id===project.company)||COMPANIES[1];
-  const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#5B9BD5',awarded:'#4CAF50',lost:'#C0504D',hold:'#555'};
+  const STATUS_COLORS_BID = {estimating:'#F59E0B',bid_submitted:'#5B9BD5',awarded:'#10B981',lost:'#C0504D',hold:'#555'};
 
   // ── right tool icon helper
   const RightBtn = ({icon, label, active, onClick, color}) => {
-    const activeColor = color || '#4CAF50';
+    const activeColor = color || '#10B981';
     return(
     <button onClick={onClick} title={label}
       style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
@@ -2623,7 +2623,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         const shapePlanId = sh[0]?._planId;
         return shapePlanId ? shapePlanId === plan.id : it.plan_id === plan.id;
       });
-      const c = it.color || '#4CAF50';
+      const c = it.color || '#10B981';
       const mt = it.measurement_type;
       for(const pts of shapes){
         if(!pts.length) continue;
@@ -2686,7 +2686,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         if(legendMap.has(key)){
           legendMap.get(key).qty += (it.quantity || 0);
         } else {
-          legendMap.set(key, { color: it.color||'#4CAF50', qty: it.quantity||0, unit: it.unit||'' });
+          legendMap.set(key, { color: it.color||'#10B981', qty: it.quantity||0, unit: it.unit||'' });
         }
       });
       const legendItems = [...legendMap.entries()]; // [desc, {color,qty,unit}]
@@ -2924,7 +2924,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           {projectCollabs.length>0&&<div style={{display:'flex',marginLeft:4}}>
             {projectCollabs.slice(0,4).map((c,i)=>(
               <div key={i} title={`${c.profiles?.email||'?'} (${c.role})`}
-                style={{width:24,height:24,borderRadius:'50%',background:['#4CAF50','#5B9BD5','#E8A317','#7B6BA4'][i%4],
+                style={{width:24,height:24,borderRadius:'50%',background:['#10B981','#5B9BD5','#E8A317','#7B6BA4'][i%4],
                   display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:10,
                   border:'2px solid #fff',marginLeft:i>0?-6:0,zIndex:4-i}}>
                 {(c.profiles?.email||'?')[0].toUpperCase()}
@@ -2941,7 +2941,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
         </div>
         <button onClick={()=>setShowBidSummary(true)} disabled={!items.length}
           style={{height:'100%',padding:'0 20px',border:'none',borderLeft:`1px solid ${t.border}`,
-            background:items.length?'#4CAF50':'transparent',color:items.length?'#fff':t.text4,
+            background:items.length?'#10B981':'transparent',color:items.length?'#fff':t.text4,
             cursor:items.length?'pointer':'default',fontSize:12,fontWeight:600,flexShrink:0}}>
           Bid Summary
         </button>
@@ -2975,8 +2975,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             }}
               style={{padding:'0 18px',border:'none',background:'none',cursor:'pointer',
                 fontSize:13,fontWeight:isActive?600:400,
-                color:isActive?'#4CAF50':t.text3,
-                borderBottom:isActive?'2px solid #4CAF50':'2px solid transparent',
+                color:isActive?'#10B981':t.text3,
+                borderBottom:isActive?'2px solid #10B981':'2px solid transparent',
                 boxSizing:'border-box',transition:'color 0.15s',letterSpacing:0.2}}>
               {tab.label}
             </button>
@@ -3041,7 +3041,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 <label key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',cursor:'pointer',borderBottom:'1px solid #f8f8f8'}}>
                   <input type="checkbox" checked={selectedSheets.has(p.id)}
                     onChange={()=>setSelectedSheets(prev=>{const n=new Set(prev);n.has(p.id)?n.delete(p.id):n.add(p.id);return n;})}
-                    style={{accentColor:'#4CAF50'}}/>
+                    style={{accentColor:'#10B981'}}/>
                   <span style={{flex:1,fontSize:13,color:'#333'}}>{p.name||`Sheet ${idx+1}`}</span>
                 </label>
               ))}
@@ -3084,7 +3084,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   setAnalyzing(false);setAiProgress(null);setShowSheetSelector(false);setLeftTab('takeoffs');
                   alert(`Done — found ${totalFound} items across ${sheetsToAnalyze.length} sheets.`);
                 }}
-                style={{padding:'8px 16px',borderRadius:4,border:'none',background:'#4CAF50',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:500,opacity:(!selectedSheets.size||selectedSheets.size>(aiCredits?.available||0)||analyzing)?0.4:1}}>
+                style={{padding:'8px 16px',borderRadius:4,border:'none',background:'#10B981',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:500,opacity:(!selectedSheets.size||selectedSheets.size>(aiCredits?.available||0)||analyzing)?0.4:1}}>
                 {analyzing?'Analyzing...':'Analyze Selected'}
               </button>
             </div>
@@ -3142,7 +3142,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
         const visibleCols = Object.entries(reportCols).filter(([,v])=>v).length;
 
-        const hdrStyle = {fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',userSelect:'none',padding:'10px 12px',textAlign:'left',whiteSpace:'nowrap',background:'#4CAF50',borderBottom:'none'};
+        const hdrStyle = {fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',userSelect:'none',padding:'10px 12px',textAlign:'left',whiteSpace:'nowrap',background:'#10B981',borderBottom:'none'};
         const cellStyle = {fontSize:13,color:'#333',padding:'10px 12px',borderBottom:'1px solid #E0E0E0',whiteSpace:'nowrap',verticalAlign:'middle'};
 
         const doExport = (type) => {
@@ -3189,7 +3189,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               {(reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff')&&reportCols.unit_cost&&
                 <td style={{...cellStyle,textAlign:'right',color:'#666'}}>{(it.unit_cost||0)>0?`$${Number(it.unit_cost).toFixed(2)}`:'—'}</td>}
               {(reportType==='item_cost'||reportType==='item_cost_by_type'||reportType==='item_cost_by_takeoff')&&reportCols.total_cost&&
-                <td style={{...cellStyle,textAlign:'right',fontWeight:600,color:'#4CAF50'}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>}
+                <td style={{...cellStyle,textAlign:'right',fontWeight:600,color:'#10B981'}}>{(it.total_cost||0)>0?`$${Math.round(it.total_cost).toLocaleString()}`:'—'}</td>}
               <td style={{...cellStyle,textAlign:'center',width:36}}>
                 <button onClick={()=>{setEditItem(it);setMainView('workspace');}} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}} title="Edit">&#9998;</button>
               </td>
@@ -3216,7 +3216,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             ].map(r=>(
               <button key={r.id} onClick={()=>setReportType(r.id)}
                 style={{display:'block',width:'100%',textAlign:'left',padding:'8px 16px',border:'none',background:reportType===r.id?'#f5f5f5':'transparent',
-                  color:reportType===r.id?'#4CAF50':'#666',fontWeight:reportType===r.id?600:400,fontSize:13,cursor:'pointer'}}>
+                  color:reportType===r.id?'#10B981':'#666',fontWeight:reportType===r.id?600:400,fontSize:13,cursor:'pointer'}}>
                 {r.label}
               </button>
             ))}
@@ -3275,7 +3275,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   <div style={{position:'absolute',top:'100%',left:0,zIndex:50,marginTop:4,background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,boxShadow:'0 4px 12px rgba(0,0,0,0.1)',padding:'8px 0',minWidth:180}}>
                     {Object.entries(reportCols).map(([key,val])=>(
                       <label key={key} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',cursor:'pointer',fontSize:12,color:'#333'}}>
-                        <input type="checkbox" checked={val} onChange={()=>setReportCols(prev=>({...prev,[key]:!prev[key]}))} style={{accentColor:'#4CAF50'}}/>
+                        <input type="checkbox" checked={val} onChange={()=>setReportCols(prev=>({...prev,[key]:!prev[key]}))} style={{accentColor:'#10B981'}}/>
                         {key.replace(/_/g,' ').replace(/^\w/,c=>c.toUpperCase())}
                       </label>
                     ))}
@@ -3341,7 +3341,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       {reportCols.revision&&<td style={{...cellStyle,borderBottom:'none'}}/>}
                       {reportCols.trade&&<td style={{...cellStyle,borderBottom:'none'}}/>}
                       {isCostReport&&reportCols.unit_cost&&<td style={{...cellStyle,borderBottom:'none'}}/>}
-                      {isCostReport&&reportCols.total_cost&&<td style={{...cellStyle,textAlign:'right',fontWeight:700,color:'#4CAF50',fontSize:14,borderBottom:'none'}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</td>}
+                      {isCostReport&&reportCols.total_cost&&<td style={{...cellStyle,textAlign:'right',fontWeight:700,color:'#10B981',fontSize:14,borderBottom:'none'}}>${Math.round(sorted.reduce((s,i)=>s+(i.total_cost||0),0)).toLocaleString()}</td>}
                       <td style={{...cellStyle,borderBottom:'none'}}/>
                     </tr>
                   </tfoot>
@@ -3373,8 +3373,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               <button key={id} onClick={()=>setLeftTab(id)}
                 style={{flex:1,height:'100%',border:'none',background:'none',cursor:'pointer',
                   fontSize:13,fontWeight:leftTab===id?600:400,
-                  color:leftTab===id?'#4CAF50':t.text4,
-                  borderBottom:leftTab===id?'2px solid #4CAF50':'2px solid transparent',
+                  color:leftTab===id?'#10B981':t.text4,
+                  borderBottom:leftTab===id?'2px solid #10B981':'2px solid transparent',
                   boxSizing:'border-box',transition:'color 0.15s'}}>
                 {lbl}
               </button>
@@ -3382,8 +3382,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             <button onClick={()=>setLeftTab('settings')}
               title="Settings"
               style={{width:38,height:'100%',border:'none',background:'none',cursor:'pointer',
-                color:leftTab==='settings'?'#4CAF50':t.text4,fontSize:14,flexShrink:0,
-                borderBottom:leftTab==='settings'?'2px solid #4CAF50':'2px solid transparent',
+                color:leftTab==='settings'?'#10B981':t.text4,fontSize:14,flexShrink:0,
+                borderBottom:leftTab==='settings'?'2px solid #10B981':'2px solid transparent',
                 boxSizing:'border-box'}}>⚙</button>
           </div>
 
@@ -3402,7 +3402,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   📁 New
                 </button>
                 <button onClick={()=>{ setUploadTargetFolder(null); fileRef.current?.click(); }} disabled={!!uploading}
-                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#4CAF50':uploading?'#6B7280':'#4CAF50',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}>
+                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}>
                   {uploading
                     ? uploading.startsWith('✓')
                       ? <>{uploading}</>
@@ -3449,11 +3449,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   const active = plansFilter===val;
                   return(
                     <button key={val} onClick={()=>setPlansFilter(val)}
-                      style={{flex:1,padding:'5px 0',border:'none',borderBottom:active?`2px solid #4CAF50`:'2px solid transparent',
-                        background:'none',color:active?'#4CAF50':t.text4,cursor:'pointer',fontSize:10,fontWeight:active?700:400,
+                      style={{flex:1,padding:'5px 0',border:'none',borderBottom:active?`2px solid #10B981`:'2px solid transparent',
+                        background:'none',color:active?'#10B981':t.text4,cursor:'pointer',fontSize:10,fontWeight:active?700:400,
                         display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
                       {lbl}
-                      <span style={{fontSize:9,background:active?'rgba(16,185,129,0.15)':t.bg3,color:active?'#4CAF50':t.text4,
+                      <span style={{fontSize:9,background:active?'rgba(16,185,129,0.15)':t.bg3,color:active?'#10B981':t.text4,
                         borderRadius:8,padding:'1px 5px',fontVariantNumeric:'tabular-nums'}}>
                         {markedCount}
                       </span>
@@ -3521,7 +3521,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             <button onClick={()=>{
                               setUploadTargetFolder(folderId);
                               setTimeout(()=>fileRef.current?.click(),50);
-                            }} style={{fontSize:9,padding:'2px 5px',borderRadius:3,border:`1px solid ${t.border}`,background:'none',color:'#4CAF50',cursor:'pointer',fontWeight:700}} title="Upload into this folder">＋</button>
+                            }} style={{fontSize:9,padding:'2px 5px',borderRadius:3,border:`1px solid ${t.border}`,background:'none',color:'#10B981',cursor:'pointer',fontWeight:700}} title="Upload into this folder">＋</button>
                             <button onClick={async()=>{
                               for(const p of folderPlans){
                                 if(p.id==='preview') continue;
@@ -3588,7 +3588,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               setActivePts([]); setEditItem(null); setTakeoffStep(null);
             };
             const disarm = () => { setActiveCondId(null); setTool('select'); setActivePts([]); };
-            const resetFlow = () => { setTakeoffStep(null); setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#4CAF50'); setNewTOCat('other'); setNewTOSize('medium'); };
+            const resetFlow = () => { setTakeoffStep(null); setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#10B981'); setNewTOCat('other'); setNewTOSize('medium'); };
 
             // ── STEP: TYPE SELECTOR ──────────────────────────────────────
             if(takeoffStep==='type') return(
@@ -3621,7 +3621,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             if(takeoffStep==='create') return(
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                 <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,flexShrink:0,display:'flex',alignItems:'center',gap:8}}>
-                  <div style={{width:22,height:22,borderRadius:4,background:newTOType?.color||'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <div style={{width:22,height:22,borderRadius:4,background:newTOType?.color||'#10B981',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                     <span style={{fontSize:newTOType?.icon?.length>1?8:12,fontWeight:800,color:'#fff'}}>{newTOType?.icon}</span>
                   </div>
                   <span style={{fontSize:13,fontWeight:700,color:t.text,flex:1}}>Create New {newTOType?.label} Takeoff</span>
@@ -3634,7 +3634,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       style={{width:'100%',padding:'8px 10px',border:`1px solid ${t.border2}`,borderRadius:6,
                         fontSize:13,color:t.text,background:t.bg,outline:'none',boxSizing:'border-box',
                         transition:'border-color 0.15s'}}
-                      onFocus={e=>e.target.style.borderColor='#4CAF50'}
+                      onFocus={e=>e.target.style.borderColor='#10B981'}
                       onBlur={e=>e.target.style.borderColor=t.border2}
                     />
                   </div>
@@ -3644,7 +3644,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       rows={3}
                       style={{width:'100%',padding:'8px 10px',border:`1px solid ${t.border2}`,borderRadius:6,
                         fontSize:12,color:t.text,background:t.bg,outline:'none',resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}}
-                      onFocus={e=>e.target.style.borderColor='#4CAF50'}
+                      onFocus={e=>e.target.style.borderColor='#10B981'}
                       onBlur={e=>e.target.style.borderColor=t.border2}
                     />
                   </div>
@@ -3669,7 +3669,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     </button>
                     <button onClick={()=>newTOName.trim()&&setTakeoffStep('settings')}
                       style={{flex:2,padding:'8px 0',border:'none',
-                        background:newTOName.trim()?'#4CAF50':'#ccc',color:'#fff',
+                        background:newTOName.trim()?'#10B981':'#ccc',color:'#fff',
                         borderRadius:6,cursor:newTOName.trim()?'pointer':'not-allowed',fontSize:12,fontWeight:700}}>
                       Create Takeoff
                     </button>
@@ -3751,7 +3751,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           else{setScale(null);setPresetScale('');}
                         }
                       }}
-                      style={{width:'100%',padding:'7px 10px',border:`1px solid ${selPlan?'#4CAF50':t.border2}`,borderRadius:5,
+                      style={{width:'100%',padding:'7px 10px',border:`1px solid ${selPlan?'#10B981':t.border2}`,borderRadius:5,
                         fontSize:12,color:t.text,background:t.bg,marginBottom:12,cursor:'pointer',outline:'none'}}>
                         <option value="">— Select a sheet —</option>
                         {plans.map(p=><option key={p.id} value={p.id}>{p.name||'Unnamed'}</option>)}
@@ -3808,19 +3808,19 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         setTool(mt==='area'?'area':mt==='linear'?'linear':mt==='count'?'count':'area');
                         setActivePts([]);
                         // Reset flow state
-                        setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#4CAF50'); setNewTOCat('other'); setNewTOSize('medium');
+                        setNewTOType(null); setNewTOName(''); setNewTODesc(''); setNewTOColor('#10B981'); setNewTOCat('other'); setNewTOSize('medium');
                       }
                       setCreatingTO(false);
                     }}
                       style={{flex:2,padding:'8px 0',border:'none',
-                        background:newTOName.trim()&&!creatingTO?'#4CAF50':'#ccc',color:'#fff',
+                        background:newTOName.trim()&&!creatingTO?'#10B981':'#ccc',color:'#fff',
                         borderRadius:6,cursor:newTOName.trim()&&!creatingTO?'pointer':'not-allowed',fontSize:12,fontWeight:700,
                         display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
                       {creatingTO?'Creating…':'Start Measuring →'}
                     </button>
                   </div>
                   {plans.length===0&&<div style={{fontSize:10,color:'#F59E0B',textAlign:'center',marginTop:6}}>⚠ Upload a plan in the Plans tab first</div>}
-                  {!selPlan&&plans.length>0&&<div style={{fontSize:10,color:'#4CAF50',textAlign:'center',marginTop:6}}>✓ Will open {(openTabs.length>0?plans.find(p=>p.id===openTabs[0]):plans[0])?.name||'first plan'}</div>}
+                  {!selPlan&&plans.length>0&&<div style={{fontSize:10,color:'#10B981',textAlign:'center',marginTop:6}}>✓ Will open {(openTabs.length>0?plans.find(p=>p.id===openTabs[0]):plans[0])?.name||'first plan'}</div>}
                 </div>
               </div>
             );
@@ -3870,7 +3870,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       fontSize:12,color:t.text,background:t.bg,outline:'none',boxSizing:'border-box'}}/>
                 </div>
                 <button onClick={()=>{if(!scale){alert('Set the scale before creating takeoffs.');setShowScalePanel(true);return;}setTakeoffStep('type');}}
-                  style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 12px',borderRadius:4,
+                  style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 12px',borderRadius:4,
                     cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:3,flexShrink:0,whiteSpace:'nowrap'}}>
                   + New Takeoff
                 </button>
@@ -3923,7 +3923,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           </span>
                         )}
                         {catCost>0&&(
-                          <span style={{fontSize:10,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums',marginLeft:6}}>
+                          <span style={{fontSize:10,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums',marginLeft:6}}>
                             ${Math.round(catCost).toLocaleString()}
                           </span>
                         )}
@@ -4028,10 +4028,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           {leftTab==='settings'&&(
             <div style={{flex:1,overflowY:'auto',padding:14}}>
               <div style={{fontSize:10,fontWeight:700,color:t.text4,letterSpacing:0.8,marginBottom:8}}>SCALE</div>
-              <div style={{fontSize:10,color:scale?'#4CAF50':t.text4,marginBottom:8,padding:'6px 10px',background:t.bg3,borderRadius:5,border:`1px solid ${t.border}`}}>
+              <div style={{fontSize:10,color:scale?'#10B981':t.text4,marginBottom:8,padding:'6px 10px',background:t.bg3,borderRadius:5,border:`1px solid ${t.border}`}}>
                 {scale?`✓ ${scaleLabel(scale, presetScale)}`:'Not set for this page'}
               </div>
-              <div style={{fontSize:10,color:t.text4,marginBottom:8}}>Use the <strong style={{color:'#4CAF50'}}>+ Set Scale</strong> button in the lower-right of the canvas to set scale per page.</div>
+              <div style={{fontSize:10,color:t.text4,marginBottom:8}}>Use the <strong style={{color:'#10B981'}}>+ Set Scale</strong> button in the lower-right of the canvas to set scale per page.</div>
               {!isPdfPlan&&(
                 <div style={{marginBottom:14}}>
                   <div style={{fontSize:10,color:t.text4,marginBottom:4}}>Scan DPI</div>
@@ -4054,11 +4054,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
           {/* Bottom bar */}
           <div style={{borderTop:`1px solid ${t.border}`,padding:'6px 12px',background:t.bg2,flexShrink:0,display:'flex',alignItems:'center',gap:10}}>
             <div style={{flex:1,minWidth:0}}>
-              <span style={{fontSize:12,fontWeight:600,color:'#4CAF50'}}>${totalEst.toLocaleString()}</span>
+              <span style={{fontSize:12,fontWeight:600,color:'#10B981'}}>${totalEst.toLocaleString()}</span>
               <span style={{fontSize:10,color:t.text4,marginLeft:6}}>all sheets</span>
             </div>
             <button onClick={()=>{setRightTab('estimate');setEstSubTab('worksheet');}}
-              style={{background:'#4CAF50',border:'none',color:'#fff',padding:'5px 14px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,flexShrink:0}}>
+              style={{background:'#10B981',border:'none',color:'#fff',padding:'5px 14px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,flexShrink:0}}>
               Estimate →
             </button>
           </div>
@@ -4131,7 +4131,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               style={{display:'flex',alignItems:'center',gap:5,padding:'0 14px',
                 borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,
                 background:showOverview?t.bg:'transparent',
-                borderBottom:showOverview?'2px solid #4CAF50':'2px solid transparent',
+                borderBottom:showOverview?'2px solid #10B981':'2px solid transparent',
                 boxSizing:'border-box'}}>
               <span style={{fontSize:12}}>&#8862;</span>
               <span style={{fontSize:11,fontWeight:showOverview?600:400,color:showOverview?t.text:t.text3}}>Overview</span>
@@ -4147,13 +4147,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',
                     borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,minWidth:100,maxWidth:180,
                     background:(!showOverview&&isActive)?t.bg:'transparent',
-                    borderBottom:(!showOverview&&isActive)?`2px solid #4CAF50`:'2px solid transparent',
+                    borderBottom:(!showOverview&&isActive)?`2px solid #10B981`:'2px solid transparent',
                     boxSizing:'border-box',position:'relative'}}>
                   <span style={{fontSize:11,fontWeight:isActive?600:400,color:isActive?t.text:t.text3,
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>
                     {p.name||`Sheet ${plans.indexOf(p)+1}`}
                   </span>
-                  {cnt>0&&<span style={{fontSize:9,color:'#4CAF50',fontVariantNumeric:'tabular-nums',flexShrink:0}}>{cnt}</span>}
+                  {cnt>0&&<span style={{fontSize:9,color:'#10B981',fontVariantNumeric:'tabular-nums',flexShrink:0}}>{cnt}</span>}
                   {/* Close tab */}
                   <button onClick={e=>{
                     e.stopPropagation();
@@ -4220,7 +4220,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             style={{width:'100%',background:'none',border:'none',color:'rgba(255,255,255,0.85)',
                               padding:'10px 14px',cursor:'pointer',fontSize:11,textAlign:'left',
                               display:'flex',flexDirection:'column',gap:2,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                            <span style={{fontWeight:700,color:'#4CAF50'}}>↓ All {markedPlans.length} marked sheets + Legend</span>
+                            <span style={{fontWeight:700,color:'#10B981'}}>↓ All {markedPlans.length} marked sheets + Legend</span>
                             <span style={{fontSize:9,color:'rgba(255,255,255,0.4)'}}>Downloads as ZIP</span>
                           </button>
                           <button onClick={()=>exportAllMarked(false)}
@@ -4299,7 +4299,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               <div style={{position:'absolute',top:8,left:'50%',transform:'translateX(-50%)',zIndex:30,
                 background:'#fff',border:'1px solid #E0E0E0',borderRadius:6,padding:'6px 14px',
                 boxShadow:'0 2px 8px rgba(0,0,0,0.15)',display:'flex',alignItems:'center',gap:10,fontSize:12}}>
-                <span style={{color:matches.length?'#4CAF50':'#999',fontWeight:500}}>
+                <span style={{color:matches.length?'#10B981':'#999',fontWeight:500}}>
                   {matches.length?`${matches.length} match${matches.length!==1?'es':''} on this sheet`:'No matches on this sheet'}
                 </span>
                 {matches.length>0&&<>
@@ -4315,7 +4315,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               </div>
             );
           })()}
-          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#1e1e1e'}}>
+          <div ref={containerCallbackRef} style={{position:'absolute',top:0,left:0,right:0,bottom:0,overflow:'auto',background:'#E5E7EB'}}>
             {showOverview||!selPlan?(()=>{
               const getThumbnailUrl = (plan) => {
                 const url = plan.file_url;
@@ -4337,7 +4337,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   <input value={planSearch} onChange={e=>setPlanSearch(e.target.value)} placeholder="Search sheets by name or content..."
                     style={{width:280,padding:'7px 12px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:13,color:'#333',background:'#fff',outline:'none'}}/>
                   <button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
-                    style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 18px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
+                    style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 18px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
                     Upload Plans
                   </button>
                 </div>
@@ -4384,7 +4384,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           <div style={{fontSize:12,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{highlightText(p.name||'Unnamed', q)}</div>
                           <div style={{display:'flex',alignItems:'center',gap:6,marginTop:2}}>
                             <span style={{fontSize:11,color:'#999'}}>Sheet {idx+1} of {plans.length}</span>
-                            {mc>0&&<span style={{fontSize:9,background:'#E8F5E9',color:'#4CAF50',padding:'1px 6px',borderRadius:8,fontWeight:600}}>{mc} match{mc!==1?'es':''}</span>}
+                            {mc>0&&<span style={{fontSize:9,background:'#E8F5E9',color:'#10B981',padding:'1px 6px',borderRadius:8,fontWeight:600}}>{mc} match{mc!==1?'es':''}</span>}
                           </div>
                           {q && p.ocr_text && (()=>{
                             const lc = p.ocr_text.toLowerCase();
@@ -4406,7 +4406,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>{q?'No matching sheets':'No plans yet'}</div>
                     <div style={{fontSize:13,color:'#999',marginBottom:24}}>{q?'Try a different search term':'Upload your construction plans to get started'}</div>
                     {!q&&<button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
-                      style={{background:'#4CAF50',border:'none',color:'#fff',padding:'10px 24px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
+                      style={{background:'#10B981',border:'none',color:'#fff',padding:'10px 24px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
                       Upload Plans
                     </button>}
                   </div>
@@ -4576,9 +4576,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           const p1=scalePts[0];const p2=scalePts[1];
                           const sw=2/zoom;
                           return(<g>
-                            <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#4CAF50" strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`}/>
-                            <circle cx={p1.x} cy={p1.y} r={6/zoom} fill="#4CAF50"/>
-                            <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#4CAF50"/>
+                            <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#10B981" strokeWidth={sw} strokeDasharray={`${6/zoom},${3/zoom}`}/>
+                            <circle cx={p1.x} cy={p1.y} r={6/zoom} fill="#10B981"/>
+                            <circle cx={p2.x} cy={p2.y} r={6/zoom} fill="#10B981"/>
                           </g>);
                         })()}
                         {/* Cross-reference link overlays on plan */}
@@ -4817,7 +4817,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           style={{padding:'5px 8px',fontSize:10,color:'#e2e8f0',cursor:'pointer',borderRadius:4,display:'flex',alignItems:'center',gap:6}}
                           onMouseEnter={e=>e.currentTarget.style.background='rgba(139,92,246,0.15)'}
                           onMouseLeave={e=>e.currentTarget.style.background='none'}>
-                          <span style={{width:8,height:8,borderRadius:2,background:tgt.color||'#4CAF50',flexShrink:0}}/>
+                          <span style={{width:8,height:8,borderRadius:2,background:tgt.color||'#10B981',flexShrink:0}}/>
                           {tgt.description||'Untitled'}
                         </div>
                       ))}
@@ -4852,7 +4852,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     <option value="ft">ft</option>
                     <option value="in">in</option>
                   </select>
-                  <button onClick={()=>{confirmScale();setShowScalePanel(false);}} style={{background:'#4CAF50',border:'none',color:'#fff',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>Set</button>
+                  <button onClick={()=>{confirmScale();setShowScalePanel(false);}} style={{background:'#10B981',border:'none',color:'#fff',borderRadius:5,padding:'4px 12px',cursor:'pointer',fontSize:11,fontWeight:700}}>Set</button>
                   <button onClick={()=>{setScaleStep(null);setScalePts([]);setTool('select');}} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:14,padding:'0 2px'}}>×</button>
                 </div>
               )}
@@ -4905,7 +4905,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false); setCustomScaleInput('');
                         }} disabled={!customScaleInput||parseFloat(customScaleInput)<=0}
-                          style={{background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,opacity:customScaleInput&&parseFloat(customScaleInput)>0?1:0.4}}>
+                          style={{background:'#10B981',border:'none',color:'#fff',borderRadius:4,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,opacity:customScaleInput&&parseFloat(customScaleInput)>0?1:0.4}}>
                           Set
                         </button>
                       </div>
@@ -4913,7 +4913,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
                     {/* Calibrate + Auto-detect */}
                     <button onClick={()=>{setTool('scale');setScaleStep('picking');setScalePts([]);setActivePts([]);setShowScalePanel(false);}}
-                      style={{width:'100%',background:'none',border:'none',color:'#4CAF50',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
+                      style={{width:'100%',background:'none',border:'none',color:'#10B981',padding:'9px 12px',cursor:'pointer',fontSize:11,fontWeight:700,textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',alignItems:'center',gap:7}}>
                       <span style={{fontSize:13}}>⊕</span> Calibrate — click 2 points
                     </button>
                     <button onClick={()=>{autoDetectScale();setShowScalePanel(false);}}
@@ -4931,9 +4931,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
-                          color:presetScale===s.label?'#4CAF50':'rgba(255,255,255,0.7)',
+                          color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
                           padding:'6px 14px',cursor:'pointer',fontSize:11,textAlign:'left',display:'flex',alignItems:'center',gap:6}}>
-                          {presetScale===s.label&&<span style={{color:'#4CAF50',fontSize:9}}>✓</span>}{s.label}
+                          {presetScale===s.label&&<span style={{color:'#10B981',fontSize:9}}>✓</span>}{s.label}
                         </button>
                       ))}
                       <div style={{padding:'6px 12px 2px',fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:0.6,position:'sticky',top:0,background:'#1a1a1a'}}>ARCHITECTURAL</div>
@@ -4944,9 +4944,9 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
-                          color:presetScale===s.label?'#4CAF50':'rgba(255,255,255,0.7)',
+                          color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
                           padding:'6px 14px',cursor:'pointer',fontSize:11,textAlign:'left',display:'flex',alignItems:'center',gap:6}}>
-                          {presetScale===s.label&&<span style={{color:'#4CAF50',fontSize:9}}>✓</span>}{s.label}
+                          {presetScale===s.label&&<span style={{color:'#10B981',fontSize:9}}>✓</span>}{s.label}
                         </button>
                       ))}
                     </div>
@@ -4957,7 +4957,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               {/* Current scale chip */}
               {scale&&presetScale&&(
                 <button onClick={()=>setShowScalePanel(s=>!s)}
-                  style={{background:'rgba(0,0,0,0.7)',border:'1px solid rgba(16,185,129,0.4)',color:'#4CAF50',
+                  style={{background:'rgba(0,0,0,0.7)',border:'1px solid rgba(16,185,129,0.4)',color:'#10B981',
                     borderRadius:5,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:600,
                     display:'flex',alignItems:'center',gap:5,backdropFilter:'blur(4px)',
                     boxShadow:'0 2px 8px rgba(0,0,0,0.4)'}}>
@@ -4967,7 +4967,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
 
               {/* + New Scale / Set Scale button */}
               <button onClick={()=>setShowScalePanel(s=>!s)}
-                style={{background:'#4CAF50',border:'none',color:'#fff',
+                style={{background:'#10B981',border:'none',color:'#fff',
                   borderRadius:6,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:700,
                   boxShadow:'0 2px 8px rgba(16,185,129,0.4)',display:'flex',alignItems:'center',gap:5}}>
                 {scale?`⇔ ${scaleLabel(scale, presetScale)}`:'+ Set Scale'}
@@ -4992,7 +4992,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               {id:'legend',    icon:'L', label:'Legend',     color:'#7B6BA4', markup:true},
             ] : []),
             null,
-            {id:'takeoff_active', icon:'T', label:'Takeoff', color:'#4CAF50', isLabel:true},
+            {id:'takeoff_active', icon:'T', label:'Takeoff', color:'#10B981', isLabel:true},
             {id:'cutout', icon:'⊘', label:'Cut Out', color:'#C0504D'},
             {id:'eraser', icon:'⌫', label:'Eraser', color:'#E8A317'},
           ].map((btn,i)=>{
@@ -5211,11 +5211,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Extended Cost</div></div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#4CAF50'}}/>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
                 <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(2)}%</div><div style={{fontSize:9,color:'#999'}}>Net Profit</div></div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#4CAF50'}}/>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
                 <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Selling Price</div></div>
               </div>
             </div>
@@ -5224,7 +5224,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               {[{id:'summary',label:'Summary'},{id:'worksheet',label:'Worksheet'}].map(tab=>(
                 <button key={tab.id} onClick={()=>setEstSubTab(tab.id)}
                   style={{padding:'6px 16px',border:'none',cursor:'pointer',fontSize:12,fontWeight:500,
-                    background:estSubTab===tab.id?'#4CAF50':'#fff',
+                    background:estSubTab===tab.id?'#10B981':'#fff',
                     color:estSubTab===tab.id?'#fff':'#666'}}>
                   {tab.label}
                 </button>
@@ -5242,7 +5242,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 overheadPct, profitPct, companyId:proposalCompany,
                 clientInfo, companyProfile, proposalScope, proposalTerms,
               })}
-              style={{background:'#4CAF50',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
+              style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
               &#8595; Download Proposal PDF
             </button>
             <button onClick={doProposalExport}
@@ -5288,17 +5288,17 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                 <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:8,padding:20}}>
                   <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>Proposal Details</div>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-                    <span style={{color:proposalScope?'#4CAF50':'#ccc',fontSize:14}}>{proposalScope?'✓':'○'}</span>
+                    <span style={{color:proposalScope?'#10B981':'#ccc',fontSize:14}}>{proposalScope?'✓':'○'}</span>
                     <span style={{flex:1,fontSize:13,color:'#333'}}>Scope of Work</span>
                     <button onClick={()=>setEditModal('scope')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
-                    <span style={{color:proposalTerms?'#4CAF50':'#ccc',fontSize:14}}>{proposalTerms?'✓':'○'}</span>
+                    <span style={{color:proposalTerms?'#10B981':'#ccc',fontSize:14}}>{proposalTerms?'✓':'○'}</span>
                     <span style={{flex:1,fontSize:13,color:'#333'}}>Terms and Conditions</span>
                     <button onClick={()=>setEditModal('terms')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
                   </div>
                   {proposalScope&&proposalTerms?(
-                    <div style={{fontSize:12,color:'#4CAF50',fontWeight:500}}>Your proposal is good to go!</div>
+                    <div style={{fontSize:12,color:'#10B981',fontWeight:500}}>Your proposal is good to go!</div>
                   ):(
                     <div style={{fontSize:12,color:'#999'}}>Complete both sections above</div>
                   )}
@@ -5334,7 +5334,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   </div>
                   {companyProfile?.name?(
                     <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                      <div style={{width:36,height:36,borderRadius:'50%',background:'#4CAF50',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
+                      <div style={{width:36,height:36,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
                         {companyProfile.name[0]}
                       </div>
                       <div style={{fontSize:13,color:'#333',lineHeight:1.7}}>
@@ -5369,7 +5369,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         setProposalScope(v);
                         try{localStorage.setItem(`proposalScope_${project.id}`,v);}catch{}
                         setEditModal(null);
-                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -5389,7 +5389,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         setProposalTerms(v);
                         try{localStorage.setItem(`proposalTerms_${project.id}`,v);}catch{}
                         setEditModal(null);
-                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -5415,7 +5415,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           client_name:ci.name,client_company:ci.company,client_address:ci.address,client_email:ci.email,client_phone:ci.phone
                         }).eq('id',project.id);
                         setEditModal(null);
-                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -5439,7 +5439,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                         setCompanyProfile(cp);
                         try{localStorage.setItem('companyProfile',JSON.stringify(cp));}catch{}
                         setEditModal(null);
-                      }} style={{background:'#4CAF50',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
                     </div>
                   </div>
                 </div>
@@ -5461,12 +5461,12 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                     <div style={{padding:'16px 20px',borderRight:'1px solid #E0E0E0',textAlign:'center',background:'#E8F5E9'}}>
                       <div style={{fontSize:24,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${pricePerSF.toFixed(2)}</div>
                       <div style={{fontSize:10,color:'#999',marginTop:2}}>/SQ FT</div>
-                      <div style={{fontSize:11,color:'#4CAF50',marginTop:4}}>Selling Price</div>
+                      <div style={{fontSize:11,color:'#10B981',marginTop:4}}>Selling Price</div>
                     </div>
                     <div style={{padding:'16px 20px',textAlign:'center',background:'#E8F5E9'}}>
                       <div style={{fontSize:24,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${profitPerSF.toFixed(2)}</div>
                       <div style={{fontSize:10,color:'#999',marginTop:2}}>/SQ FT</div>
-                      <div style={{fontSize:11,color:'#4CAF50',marginTop:4}}>Net Profit</div>
+                      <div style={{fontSize:11,color:'#10B981',marginTop:4}}>Net Profit</div>
                     </div>
                   </div>
                 </div>
@@ -5513,7 +5513,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           </div>
                         </td>
                         <td style={{padding:'8px 14px',fontSize:12,color:'#666',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
-                        <td style={{padding:'8px 14px',fontSize:12,color:'#4CAF50',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*PROFIT).toLocaleString()}</td>
+                        <td style={{padding:'8px 14px',fontSize:12,color:'#10B981',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*PROFIT).toLocaleString()}</td>
                         <td style={{padding:'8px 14px',fontSize:12,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(extendedCost*(1+PROFIT)).toLocaleString()}</td>
                       </tr>
                     </tbody>
@@ -5521,7 +5521,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#333'}}>Total</td>
                       <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#333',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
                       <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#E8A317',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${(sellingPrice-extendedCost).toLocaleString()}</td>
-                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#4CAF50',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
+                      <td style={{padding:'10px 14px',fontSize:13,fontWeight:700,color:'#10B981',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
                     </tr></tfoot>
                   </table>
                 </div>
@@ -5544,7 +5544,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   ))}
                   <div style={{display:'flex',alignItems:'center',padding:'12px 20px',background:'#f5f5f5'}}>
                     <span style={{flex:1,fontSize:13,fontWeight:700,color:'#333'}}>Total</span>
-                    <span style={{fontSize:14,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</span>
+                    <span style={{fontSize:14,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -5598,7 +5598,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             }
             const editCell={fontSize:13,color:'#333',padding:'8px 12px',borderBottom:'1px solid #E0E0E0',verticalAlign:'middle'};
             const editInput={background:'transparent',border:'none',outline:'none',width:'100%',fontSize:13,color:'#333',padding:0};
-            const thStyle={background:'#4CAF50',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px'};
+            const thStyle={background:'#10B981',color:'#fff',fontSize:12,fontWeight:700,padding:'10px 12px'};
             return(
           <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
             {/* Toolbar */}
@@ -5678,7 +5678,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                             <td style={editCell}>
                               <input type="number" step="0.1" defaultValue={mkp} onBlur={e=>saveItemField(it.id,'markup_pct',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'} onBlurCapture={e=>e.target.style.borderBottom='none'} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
                             </td>
-                            <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
+                            <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
                             <td style={{...editCell,textAlign:'center'}}>
                               <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
                             </td>
@@ -5691,7 +5691,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                           <td colSpan={6} style={{...editCell,fontWeight:600,fontSize:11,color:'#999',borderBottom:'2px solid #E0E0E0'}}>Subtotal: {grp.label}</td>
                           <td style={{...editCell,textAlign:'right',fontWeight:600,fontVariantNumeric:'tabular-nums',borderBottom:'2px solid #E0E0E0'}}>${Math.round(grpExtended).toLocaleString()}</td>
                           <td style={{...editCell,borderBottom:'2px solid #E0E0E0'}}/>
-                          <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums',borderBottom:'2px solid #E0E0E0'}}>${Math.round(grpSubtotal).toLocaleString()}</td>
+                          <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums',borderBottom:'2px solid #E0E0E0'}}>${Math.round(grpSubtotal).toLocaleString()}</td>
                           <td style={{...editCell,borderBottom:'2px solid #E0E0E0'}}/>
                         </tr>
                       )}
@@ -5705,7 +5705,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                       <td colSpan={6} style={{padding:'12px',fontSize:13,fontWeight:700,color:'#333'}}>TOTAL</td>
                       <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
                       <td style={{padding:'12px'}}/>
-                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
+                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
                       <td/>
                     </tr>
                   </tfoot>
@@ -5722,11 +5722,11 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:12,color:'#999'}}>Net Profit:</span>
-                <span style={{fontSize:14,fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(1)}%</span>
+                <span style={{fontSize:14,fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(1)}%</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:12,color:'#999'}}>Selling Price:</span>
-                <span style={{fontSize:14,fontWeight:600,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</span>
+                <span style={{fontSize:14,fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</span>
               </div>
               <div style={{flex:1}}/>
               <div style={{display:'flex',alignItems:'center',gap:4}}>
@@ -5822,7 +5822,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
             </div>
             <div style={{padding:'12px 16px',borderTop:'1px solid #E0E0E0',display:'flex',gap:8}}>
               <button onClick={()=>setEditCat({id:null,label:'',color:TO_COLORS[TAKEOFF_CATS.length%TO_COLORS.length],unit:'SF',default_cost:0,sort_order:TAKEOFF_CATS.length})}
-                style={{background:'#4CAF50',border:'none',color:'#fff',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                style={{background:'#10B981',border:'none',color:'#fff',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
                 + Add Category
               </button>
               <div style={{flex:1}}/>
@@ -5888,7 +5888,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   if(data) setDynamicCats(prev=>[...prev,data]);
                 }
                 setEditCat(null);
-              }} style={{padding:'8px 16px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,opacity:editCat.label?.trim()?1:0.4}}>
+              }} style={{padding:'8px 16px',background:'#10B981',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,opacity:editCat.label?.trim()?1:0.4}}>
                 Save
               </button>
             </div>

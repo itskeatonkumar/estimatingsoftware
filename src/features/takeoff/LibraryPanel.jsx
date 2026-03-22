@@ -179,8 +179,8 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
         {['items', 'assemblies', 'regional', 'templates'].map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ flex: 1, padding: '8px', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#4CAF50' : '#666',
-              borderBottom: tab === t ? '2px solid #4CAF50' : '2px solid transparent' }}>
+              fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#10B981' : '#666',
+              borderBottom: tab === t ? '2px solid #10B981' : '2px solid transparent' }}>
             {t==='items'?'My Items':t==='assemblies'?'My Assemblies':t==='regional'?'Cost Database':'Templates'}
           </button>
         ))}
@@ -205,7 +205,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
             {TAKEOFF_CATS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
           <button onClick={() => setEditItem({ name: '', category: 'other', unit: 'SF', unit_cost: 0, labor_cost: 0, material_cost: 0, trade: '', description: '' })}
-            style={{ padding: '6px 12px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>
+            style={{ padding: '6px 12px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>
             + Add
           </button>
         </div>
@@ -242,7 +242,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                   <span style={{ fontSize: 11, color: '#999', width: 30, textAlign: 'center' }}>{item.unit}</span>
                   <span style={{ fontSize: 11, color: '#333', fontWeight: 500, width: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtCost(item.unit_cost)}</span>
                   <button onClick={e => { e.stopPropagation(); onApplyItem(item); }}
-                    style={{ padding: '3px 8px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500, flexShrink: 0 }}>
+                    style={{ padding: '3px 8px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500, flexShrink: 0 }}>
                     Use
                   </button>
                 </div>
@@ -267,7 +267,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                   {a.description && <div style={{ fontSize: 11, color: '#999' }}>{a.description}</div>}
                 </div>
                 <button onClick={e => { e.stopPropagation(); onApplyAssembly(a, assemblyItems); }}
-                  style={{ padding: '3px 8px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>
+                  style={{ padding: '3px 8px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>
                   Apply
                 </button>
               </div>
@@ -319,7 +319,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
             <input value={rpSearch} onChange={e => setRpSearch(e.target.value)} placeholder="Search regional items..."
               style={{ flex: 1, padding: '6px 10px', border: '1px solid #E0E0E0', borderRadius: 4, fontSize: 12, outline: 'none', color: '#333' }} />
             <select value={region} onChange={e=>setRpRegionOverride(e.target.value)}
-              style={{padding:'4px 6px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#4CAF50',fontWeight:600,background:'#fff',outline:'none',cursor:'pointer',flexShrink:0}}>
+              style={{padding:'4px 6px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#10B981',fontWeight:600,background:'#fff',outline:'none',cursor:'pointer',flexShrink:0}}>
               {availableRegions.map(r=><option key={r} value={r}>{r}</option>)}
             </select>
             <span style={{ fontSize: 10, color: '#999', flexShrink: 0 }}>{filtered.length} items</span>
@@ -330,7 +330,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
               const TRADE_COLORS = {
                 'Concrete':'#D4A04A','Masonry':'#C87941','Earthwork':'#6B8E23','Asphalt':'#808080',
                 'Roofing':'#C0504D','Painting':'#5B9BD5','Flooring':'#4A90A4','Drywall':'#7B6BA4',
-                'HVAC':'#4A90A4','Landscaping':'#4CAF50','Remodeling':'#E8A317',
+                'HVAC':'#4A90A4','Landscaping':'#10B981','Remodeling':'#E8A317',
               };
               const TRADE_DISPLAY_ORDER = ['Concrete','Masonry','Earthwork','Asphalt','Roofing','Painting','Flooring','Drywall','HVAC','Landscaping','Remodeling'];
 
@@ -393,7 +393,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                       <span style={{ fontSize: 10, color: '#999', fontVariantNumeric: 'tabular-nums', width: 45, textAlign: 'right', flexShrink: 0 }}>L: ${rc.labor.toFixed(0)}</span>
                       <span style={{ fontWeight: 600, fontSize: 11, color: '#333', fontVariantNumeric: 'tabular-nums', width: 55, textAlign: 'right', flexShrink: 0 }}>${rc.total.toFixed(2)}</span>
                       <button onClick={() => onApplyItem({ name: p.item_name, category: catToApp(p.category), unit: p.unit, unit_cost: rc.total })}
-                        style={{ padding: '2px 7px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
+                        style={{ padding: '2px 7px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 3, cursor: 'pointer', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
                         Use
                       </button>
                       <button onClick={async()=>{
@@ -440,7 +440,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                 }));
                 const {data}=await supabase.from('takeoff_templates').insert([{name:newTemplateName.trim(),items:tItems}]).select().single();
                 if(data){setTemplates(prev=>[data,...prev]);setNewTemplateName('');}
-              }} style={{padding:'6px 12px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,opacity:newTemplateName.trim()?1:0.4}}>
+              }} style={{padding:'6px 12px',background:'#10B981',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,opacity:newTemplateName.trim()?1:0.4}}>
                 Save Current
               </button>
             </div>
@@ -459,7 +459,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                       <div style={{fontSize:10,color:'#999'}}>{tmplItems.length} items{tmpl.description?' · '+tmpl.description:''}</div>
                     </div>
                     <button onClick={e=>{e.stopPropagation();onApplyTemplate?.(tmpl);}}
-                      style={{padding:'4px 10px',background:'#4CAF50',border:'none',color:'#fff',borderRadius:3,cursor:'pointer',fontSize:10,fontWeight:500}}>
+                      style={{padding:'4px 10px',background:'#10B981',border:'none',color:'#fff',borderRadius:3,cursor:'pointer',fontSize:10,fontWeight:500}}>
                       Apply
                     </button>
                     <button onClick={async e=>{
@@ -539,7 +539,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
               )}
               <div style={{ flex: 1 }} />
               <button onClick={() => setEditItem(null)} style={{ padding: '8px 14px', border: '1px solid #E0E0E0', background: '#fff', color: '#666', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
-              <button onClick={() => saveItem(editItem)} style={{ padding: '8px 14px', background: '#4CAF50', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Save</button>
+              <button onClick={() => saveItem(editItem)} style={{ padding: '8px 14px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>Save</button>
             </div>
           </div>
         </div>

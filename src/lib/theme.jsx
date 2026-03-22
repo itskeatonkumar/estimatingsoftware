@@ -24,18 +24,18 @@ function applyCSSVars(dark) {
   } else {
     r.style.setProperty('--bg',    '#ffffff');
     r.style.setProperty('--bg2',   '#ffffff');
-    r.style.setProperty('--bg3',   '#f5f5f5');
-    r.style.setProperty('--bg4',   '#fafafa');
-    r.style.setProperty('--bg5',   '#f0f0f0');
-    r.style.setProperty('--bd',    '#e0e0e0');
-    r.style.setProperty('--bd2',   '#d0d0d0');
-    r.style.setProperty('--tx',    '#333333');
-    r.style.setProperty('--tx2',   '#666666');
-    r.style.setProperty('--tx3',   '#999999');
-    r.style.setProperty('--tx4',   '#999999');
-    r.style.setProperty('--inp',   '#ffffff');
-    r.style.setProperty('--inpbd', '#e0e0e0');
-    r.style.setProperty('--inptx', '#333333');
+    r.style.setProperty('--bg3',   '#F9FAFB');
+    r.style.setProperty('--bg4',   '#F3F4F6');
+    r.style.setProperty('--bg5',   '#F3F4F6');
+    r.style.setProperty('--bd',    '#E5E7EB');
+    r.style.setProperty('--bd2',   '#D1D5DB');
+    r.style.setProperty('--tx',    '#1A1A1A');
+    r.style.setProperty('--tx2',   '#4B5563');
+    r.style.setProperty('--tx3',   '#6B7280');
+    r.style.setProperty('--tx4',   '#9CA3AF');
+    r.style.setProperty('--inp',   '#F9FAFB');
+    r.style.setProperty('--inpbd', '#E5E7EB');
+    r.style.setProperty('--inptx', '#1A1A1A');
   }
 }
 
@@ -84,10 +84,10 @@ export function useIsMobile() {
 // Shared style constants
 export const labelStyle = {
   display: "block", fontSize: 12, fontWeight: 500,
-  color: "var(--tx2)", marginBottom: 5
+  color: "#6B7280", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.3,
 };
 export const inputStyle = {
-  width: "100%", background: "var(--inp)", border: "1px solid var(--inpbd)",
-  borderRadius: 4, padding: "8px 10px", color: "var(--inptx)", fontSize: 13,
-  outline: "none", boxSizing: "border-box",
+  width: "100%", background: "#F9FAFB", border: "1px solid #E5E7EB",
+  borderRadius: 6, padding: "10px 12px", color: "#1A1A1A", fontSize: 14,
+  outline: "none", boxSizing: "border-box", height: 44,
 };

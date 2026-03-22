@@ -66,7 +66,7 @@ function TakeoffItemModal({ item, onSave, onClose }) {
         </APMField>
         <APMField label="Color">
           <div style={{display:'flex',flexWrap:'wrap',gap:5,padding:'4px 0'}}>
-            {['#4CAF50','#5B9BD5','#F59E0B','#C0504D','#8B5CF6','#E8A317','#06B6D4','#EC4899','#84CC16','#A855F7','#14B8A6','#6B7280'].map(c=>(
+            {['#10B981','#5B9BD5','#F59E0B','#C0504D','#8B5CF6','#E8A317','#06B6D4','#EC4899','#84CC16','#A855F7','#14B8A6','#6B7280'].map(c=>(
               <button key={c} onClick={()=>set('color',c)}
                 style={{width:22,height:22,borderRadius:5,background:c,border:form.color===c?'2px solid #fff':'2px solid transparent',
                   cursor:'pointer',padding:0,flexShrink:0,boxShadow:form.color===c?`0 0 0 2px ${c}`:undefined,transition:'box-shadow 0.1s'}}/>
@@ -104,11 +104,11 @@ function TakeoffItemModal({ item, onSave, onClose }) {
         {/* Calculation breakdown */}
         {_isLH&&(
           <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:11,color:'#4CAF50'}}>{Number(form.quantity)||0} LF × {_h} ft = <strong>{Math.round(_rawQty*_h*10)/10} SF</strong></span>
+            <span style={{fontSize:11,color:'#10B981'}}>{Number(form.quantity)||0} LF × {_h} ft = <strong>{Math.round(_rawQty*_h*10)/10} SF</strong></span>
           </div>
         )}
         {(_pitchMult!==1||_wastePct>0)&&(
-          <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',fontSize:11,color:'#4CAF50'}}>
+          <div style={{background:'#E8F5E9',borderRadius:6,padding:'8px 14px',fontSize:11,color:'#10B981'}}>
             {_pitchMult!==1&&<span>{form.pitch} pitch ({_pitchMult}x) </span>}
             {_wastePct>0&&<span>+ {_wastePct}% waste </span>}
             = <strong>{Math.round(_effQty*10)/10} {_effUnit||form.unit}</strong>
@@ -513,16 +513,16 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
     <div style={{padding:'6px 8px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
       <button onClick={()=>{setOpen(true);setTimeout(()=>inputRef.current?.focus(),50);}}
         disabled={!selPlan?.id}
-        style={{width:'100%',background:'rgba(16,185,129,0.08)',border:'1px dashed rgba(16,185,129,0.4)',color:'#4CAF50',padding:'7px 0',borderRadius:5,cursor:selPlan?.id?'pointer':'not-allowed',fontSize:11,fontWeight:700,fontVariantNumeric:'tabular-nums',opacity:selPlan?.id?1:0.4}}>
+        style={{width:'100%',background:'rgba(16,185,129,0.08)',border:'1px dashed rgba(16,185,129,0.4)',color:'#10B981',padding:'7px 0',borderRadius:5,cursor:selPlan?.id?'pointer':'not-allowed',fontSize:11,fontWeight:700,fontVariantNumeric:'tabular-nums',opacity:selPlan?.id?1:0.4}}>
         + NEW ITEM
       </button>
     </div>
   );
 
   return(
-    <div style={{padding:'10px 8px',borderBottom:`1px solid #4CAF50`,background:'rgba(16,185,129,0.04)',flexShrink:0}}>
+    <div style={{padding:'10px 8px',borderBottom:`1px solid #10B981`,background:'rgba(16,185,129,0.04)',flexShrink:0}}>
       {/* Step 1: Name */}
-      <div style={{fontSize:8,color:'#4CAF50',fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:4}}>ITEM NAME</div>
+      <div style={{fontSize:8,color:'#10B981',fontVariantNumeric:'tabular-nums',letterSpacing:0.8,marginBottom:4}}>ITEM NAME</div>
       <input ref={inputRef} value={name} onChange={e=>setName(e.target.value)}
         placeholder="e.g. Sidewalk, Curb & Gutter, Footing..."
         onKeyDown={e=>{if(e.key==='Enter'&&name.trim()) handleCreate(); if(e.key==='Escape') setOpen(false);}}
@@ -540,9 +540,9 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
       <div style={{display:'flex',gap:4,marginBottom:10}}>
         {[{id:'area',icon:'⬡',label:'Area (SF)'},{id:'linear',icon:'━',label:'Linear (LF)'},{id:'count',icon:'✕',label:'Count (EA)'}].map(m=>(
           <button key={m.id} onClick={()=>setMt(m.id)}
-            style={{flex:1,padding:'5px 0',border:`1px solid ${mt===m.id?'#4CAF50':t.border}`,
+            style={{flex:1,padding:'5px 0',border:`1px solid ${mt===m.id?'#10B981':t.border}`,
               background:mt===m.id?'rgba(16,185,129,0.15)':'rgba(0,0,0,0.2)',
-              color:mt===m.id?'#4CAF50':'#888',
+              color:mt===m.id?'#10B981':'#888',
               borderRadius:4,cursor:'pointer',fontSize:9,fontVariantNumeric:'tabular-nums',fontWeight:700}}>
             <div style={{fontSize:12}}>{m.icon}</div>
             <div style={{fontSize:8,marginTop:1}}>{m.label}</div>
@@ -552,7 +552,7 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
 
       <div style={{display:'flex',gap:5}}>
         <button onClick={handleCreate} disabled={!name.trim()||saving}
-          style={{flex:1,background:'#4CAF50',border:'none',color:'#000',padding:'7px 0',borderRadius:4,cursor:name.trim()?'pointer':'not-allowed',fontSize:11,fontWeight:700,opacity:name.trim()?1:0.4}}>
+          style={{flex:1,background:'#10B981',border:'none',color:'#000',padding:'7px 0',borderRadius:4,cursor:name.trim()?'pointer':'not-allowed',fontSize:11,fontWeight:700,opacity:name.trim()?1:0.4}}>
           {saving?'Saving...':'✓ Create & Start Measuring'}
         </button>
         <button onClick={()=>setOpen(false)}
@@ -632,11 +632,11 @@ function InlineItemEditor({ item, cat, onSave, onDelete }) {
       {/* Total */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,padding:'4px 6px',background:t.bg5,borderRadius:4}}>
         <span style={{fontSize:9,color:t.text4,fontVariantNumeric:'tabular-nums'}}>TOTAL</span>
-        <span style={{fontSize:12,fontWeight:700,color:'#4CAF50',fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span style={{fontSize:12,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
       {/* Actions */}
       <div style={{display:'flex',gap:4}}>
-        <button onClick={()=>onSave(form)} style={{flex:1,background:'#4CAF50',border:'none',color:'#000',padding:'5px 0',borderRadius:4,cursor:'pointer',fontSize:10,fontWeight:700}}>✓ Save</button>
+        <button onClick={()=>onSave(form)} style={{flex:1,background:'#10B981',border:'none',color:'#000',padding:'5px 0',borderRadius:4,cursor:'pointer',fontSize:10,fontWeight:700}}>✓ Save</button>
         <button onClick={onDelete} style={{background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#C0504D',padding:'5px 8px',borderRadius:4,cursor:'pointer',fontSize:10}}>✕</button>
       </div>
     </div>
