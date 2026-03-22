@@ -49,44 +49,62 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet }
         return ap - bp;
       });
 
+      // Build context — cap at 30000 chars total to stay under Vercel body limits
       let ocrContext = '';
+      const MAX_CONTEXT = 30000;
       for (const plan of sorted) {
         if (!plan.ocr_text || plan.ocr_text.length < 10) continue;
-        ocrContext += `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text}`;
+        const chunk = `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text}`;
+        if (ocrContext.length + chunk.length > MAX_CONTEXT) {
+          // Add truncated version of remaining sheets
+          ocrContext += `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text.slice(0, 500)}...`;
+          break;
+        }
+        ocrContext += chunk;
       }
 
-      // Items summary
       const itemsSummary = items.filter(i => i.plan_id != null).slice(0, 40)
         .map(i => `- ${i.description}: ${i.quantity || 0} ${i.unit}`).join('\n');
 
-      // Conversation history (last 10)
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+
+      const requestBody = {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        system: `You are a construction plan reading assistant. You have OCR text from ALL sheets in this plan set. Search ALL sheets for relevant information. Cite which sheet you found info on. Quote relevant text directly. Sheet prefixes: A=Architectural, S=Structural, C=Civil, E=Electrical, M=Mechanical, P=Plumbing, L=Landscape. Be specific — give exact numbers, dimensions, specs. Never make up information.`,
+        messages: [...history, {
+          role: 'user',
+          content: `Project: ${project.name}\nCurrent Sheet: ${selPlan?.name || 'None'}\n\n${itemsSummary ? 'Takeoff Items:\n' + itemsSummary + '\n\n' : ''}ALL PLAN SHEETS:\n${ocrContext}\n\nQuestion: ${q}`
+        }]
+      };
+
+      console.log('[PlanChat] sending request, context length:', ocrContext.length, 'sheets:', sorted.filter(p=>p.ocr_text?.length>10).length);
 
       const resp = await fetch('/api/claude', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 800,
-          system: `You are a construction plan reading assistant. You have access to OCR-extracted text from ALL sheets in this plan set. When answering questions:
-- Search ALL sheets for the relevant information, not just the current one
-- Structural info (PSI, rebar, concrete specs) is typically on S-series sheets
-- Architectural info (finishes, doors, windows) is on A-series sheets
-- Civil/site info (grading, utilities, paving) is on C-series sheets
-- Always cite which specific sheet you found the information on
-- If you find the answer, quote the relevant text directly
-- Sheet prefixes: A=Architectural, S=Structural, C=Civil, E=Electrical, M=Mechanical, P=Plumbing, L=Landscape, ES=Electrical Site
-- Be specific with your answers — give exact numbers, dimensions, and specs
-- If the text doesn't contain enough info to answer, say so honestly. Never make up dimensions or specifications.`,
-          messages: [...history, {
-            role: 'user',
-            content: `Project: ${project.name}\nCurrent Sheet: ${selPlan?.name || 'None'}\n\n${itemsSummary ? 'Takeoff Items:\n' + itemsSummary + '\n\n' : ''}ALL PLAN SHEETS:\n${ocrContext}\n\nQuestion: ${q}`
-          }]
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      console.log('[PlanChat] response status:', resp.status);
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.error('[PlanChat] API error:', resp.status, errText);
+        setMessages(prev => [...prev, { role: 'assistant', content: `API error (${resp.status}): ${errText.slice(0, 200)}` }]);
+        setLoading(false);
+        return;
+      }
+
       const json = await resp.json();
-      const reply = json?.content?.find(b => b.type === 'text')?.text?.trim() || 'Sorry, I could not process that question.';
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      console.log('[PlanChat] response:', JSON.stringify(json).slice(0, 300));
+
+      const reply = json?.content?.find(b => b.type === 'text')?.text?.trim();
+      if (!reply) {
+        console.error('[PlanChat] no text in response:', json);
+        setMessages(prev => [...prev, { role: 'assistant', content: 'No response from AI. Raw: ' + JSON.stringify(json).slice(0, 200) }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + e.message }]);
     }
