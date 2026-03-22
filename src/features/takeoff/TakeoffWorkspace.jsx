@@ -8,6 +8,7 @@ import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeL
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
 import { generateProposalPdf } from "./proposalPdf.js";
 import LibraryPanel from "./LibraryPanel.jsx";
+import PlanChat from "./PlanChat.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
@@ -210,6 +211,13 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     if(top==='roofing') return 'roofing';
     return 'general';
   };
+
+  // Listen for scope generation request from chat
+  useEffect(() => {
+    const handler = () => { setRightTab('estimate'); setEstSubTab('summary'); generateScope(); };
+    window.addEventListener('generateScope', handler);
+    return () => window.removeEventListener('generateScope', handler);
+  }, []);
 
   const generateScope = async () => {
     setAiScopeLoading(true);
@@ -5030,6 +5038,16 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           )}
           </div>
         </div>
+
+        {/* Plan Chat Assistant */}
+        <PlanChat project={project} plans={plans} items={items} selPlan={selPlan}
+          onOpenSheet={(p)=>{
+            setShowOverview(false);
+            if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
+            setSelPlan(p);
+            if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
+            else{setScale(null);setPresetScale('');}
+          }}/>
 
         {/* ── Right Tool Bar ── */}
         <div style={{width:52,flexShrink:0,display:'flex',flexDirection:'column',borderLeft:`1px solid ${t.border}`,background:t.bg2,alignItems:'center',paddingTop:4,gap:0,overflowY:'auto'}}>
