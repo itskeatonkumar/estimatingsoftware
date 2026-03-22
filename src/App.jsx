@@ -57,7 +57,15 @@ function AppShell() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [selProject, setSelProject] = useState(null);
-  const [hash, setHash] = useState(window.location.hash.replace('#', '') || '');
+  const [hash, setHash] = useState(() => {
+    // Handle path-based URLs → redirect to hash-based
+    const path = window.location.pathname;
+    if (path === '/signup' || path === '/login' || path === '/onboarding') {
+      window.location.replace('/#' + path);
+      return path;
+    }
+    return window.location.hash.replace('#', '') || '';
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

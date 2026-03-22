@@ -2,6 +2,11 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "framework": null,
+  "redirects": [
+    { "source": "/signup", "destination": "/#/signup", "permanent": false },
+    { "source": "/login", "destination": "/#/login", "permanent": false },
+    { "source": "/onboarding", "destination": "/#/onboarding", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
