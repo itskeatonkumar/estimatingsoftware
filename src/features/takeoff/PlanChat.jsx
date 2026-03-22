@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../lib/supabase.js';
-import { AI_MODEL_FAST } from '../../lib/constants.js';
 
 const SUGGESTIONS = [
   "What specs are called out on this sheet?",
@@ -35,43 +34,52 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet }
     setLoading(true);
 
     try {
-      // Decide context scope
-      const isProjectWide = /which sheet|find|where|all sheets|every|project/i.test(q);
-      const isQuantity = /how many|total|quantity|count/i.test(q);
-      const isScopeQ = /write scope|generate scope|bid exclusion|terms and condition/i.test(q);
-
-      if (isScopeQ) {
+      // Scope redirect
+      if (/write scope|generate scope|bid exclusion|terms and condition/i.test(q)) {
         setMessages(prev => [...prev, { role: 'assistant', content: '_scope_redirect_' }]);
         setLoading(false);
         return;
       }
 
+      // Build FULL context from ALL sheets — sorted by discipline priority
+      const priority = { 'S': 1, 'A': 2, 'C': 3, 'E': 4, 'M': 5, 'P': 6, 'L': 7, 'F': 8 };
+      const sorted = [...plans].sort((a, b) => {
+        const ap = priority[(a.name || '')[0]?.toUpperCase()] || 99;
+        const bp = priority[(b.name || '')[0]?.toUpperCase()] || 99;
+        return ap - bp;
+      });
+
       let ocrContext = '';
-      if (isProjectWide) {
-        ocrContext = plans.slice(0, 15).map(p => `[${p.name}]: ${(p.ocr_text || '').slice(0, 250)}`).join('\n\n');
-      } else if (selPlan?.ocr_text) {
-        ocrContext = `[${selPlan.name}]:\n${selPlan.ocr_text.slice(0, 3500)}`;
-      } else {
-        ocrContext = plans.slice(0, 5).map(p => `[${p.name}]: ${(p.ocr_text || '').slice(0, 400)}`).join('\n\n');
+      for (const plan of sorted) {
+        if (!plan.ocr_text || plan.ocr_text.length < 10) continue;
+        ocrContext += `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text}`;
       }
 
-      let itemsSummary = '';
-      if (isQuantity || items.length <= 30) {
-        itemsSummary = items.filter(i => i.plan_id != null).slice(0, 30).map(i => `- ${i.description}: ${i.quantity || 0} ${i.unit}`).join('\n');
-      }
+      // Items summary
+      const itemsSummary = items.filter(i => i.plan_id != null).slice(0, 40)
+        .map(i => `- ${i.description}: ${i.quantity || 0} ${i.unit}`).join('\n');
 
-      // Build conversation (last 10 messages)
+      // Conversation history (last 10)
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
 
       const resp = await fetch('/api/claude', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 500,
-          system: "You are a construction plan reading assistant for ScopeTakeoff estimating software. Answer questions about construction plans based on the OCR text provided. Be concise and specific. If you can identify which sheet contains the answer, mention the sheet name. If the text doesn't contain enough info, say so honestly. Never make up dimensions or specifications.",
+          max_tokens: 800,
+          system: `You are a construction plan reading assistant. You have access to OCR-extracted text from ALL sheets in this plan set. When answering questions:
+- Search ALL sheets for the relevant information, not just the current one
+- Structural info (PSI, rebar, concrete specs) is typically on S-series sheets
+- Architectural info (finishes, doors, windows) is on A-series sheets
+- Civil/site info (grading, utilities, paving) is on C-series sheets
+- Always cite which specific sheet you found the information on
+- If you find the answer, quote the relevant text directly
+- Sheet prefixes: A=Architectural, S=Structural, C=Civil, E=Electrical, M=Mechanical, P=Plumbing, L=Landscape, ES=Electrical Site
+- Be specific with your answers — give exact numbers, dimensions, and specs
+- If the text doesn't contain enough info to answer, say so honestly. Never make up dimensions or specifications.`,
           messages: [...history, {
             role: 'user',
-            content: `Project: ${project.name}\nCurrent Sheet: ${selPlan?.name || 'None'}\n\nSheet Text:\n${ocrContext.slice(0, 4000)}\n${itemsSummary ? '\nTakeoff Items:\n' + itemsSummary : ''}\n\nQuestion: ${q}`
+            content: `Project: ${project.name}\nCurrent Sheet: ${selPlan?.name || 'None'}\n\n${itemsSummary ? 'Takeoff Items:\n' + itemsSummary + '\n\n' : ''}ALL PLAN SHEETS:\n${ocrContext}\n\nQuestion: ${q}`
           }]
         })
       });
