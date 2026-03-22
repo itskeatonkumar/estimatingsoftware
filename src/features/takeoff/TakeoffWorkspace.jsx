@@ -191,6 +191,60 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
     address: project.client_address || '', email: project.client_email || '', phone: project.client_phone || '',
   });
   const [editModal, setEditModal] = useState(null); // 'scope'|'terms'|'client'|'company'|null
+  const [aiScopeLoading, setAiScopeLoading] = useState(false);
+  const [aiScopeDraft, setAiScopeDraft] = useState(null); // {scope, terms} from AI
+
+  const DEFAULT_TERMS = {
+    concrete:['This bid is good for thirty (30) days from the bid date.','We are insured and bondable (Bond not included).','We comply with Davis-Bacon and Related Acts for wages and reporting if required. Otherwise, Nonunion.','We exclude rock demolition.','We exclude detectable warning mats.','We exclude any waterproofing or drainage.','Standard curing methods will be applied.','Clear and safe access to the work area is required.','Assumes that the subgrade is at proper elevation and compacted.','No concrete or soil testing. No termite treatment.','Traffic Control – Not included, available upon request.','We do not supply anchor bolts, steel embeds, plates, conduit, etc.','We have not included admixtures. Hot/cold weather admixtures will be at cost.'],
+    painting:['This bid is good for thirty (30) days from the bid date.','We are insured and bondable (Bond not included).','Price based on standard surface conditions. Excessive patching or skim coating is not included.','Lead paint abatement or testing is not included.','Wallpaper removal is not included unless noted.','Moving of furniture or equipment is not included.','Scaffolding or lift rental is not included for areas above 12 feet.','Assumes normal working hours (7am-5pm Monday-Friday).','Two coats of paint unless otherwise specified.','Color changes beyond those specified may result in additional cost.'],
+    roofing:['This bid is good for thirty (30) days from the bid date.','We are insured and bondable (Bond not included).','Structural decking repair is not included.','Interior damage from existing leaks is not included.','Permits and inspections are not included unless noted.','Temporary weather protection during tear-off is included.','Disposal of existing roofing materials is included.','Manufacturer warranty requires separate registration.','Price assumes dry conditions. Rain delays may extend schedule.'],
+    general:['This bid is good for thirty (30) days from the bid date.','We are insured and bondable (Bond not included).','We comply with Davis-Bacon and Related Acts if required.','Clear and safe access to the work area is required.','Work does not include addressing unforeseen conditions.','Normal working hours assumed (7am-5pm Monday-Friday).','Permits and inspections not included unless noted.'],
+  };
+
+  const getPrimaryTrade = () => {
+    const catCounts = {};
+    items.filter(i=>i.plan_id!=null).forEach(i=>{ catCounts[i.category] = (catCounts[i.category]||0)+1; });
+    const top = Object.entries(catCounts).sort((a,b)=>b[1]-a[1])[0]?.[0]||'other';
+    if(['site_concrete','building_concrete','flatwork','foundations','curb_gutter'].includes(top)) return 'concrete';
+    if(top==='painting') return 'painting';
+    if(top==='roofing') return 'roofing';
+    return 'general';
+  };
+
+  const generateScope = async () => {
+    setAiScopeLoading(true);
+    try {
+      const projItems = items.filter(i=>i.plan_id!=null);
+      const itemList = projItems.slice(0,30).map(i=>`- ${i.description}: ${i.quantity||0} ${i.unit}`).join('\n');
+      const ocrSamples = plans.slice(0,3).map(p=>p.ocr_text?.slice(0,800)||'').filter(Boolean).join('\n---\n');
+      const co = companyProfile?.name || 'Our company';
+      const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        model:AI_MODEL,max_tokens:1500,
+        messages:[{role:'user',content:`You are a construction estimator writing a professional scope of work for a bid proposal.
+
+Project: ${project.name}
+Address: ${project.address||'N/A'}
+GC: ${project.gc_name||'N/A'}
+Bid Date: ${project.bid_date||'N/A'}
+Company: ${co}
+
+Takeoff Items:
+${itemList}
+
+Plan Notes:
+${ocrSamples.slice(0,2000)}
+
+Write a professional Description of Work paragraph starting with "${co} proposes to provide all materials and labor as required to perform..." that specifically mentions the work items measured above. Reference plan dates. Keep it to 2-3 sentences.
+
+Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
+      })});
+      const json = await resp.json();
+      const text = json?.content?.find(b=>b.type==='text')?.text?.trim()||'';
+      if(text) setAiScopeDraft(text);
+      else alert('AI did not generate a scope.');
+    } catch(e){ alert('Scope generation failed: '+e.message); }
+    setAiScopeLoading(false);
+  };
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
@@ -5290,11 +5344,23 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
                     <span style={{color:proposalScope?'#10B981':'#ccc',fontSize:14}}>{proposalScope?'✓':'○'}</span>
                     <span style={{flex:1,fontSize:13,color:'#333'}}>Scope of Work</span>
+                    <button onClick={generateScope} disabled={aiScopeLoading}
+                      style={{background:'none',border:'1px solid #8B5CF640',color:'#8B5CF6',cursor:'pointer',fontSize:10,padding:'2px 8px',borderRadius:4,fontWeight:500}}>
+                      {aiScopeLoading?'Generating...':'✦ AI Generate'}
+                    </button>
                     <button onClick={()=>setEditModal('scope')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
                     <span style={{color:proposalTerms?'#10B981':'#ccc',fontSize:14}}>{proposalTerms?'✓':'○'}</span>
                     <span style={{flex:1,fontSize:13,color:'#333'}}>Terms and Conditions</span>
+                    {!proposalTerms&&<button onClick={()=>{
+                      const trade=getPrimaryTrade();
+                      const terms=(DEFAULT_TERMS[trade]||DEFAULT_TERMS.general).join('\n');
+                      setProposalTerms(terms);
+                      try{localStorage.setItem(`proposalTerms_${project.id}`,terms);}catch{}
+                    }} style={{background:'none',border:'1px solid #10B98140',color:'#10B981',cursor:'pointer',fontSize:10,padding:'2px 8px',borderRadius:4,fontWeight:500}}>
+                      Auto-fill
+                    </button>}
                     <button onClick={()=>setEditModal('terms')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}}>Edit</button>
                   </div>
                   {proposalScope&&proposalTerms?(
@@ -5355,6 +5421,26 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
               </div>
 
               {/* ── Modals ── */}
+              {/* AI Scope Draft Preview */}
+              {aiScopeDraft&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setAiScopeDraft(null)}>
+                  <div style={{background:'#fff',borderRadius:12,padding:24,width:560,maxHeight:'80vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:16,fontWeight:600,color:'#1A1A1A',marginBottom:4}}>AI-Generated Scope of Work</div>
+                    <div style={{fontSize:12,color:'#9CA3AF',marginBottom:16}}>Review and edit, then click Apply</div>
+                    <textarea id="_aiScopeTA" defaultValue={aiScopeDraft} rows={8}
+                      style={{width:'100%',border:'1px solid #E5E7EB',borderRadius:6,padding:12,fontSize:13,color:'#1A1A1A',outline:'none',resize:'vertical',boxSizing:'border-box',background:'#F9FAFB'}}/>
+                    <div style={{display:'flex',gap:8,marginTop:12,justifyContent:'flex-end'}}>
+                      <button onClick={()=>setAiScopeDraft(null)} style={{background:'#fff',border:'1px solid #E5E7EB',color:'#6B7280',padding:'8px 16px',borderRadius:6,cursor:'pointer',fontSize:12}}>Discard</button>
+                      <button onClick={()=>{
+                        const v=document.getElementById('_aiScopeTA').value;
+                        setProposalScope(v);
+                        try{localStorage.setItem(`proposalScope_${project.id}`,v);}catch{}
+                        setAiScopeDraft(null);
+                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:500}}>Apply Scope</button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {editModal==='scope'&&(
                 <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
                   <div style={{background:'#fff',borderRadius:8,padding:24,width:560,maxHeight:'80vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
