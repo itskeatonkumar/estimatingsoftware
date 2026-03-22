@@ -8,7 +8,7 @@ const SUGGESTIONS = [
   "What concrete PSI is specified?",
 ];
 
-export default function PlanChat({ project, plans, items, selPlan, onOpenSheet }) {
+export default function PlanChat({ project, plans, items, selPlan, onOpenSheet, onReextract }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(sessionStorage.getItem(`chat_${project.id}`) || '[]'); } catch { return []; }
@@ -49,15 +49,16 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet }
         return ap - bp;
       });
 
-      // Build context — cap at 30000 chars total to stay under Vercel body limits
+      // Build context — cap at 30000 chars, flag incomplete sheets
       let ocrContext = '';
       const MAX_CONTEXT = 30000;
       for (const plan of sorted) {
-        if (!plan.ocr_text || plan.ocr_text.length < 10) continue;
-        const chunk = `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text}`;
+        const incomplete = !plan.ocr_text || plan.ocr_text.length < 50;
+        const text = plan.ocr_text || 'No text extracted';
+        const tag = incomplete ? ' [OCR INCOMPLETE - text may be missing]' : '';
+        const chunk = `\n\n=== SHEET: ${plan.name}${tag} ===\n${text}`;
         if (ocrContext.length + chunk.length > MAX_CONTEXT) {
-          // Add truncated version of remaining sheets
-          ocrContext += `\n\n=== SHEET: ${plan.name} ===\n${plan.ocr_text.slice(0, 500)}...`;
+          ocrContext += `\n\n=== SHEET: ${plan.name}${tag} ===\n${text.slice(0, 500)}...`;
           break;
         }
         ocrContext += chunk;
@@ -124,27 +125,76 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet }
         </div>
       );
     }
-    // Make sheet names clickable
-    let result = text;
-    const parts = [];
-    let last = 0;
+    // Make sheet names clickable + detect incomplete sheet mentions
+    const elements = [];
+    let remaining = text;
+    let key = 0;
+
+    // Find all sheet name occurrences
     for (const plan of plans) {
       if (!plan.name) continue;
-      let idx = result.indexOf(plan.name, last);
-      while (idx !== -1) {
-        if (idx > last) parts.push(result.slice(last, idx));
-        parts.push({ sheet: plan });
-        last = idx + plan.name.length;
-        idx = result.indexOf(plan.name, last);
+      const parts = remaining.split(plan.name);
+      if (parts.length > 1) {
+        const incomplete = !plan.ocr_text || plan.ocr_text.length < 50;
+        const newRemaining = [];
+        for (let i = 0; i < parts.length; i++) {
+          newRemaining.push(parts[i]);
+          if (i < parts.length - 1) {
+            elements.push({ key: key++, type: 'text', value: remaining.slice(0, remaining.indexOf(plan.name)) });
+            elements.push({ key: key++, type: 'sheet', plan, incomplete });
+            remaining = remaining.slice(remaining.indexOf(plan.name) + plan.name.length);
+          }
+        }
       }
     }
-    if (last < result.length) parts.push(result.slice(last));
-    if (parts.length <= 1) return text;
-    return parts.map((p, i) =>
-      typeof p === 'string' ? <span key={i}>{p}</span> :
-        <span key={i} onClick={() => onOpenSheet?.(p.sheet)}
-          style={{ color: '#10B981', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>{p.sheet.name}</span>
-    );
+
+    // Simple approach: split by plan names and render
+    let result = text;
+    const renderParts = [];
+    let lastIdx = 0;
+    const sortedPlans = [...plans].filter(p => p.name).sort((a, b) => b.name.length - a.name.length);
+    for (const plan of sortedPlans) {
+      let idx = result.indexOf(plan.name);
+      while (idx !== -1) {
+        if (idx > lastIdx) renderParts.push({ type: 'text', value: result.slice(lastIdx, idx) });
+        const incomplete = !plan.ocr_text || plan.ocr_text.length < 50;
+        renderParts.push({ type: 'sheet', plan, incomplete });
+        lastIdx = idx + plan.name.length;
+        idx = result.indexOf(plan.name, lastIdx);
+      }
+    }
+    if (lastIdx < result.length) renderParts.push({ type: 'text', value: result.slice(lastIdx) });
+    if (renderParts.length <= 1) {
+      // Check for "incomplete" or "missing text" mentions — offer re-extract
+      if (/incomplete|missing text|couldn't extract|no text/i.test(text)) {
+        const incompleteSheets = plans.filter(p => !p.ocr_text || p.ocr_text.length < 50);
+        if (incompleteSheets.length > 0 && onReextract) {
+          return <div>
+            {text}
+            <div style={{ marginTop: 8, padding: '6px 10px', background: '#F3E8FF', borderRadius: 6, fontSize: 11 }}>
+              <span style={{ color: '#6B21A8' }}>Sheets with incomplete text: </span>
+              {incompleteSheets.slice(0, 5).map((s, i) => (
+                <button key={i} onClick={() => onReextract(s)}
+                  style={{ background: 'none', border: 'none', color: '#8B5CF6', cursor: 'pointer', fontSize: 11, fontWeight: 500, textDecoration: 'underline', marginRight: 6 }}>
+                  {s.name}
+                </button>
+              ))}
+              <span style={{ color: '#9CA3AF', fontSize: 10 }}>(1 AI credit each)</span>
+            </div>
+          </div>;
+        }
+      }
+      return text;
+    }
+    return renderParts.map((p, i) => {
+      if (p.type === 'text') return <span key={i}>{p.value}</span>;
+      return <span key={i}>
+        <span onClick={() => onOpenSheet?.(p.plan)}
+          style={{ color: '#10B981', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>{p.plan.name}</span>
+        {p.incomplete && onReextract && <button onClick={(e) => { e.stopPropagation(); onReextract(p.plan); }}
+          style={{ background: 'none', border: 'none', color: '#8B5CF6', cursor: 'pointer', fontSize: 9, marginLeft: 4 }}>[re-extract]</button>}
+      </span>;
+    });
   };
 
   if (!open) {

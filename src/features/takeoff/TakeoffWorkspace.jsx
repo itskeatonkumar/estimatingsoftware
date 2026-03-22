@@ -5047,6 +5047,37 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             setSelPlan(p);
             if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
             else{setScale(null);setPresetScale('');}
+          }}
+          onReextract={async(plan)=>{
+            if(!window.confirm(`Re-extract text from "${plan.name}" using AI? (1 credit)`)) return;
+            try{
+              const res=await fetch(plan.file_url);
+              const blob=await res.blob();
+              const img=new Image();
+              const bUrl=URL.createObjectURL(blob);
+              await new Promise((r,j)=>{img.onload=r;img.onerror=j;img.src=bUrl;});
+              URL.revokeObjectURL(bUrl);
+              const maxW=1500,ratio=Math.min(1,maxW/img.naturalWidth);
+              const c=document.createElement('canvas');
+              c.width=Math.round(img.naturalWidth*ratio);c.height=Math.round(img.naturalHeight*ratio);
+              c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+              const b64=c.toDataURL('image/jpeg',0.7).split(',')[1];
+              const apiRes=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({model:AI_MODEL,max_tokens:4000,
+                  messages:[{role:'user',content:[
+                    {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+                    {type:'text',text:'Extract ALL readable text from this construction plan sheet. Include every specification, note, dimension, label, and title block info. Return only the raw text, no formatting.'}
+                  ]}]
+                })
+              });
+              const json=await apiRes.json();
+              const text=json?.content?.find(b=>b.type==='text')?.text?.trim()||'';
+              if(text){
+                await supabase.from('precon_plans').update({ocr_text:text}).eq('id',plan.id);
+                setPlans(prev=>prev.map(p=>p.id===plan.id?{...p,ocr_text:text}:p));
+                alert(`Re-extracted ${text.length} chars from "${plan.name}"`);
+              } else { alert('AI returned no text.'); }
+            }catch(e){alert('Re-extract failed: '+e.message);}
           }}/>
 
         {/* ── Right Tool Bar ── */}
