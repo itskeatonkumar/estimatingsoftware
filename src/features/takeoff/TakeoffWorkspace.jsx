@@ -2379,10 +2379,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             if(activeCondId && tool!=='select' && tool!=='cutout') return;
             // ── Cutout: click on an area shape to arm it for cutting ──
             if(tool==='cutout'){
-              if(mt==='area'){
+              if(!activeCondId && mt==='area'){
                 e.stopPropagation();
                 setActiveCondId(it.id);
               }
+              // Already armed — let click pass through to SVG handler for drawing hole points
               return;
             }
             if(tool==='select'||(e.ctrlKey||e.metaKey)){
