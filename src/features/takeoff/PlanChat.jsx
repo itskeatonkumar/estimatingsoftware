@@ -41,9 +41,18 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet, 
         return;
       }
 
-      // Build FULL context from ALL sheets — sorted by discipline priority
+      // Fetch fresh OCR data directly from DB — don't trust the plans prop
+      const {data:freshPlans} = await supabase.from('precon_plans').select('id, name, ocr_text').eq('project_id', project.id);
+      const planOcrMap = new Map((freshPlans||[]).map(p=>[p.id, p]));
+
+      // Merge fresh OCR into plans array
+      const plansWithOcr = plans.map(p => ({...p, ocr_text: planOcrMap.get(p.id)?.ocr_text || p.ocr_text}));
+
+      console.log('[PlanChat] sheets with OCR:', plansWithOcr.filter(p=>p.ocr_text?.length>10).length, '/', plansWithOcr.length);
+
+      // Sort by discipline priority
       const priority = { 'S': 1, 'A': 2, 'C': 3, 'E': 4, 'M': 5, 'P': 6, 'L': 7, 'F': 8 };
-      const sorted = [...plans].sort((a, b) => {
+      const sorted = [...plansWithOcr].sort((a, b) => {
         const ap = priority[(a.name || '')[0]?.toUpperCase()] || 99;
         const bp = priority[(b.name || '')[0]?.toUpperCase()] || 99;
         return ap - bp;
@@ -79,7 +88,9 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet, 
         }]
       };
 
-      console.log('[PlanChat] sending request, context length:', ocrContext.length, 'sheets:', sorted.filter(p=>p.ocr_text?.length>10).length);
+      console.log('[PlanChat] sending request, context length:', ocrContext.length, 'sheets with text:', sorted.filter(p=>p.ocr_text?.length>10).length);
+      console.log('[PlanChat] context includes PSI:', ocrContext.toUpperCase().includes('PSI'));
+      console.log('[PlanChat] S0.3 text length:', plansWithOcr.find(p=>p.name?.includes('S0.3'))?.ocr_text?.length || 0);
 
       const resp = await fetch('/api/claude', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
