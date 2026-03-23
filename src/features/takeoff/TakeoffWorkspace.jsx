@@ -460,7 +460,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       .then(({data})=>{
         if(data?.length){setCompanyProfiles(data);setSelCompanyProfile(data.find(c=>c.is_default)||data[0]);}
       }).catch(()=>{});
-    supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',project.id)
+    supabase.from('project_shares').select('*').eq('project_id',project.id)
       .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
   },[]);
 

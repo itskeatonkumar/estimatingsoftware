@@ -405,7 +405,7 @@ function ProjectList({ onSelectProject, user }) {
                         />
                         {p._shared&&<span style={{fontSize:8,background:'#EBF5FB',color:'#5B9BD5',padding:'1px 5px',borderRadius:8,flexShrink:0}}>Shared</span>}
                         <button onClick={e=>{e.stopPropagation();setShareProject(p);
-                          supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',p.id).then(({data})=>setShareMembers(data||[]));
+                          supabase.from('project_shares').select('*').eq('project_id',p.id).then(({data})=>setShareMembers(data||[]));
                         }} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',fontSize:12,flexShrink:0,padding:'0 2px'}} title="Share">&#128279;</button>
                       </div>
                       <div style={{ fontSize: 12, color: t.text3, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
