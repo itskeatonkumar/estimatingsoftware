@@ -5289,8 +5289,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           const its=allItems.filter(i=>i.category===cat.id);
           return its.length?{...cat,items:its,subtotal:its.reduce((s,i)=>s+(i.total_cost||0),0)}:null;
         }).filter(Boolean);
-        const GC_OVERHEAD = activeVer ? (activeVer.overhead_pct||0)/100 : overheadPct/100;
-        const PROFIT = activeVer ? (activeVer.profit_pct||0)/100 : profitPct/100;
+        const GC_OVERHEAD = activeVer ? (activeVer.overhead_percent||0)/100 : overheadPct/100;
+        const PROFIT = activeVer ? (activeVer.profit_percent||0)/100 : profitPct/100;
         const extendedCost = allItems.reduce((s,i)=>s+(i.total_cost||0),0);
         const sellingPrice = Math.round(extendedCost*(1+GC_OVERHEAD+PROFIT));
         const netProfit = sellingPrice - extendedCost;
@@ -5383,12 +5383,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               <select value={activeVersion||'live'} onChange={e=>setActiveVersion(e.target.value==='live'?null:e.target.value)}
                 style={{padding:'5px 8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#333',outline:'none',cursor:'pointer',background:'#fff'}}>
                 <option value="live">Current (Live)</option>
-                {estVersions.map(v=><option key={v.id} value={v.id}>{v.name} — ${Math.round(v.total||0).toLocaleString()}</option>)}
+                {estVersions.map(v=><option key={v.id} value={v.id}>{v.name} — ${Math.round(v.total_cost||0).toLocaleString()}</option>)}
               </select>
               <button onClick={async()=>{
                 const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent,pitch_multiplier:it.pitch_multiplier,height:it.height}));
                 const name=estVersions.length===0?'Original Bid':`Version ${estVersions.length+1}`;
-                const {data}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_type:'original',items_snapshot:snapshot,overhead_pct:overheadPct,profit_pct:profitPct,total:sellingPrice}]).select().single();
+                console.log('Saving version:', {project_id:project.id,name,items:snapshot.length});
+                const {data,error}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_number:estVersions.length+1,items_snapshot:snapshot,overhead_percent:overheadPct,profit_percent:profitPct,total_cost:sellingPrice}]).select().single();
+                if(error){console.error('Save version error:',error);alert('Failed to save version: '+error.message);return;}
+                console.log('Version saved:',data);
                 if(data) setEstVersions(prev=>[...prev,data]);
               }} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'5px 10px',borderRadius:4,cursor:'pointer',fontSize:11}}>
                 Save Version
@@ -6004,7 +6007,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:12,color:'#6B7280',marginBottom:4}}>Version Name</div>
                   <input value={newVersionName} onChange={e=>setNewVersionName(e.target.value)}
-                    placeholder={newVersionType==='addendum'?`ADD #${estVersions.filter(v=>v.version_type==='addendum').length+1}`:newVersionType==='change_order'?`CCD #${estVersions.filter(v=>v.version_type==='change_order').length+1}`:'Version Name'}
+                    placeholder={`Version ${estVersions.length+1}`}
                     style={{width:'100%',padding:'10px 12px',border:'1px solid #E5E7EB',borderRadius:6,fontSize:13,outline:'none',boxSizing:'border-box',background:'#F9FAFB'}}/>
                 </div>
                 <div style={{marginBottom:12}}>
@@ -6021,14 +6024,14 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                   <button onClick={()=>setShowNewVersion(false)} style={{padding:'8px 16px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:6,cursor:'pointer',fontSize:12}}>Cancel</button>
                   <button onClick={async()=>{
                     const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent||0,pitch_multiplier:it.pitch_multiplier||1,height:it.height||0}));
-                    const name=newVersionName.trim()||
-                      (newVersionType==='addendum'?`ADD #${estVersions.filter(v=>v.version_type==='addendum').length+1}`:
-                       newVersionType==='change_order'?`CCD #${estVersions.filter(v=>v.version_type==='change_order').length+1}`:
-                       `Version ${estVersions.length+1}`);
-                    const {data}=await supabase.from('estimate_versions').insert([{
-                      project_id:project.id, name, version_type:newVersionType,
-                      items_snapshot:snapshot, overhead_pct:overheadPct, profit_pct:profitPct, total:sellingPrice
+                    const name=newVersionName.trim()||`Version ${estVersions.length+1}`;
+                    console.log('Creating new version:', {project_id:project.id,name,items:snapshot.length});
+                    const {data,error}=await supabase.from('estimate_versions').insert([{
+                      project_id:project.id, name, version_number:estVersions.length+1,
+                      items_snapshot:snapshot, overhead_percent:overheadPct, profit_percent:profitPct, total_cost:sellingPrice
                     }]).select().single();
+                    if(error){console.error('Create version error:',error);alert('Failed to create version: '+error.message);return;}
+                    console.log('Version created:',data);
                     if(data){setEstVersions(prev=>[...prev,data]);setActiveVersion(data.id);}
                     setShowNewVersion(false);setNewVersionName('');
                   }} style={{padding:'8px 16px',background:'#10B981',border:'none',color:'#fff',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:500}}>
