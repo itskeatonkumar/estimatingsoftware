@@ -2916,8 +2916,27 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   };
 
   const exportAllMarked = async (withLegend=true) => {
-    const markedPlans = plans.filter(p=>items.some(i=>i.plan_id===p.id && i.points?.length));
-    if(!markedPlans.length){ alert('No plans with markup found.'); return; }
+    const markedSet = new Set(plans.filter(p=>items.some(i=>i.plan_id===p.id && i.points?.length)).map(p=>p.id));
+    if(!markedSet.size){ alert('No plans with markup found.'); return; }
+
+    // Order plans by folder: each folder's plans in order, then ungrouped last
+    const orderedIds = [];
+    const assignedIds = new Set();
+    const folderEntries = Object.entries(planSets).sort(([,a],[,b])=>(a.name||'').localeCompare(b.name||''));
+    for(const [,folder] of folderEntries){
+      if(folder.planIds){
+        for(const pid of folder.planIds){
+          if(markedSet.has(pid) && !assignedIds.has(pid)){ orderedIds.push(pid); assignedIds.add(pid); }
+        }
+      }
+    }
+    // Ungrouped: plans not in any folder, in their original order
+    for(const p of plans){
+      if(markedSet.has(p.id) && !assignedIds.has(p.id)) orderedIds.push(p.id);
+    }
+    const planMap = new Map(plans.map(p=>[p.id,p]));
+    const orderedPlans = orderedIds.map(id=>planMap.get(id)).filter(Boolean);
+
     setExporting(true); setShowExportMenu(false);
     try {
       // Load JSZip
@@ -2929,15 +2948,93 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         });
       }
       const zip = new window.JSZip();
-      for(let i=0;i<markedPlans.length;i++){
-        const plan=markedPlans[i];
-        setUploading(`Exporting ${i+1} / ${markedPlans.length}: ${plan.name}…`);
+      for(let i=0;i<orderedPlans.length;i++){
+        const plan=orderedPlans[i];
+        setUploading(`Exporting ${i+1} / ${orderedPlans.length}: ${plan.name}…`);
         try {
           const blob = await exportPlanCanvas(plan, withLegend);
           const fname = `${String(i+1).padStart(2,'0')}_${plan.name.replace(/[^a-zA-Z0-9._-]/g,'_')}_takeoff.png`;
           zip.file(fname, blob);
         } catch(e){ console.warn('skip plan export',plan.name,e); }
       }
+
+      // Generate combined legend page
+      if(withLegend){
+        setUploading('Building legend…');
+        try {
+          const allMarkedItems = items.filter(i=>i.points?.length && markedSet.has(i.plan_id));
+          const legendMap = new Map();
+          allMarkedItems.forEach(it=>{
+            const key = it.description||'Unnamed';
+            if(legendMap.has(key)){
+              legendMap.get(key).qty += (it.quantity||0);
+            } else {
+              legendMap.set(key, {color:it.color||'#10B981', qty:it.quantity||0, unit:it.unit||'', type:it.measurement_type||''});
+            }
+          });
+          const legendItems = [...legendMap.entries()];
+          if(legendItems.length){
+            const LW=1200, rowH=36, padX=40, padY=30, headerH=80, swSize=18, fs=18, fsSmall=14;
+            const LH = padY + headerH + legendItems.length*rowH + padY + 40;
+            const c = document.createElement('canvas'); c.width=LW; c.height=LH;
+            const cx = c.getContext('2d');
+            // White bg
+            cx.fillStyle='#fff'; cx.fillRect(0,0,LW,LH);
+            // Header
+            cx.fillStyle='#f3f4f6'; cx.fillRect(0,0,LW,headerH);
+            cx.fillStyle='#e5e7eb'; cx.fillRect(0,headerH,LW,1);
+            cx.fillStyle='#111827'; cx.font=`bold ${24}px Arial,sans-serif`;
+            cx.textAlign='left'; cx.textBaseline='middle';
+            cx.fillText(project.name||'Project', padX, headerH/2 - 10);
+            cx.fillStyle='#6b7280'; cx.font=`${fsSmall}px Arial,sans-serif`;
+            cx.fillText(`TAKEOFF LEGEND — ${legendItems.length} items across ${orderedPlans.length} sheets`, padX, headerH/2 + 14);
+            // Column headers
+            let hy = headerH + padY;
+            cx.fillStyle='#9ca3af'; cx.font=`bold ${fsSmall}px Arial,sans-serif`;
+            cx.textAlign='left'; cx.fillText('ITEM', padX + swSize + 12, hy);
+            cx.textAlign='right'; cx.fillText('QUANTITY', LW - padX - 120, hy);
+            cx.fillText('UNIT', LW - padX - 40, hy);
+            cx.fillText('TYPE', LW - padX, hy);
+            hy += 6;
+            cx.fillStyle='#e5e7eb'; cx.fillRect(padX, hy, LW-padX*2, 1);
+            hy += 10;
+            // Rows
+            legendItems.forEach(([desc,{color,qty,unit,type}],i)=>{
+              const ry = hy + i*rowH;
+              const midY = ry + rowH/2;
+              // Alternating bg
+              if(i%2===0){ cx.fillStyle='#f9fafb'; cx.fillRect(padX-4,ry,LW-padX*2+8,rowH); }
+              // Color swatch
+              cx.fillStyle=color;
+              cx.beginPath(); cx.moveTo(padX+2,midY-swSize/2+2);
+              cx.lineTo(padX+swSize-2,midY-swSize/2+2); cx.lineTo(padX+swSize-2,midY+swSize/2-2);
+              cx.lineTo(padX+2,midY+swSize/2-2); cx.closePath(); cx.fill();
+              cx.strokeStyle='rgba(0,0,0,0.15)'; cx.lineWidth=1; cx.stroke();
+              // Description
+              const label = desc.length>50 ? desc.slice(0,50)+'…' : desc;
+              cx.fillStyle='#1f2937'; cx.font=`${fs}px Arial,sans-serif`;
+              cx.textAlign='left'; cx.textBaseline='middle';
+              cx.fillText(label, padX+swSize+12, midY);
+              // Qty
+              cx.font=`bold ${fs}px Arial,sans-serif`; cx.fillStyle=color;
+              cx.textAlign='right';
+              cx.fillText(qty>0?`${Math.round(qty*10)/10}`:'—', LW-padX-120, midY);
+              // Unit
+              cx.fillStyle='#6b7280'; cx.font=`${fsSmall}px Arial,sans-serif`;
+              cx.fillText(unit, LW-padX-40, midY);
+              // Type
+              cx.fillText(type==='area'?'Area':type==='linear'?'Linear':type==='count'?'Count':type, LW-padX, midY);
+            });
+            // Footer
+            cx.fillStyle='#9ca3af'; cx.font=`${12}px Arial,sans-serif`;
+            cx.textAlign='center';
+            cx.fillText(`Generated ${new Date().toLocaleDateString()} — ${project.name}`, LW/2, LH-16);
+            const legendBlob = await new Promise(r=>c.toBlob(r,'image/png'));
+            zip.file(`${String(orderedPlans.length+1).padStart(2,'0')}_LEGEND.png`, legendBlob);
+          }
+        } catch(e){ console.warn('legend generation failed',e); }
+      }
+
       setUploading('Building ZIP…');
       const zipBlob = await zip.generateAsync({type:'blob', compression:'STORE'});
       const a=document.createElement('a');
