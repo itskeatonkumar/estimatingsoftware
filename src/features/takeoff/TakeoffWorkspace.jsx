@@ -261,6 +261,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [newVersionType, setNewVersionType] = useState('addendum');
   const [companyProfiles, setCompanyProfiles] = useState([]);
   const [selCompanyProfile, setSelCompanyProfile] = useState(null);
+  const [showCompanyMgmt, setShowCompanyMgmt] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(null); // null=list, {}=new, {id:...}=editing
+  const [logoUploading, setLogoUploading] = useState(false);
   const [rectDrag, setRectDrag] = useState(null); // {start:{x,y}} for shift-drag rectangle
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
@@ -458,7 +461,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       .then(({data})=>{if(data) setEstVersions(data);}).catch(()=>{});
     supabase.from('company_profiles').select('*').order('is_default',{ascending:false})
       .then(({data})=>{
-        if(data?.length){setCompanyProfiles(data);setSelCompanyProfile(data.find(c=>c.is_default)||data[0]);}
+        if(data?.length){
+          setCompanyProfiles(data);
+          const saved=project.company_profile_id?data.find(c=>c.id===project.company_profile_id):null;
+          const sel=saved||data.find(c=>c.is_default)||data[0];
+          setSelCompanyProfile(sel);setCompanyProfile(sel);
+        }
       }).catch(()=>{});
     supabase.from('project_shares').select('*').eq('project_id',project.id)
       .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
@@ -5412,16 +5420,24 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               ))}
             </div>
             {/* Company selector */}
-            <select value={proposalCompany} onChange={e=>setProposalCompany(e.target.value)}
-              style={{padding:'6px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',cursor:'pointer'}}>
-              <option value="fcg">FCG</option>
-              <option value="brc">BR Concrete</option>
-              <option value="p4s">P4S Corp</option>
-            </select>
-            <button onClick={()=>generateProposalPdf({
+            {companyProfiles.length>0?(
+              <select value={selCompanyProfile?.id||''} onChange={e=>{
+                const cp=companyProfiles.find(c=>String(c.id)===e.target.value);
+                if(cp){setSelCompanyProfile(cp);setCompanyProfile(cp);
+                  supabase.from('precon_projects').update({company_profile_id:cp.id}).eq('id',project.id).then(()=>{});}
+              }} style={{padding:'6px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',cursor:'pointer'}}>
+                {companyProfiles.map(cp=><option key={cp.id} value={cp.id}>{cp.name}</option>)}
+              </select>
+            ):(
+              <button onClick={()=>{setEditingProfile({});setShowCompanyMgmt(true);}}
+                style={{padding:'6px 10px',border:'1px dashed #ccc',borderRadius:4,fontSize:12,color:'#999',background:'#fff',cursor:'pointer'}}>
+                + Add Company
+              </button>
+            )}
+            <button onClick={async()=>await generateProposalPdf({
                 project, items, plans, categories:TAKEOFF_CATS,
                 overheadPct, profitPct, companyId:proposalCompany,
-                clientInfo, companyProfile, proposalScope, proposalTerms,
+                clientInfo, companyProfile:selCompanyProfile||companyProfile, proposalScope, proposalTerms,
               })}
               style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
               &#8595; Download Proposal PDF
@@ -5525,22 +5541,22 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     {companyProfiles.length>1?(
                       <select value={selCompanyProfile?.id||''} onChange={e=>{
                         const cp=companyProfiles.find(c=>String(c.id)===e.target.value);
-                        setSelCompanyProfile(cp);
-                        if(cp) setCompanyProfile({name:cp.name,address:cp.address,city:`${cp.city||''}${cp.state?', '+cp.state:''} ${cp.zip||''}`.trim(),phone:cp.phone,email:cp.email});
+                        if(cp){setSelCompanyProfile(cp);setCompanyProfile(cp);
+                          supabase.from('precon_projects').update({company_profile_id:cp.id}).eq('id',project.id).then(()=>{});}
                       }} style={{flex:1,fontSize:13,fontWeight:600,color:'#333',border:'none',outline:'none',background:'transparent',cursor:'pointer'}}>
                         {companyProfiles.map(cp=><option key={cp.id} value={cp.id}>{cp.name}</option>)}
                       </select>
                     ):(
                       <span style={{flex:1,fontSize:16,fontWeight:600,color:'#333'}}>{selCompanyProfile?.name||companyProfile?.name||'Your Company'}</span>
                     )}
-                    <button onClick={()=>setEditModal('company')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:16}}>&#8942;</button>
+                    <button onClick={()=>{setEditingProfile(null);setShowCompanyMgmt(true);}} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:12}} title="Manage Company Profiles">&#9881;</button>
                   </div>
                   {(selCompanyProfile||companyProfile?.name)?(()=>{
                     const cp=selCompanyProfile||companyProfile;
                     return(
                     <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
                       {cp.logo_url?(
-                        <img src={cp.logo_url} alt="" style={{width:48,height:48,objectFit:'contain',borderRadius:4,flexShrink:0}}/>
+                        <img src={cp.logo_url} alt="" style={{width:150,height:60,objectFit:'contain',borderRadius:4,flexShrink:0}}/>
                       ):(
                         <div style={{width:36,height:36,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
                           {(cp.name||'?')[0]}
@@ -5554,7 +5570,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                       </div>
                     </div>);
                   })():(
-                    <button onClick={()=>setEditModal('company')}
+                    <button onClick={()=>{setEditingProfile({});setShowCompanyMgmt(true);}}
                       style={{background:'none',border:'1px dashed #ccc',color:'#999',padding:'12px 20px',borderRadius:4,cursor:'pointer',fontSize:13,width:'100%'}}>
                       + Add Company Profile
                     </button>
@@ -5648,26 +5664,131 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                   </div>
                 </div>
               )}
-              {editModal==='company'&&(
-                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setEditModal(null)}>
-                  <div style={{background:'#fff',borderRadius:8,padding:24,width:440}} onClick={e=>e.stopPropagation()}>
-                    <div style={{fontSize:16,fontWeight:600,color:'#333',marginBottom:16}}>Your Company Profile</div>
-                    {[['name','Company Name'],['address','Address'],['city','City, State, ZIP'],['phone','Phone'],['email','Email']].map(([k,lbl])=>(
-                      <div key={k} style={{marginBottom:10}}>
-                        <div style={{fontSize:12,color:'#666',marginBottom:4}}>{lbl}</div>
-                        <input defaultValue={companyProfile?.[k]||''} id={`_co_${k}`}
-                          style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:'8px 10px',fontSize:13,color:'#333',outline:'none',boxSizing:'border-box'}}/>
-                      </div>
-                    ))}
-                    <div style={{display:'flex',gap:8,marginTop:16,justifyContent:'flex-end'}}>
-                      <button onClick={()=>setEditModal(null)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12}}>Cancel</button>
-                      <button onClick={()=>{
-                        const cp={};
-                        ['name','address','city','phone','email'].forEach(k=>{cp[k]=document.getElementById(`_co_${k}`).value.trim();});
-                        setCompanyProfile(cp);
-                        try{localStorage.setItem('companyProfile',JSON.stringify(cp));}catch{}
-                        setEditModal(null);
-                      }} style={{background:'#10B981',border:'none',color:'#fff',padding:'8px 16px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>Save</button>
+              {/* Company Profiles Management Modal */}
+              {showCompanyMgmt&&(
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>{setShowCompanyMgmt(false);setEditingProfile(null);}}>
+                  <div style={{background:'#fff',borderRadius:12,padding:0,width:540,maxHeight:'85vh',overflow:'hidden',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+                    {/* Header */}
+                    <div style={{padding:'16px 24px',borderBottom:'1px solid #E5E7EB',display:'flex',alignItems:'center'}}>
+                      {editingProfile?(
+                        <>
+                          <button onClick={()=>setEditingProfile(null)} style={{background:'none',border:'none',color:'#666',cursor:'pointer',fontSize:14,marginRight:8}}>&larr;</button>
+                          <span style={{fontSize:16,fontWeight:600,color:'#333',flex:1}}>{editingProfile.id?'Edit Company Profile':'New Company Profile'}</span>
+                        </>
+                      ):(
+                        <span style={{fontSize:16,fontWeight:600,color:'#333',flex:1}}>Company Profiles</span>
+                      )}
+                      <button onClick={()=>{setShowCompanyMgmt(false);setEditingProfile(null);}} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:18}}>&times;</button>
+                    </div>
+                    <div style={{padding:24,overflowY:'auto',flex:1}}>
+                      {editingProfile?(()=>{
+                        const p=editingProfile;
+                        return(<>
+                          {/* Logo upload */}
+                          <div style={{marginBottom:16}}>
+                            <div style={{fontSize:12,color:'#666',marginBottom:6}}>Company Logo</div>
+                            <div style={{display:'flex',alignItems:'center',gap:12}}>
+                              {p.logo_url?(
+                                <img src={p.logo_url} alt="" style={{width:150,height:60,objectFit:'contain',border:'1px solid #E5E7EB',borderRadius:4}}/>
+                              ):(
+                                <div style={{width:150,height:60,border:'1px dashed #ccc',borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',color:'#999',fontSize:11}}>No logo</div>
+                              )}
+                              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                                <label style={{background:'#F3F4F6',border:'1px solid #E5E7EB',padding:'6px 12px',borderRadius:4,cursor:'pointer',fontSize:11,color:'#333',textAlign:'center'}}>
+                                  {logoUploading?'Uploading...':'Upload Logo'}
+                                  <input type="file" accept="image/png,image/jpeg,image/svg+xml" style={{display:'none'}} onChange={async(e)=>{
+                                    const file=e.target.files?.[0]; if(!file)return;
+                                    if(file.size>2*1024*1024){alert('Max file size is 2MB');return;}
+                                    setLogoUploading(true);
+                                    const ext=file.name.split('.').pop();
+                                    const path=`${orgId||'default'}/${Date.now()}.${ext}`;
+                                    const {error}=await supabase.storage.from('logos').upload(path,file,{upsert:true});
+                                    if(error){console.error('Logo upload error:',error);alert('Upload failed: '+error.message);setLogoUploading(false);return;}
+                                    const {data:{publicUrl}}=supabase.storage.from('logos').getPublicUrl(path);
+                                    setEditingProfile(prev=>({...prev,logo_url:publicUrl}));
+                                    setLogoUploading(false);
+                                  }}/>
+                                </label>
+                                {p.logo_url&&<button onClick={()=>setEditingProfile(prev=>({...prev,logo_url:null}))}
+                                  style={{background:'none',border:'none',color:'#EF4444',cursor:'pointer',fontSize:11}}>Remove</button>}
+                              </div>
+                            </div>
+                            <div style={{fontSize:10,color:'#9CA3AF',marginTop:4}}>PNG, JPG, or SVG. Max 2MB. Displays at 150&times;60px on proposals.</div>
+                          </div>
+                          {/* Fields */}
+                          {[['name','Company Name'],['address','Address'],['city','City'],['state','State'],['zip','ZIP'],['phone','Phone'],['email','Email']].map(([k,lbl])=>(
+                            <div key={k} style={{marginBottom:10}}>
+                              <div style={{fontSize:12,color:'#666',marginBottom:4}}>{lbl}{k==='name'&&' *'}</div>
+                              <input value={p[k]||''} onChange={e=>setEditingProfile(prev=>({...prev,[k]:e.target.value}))}
+                                style={{width:'100%',border:'1px solid #E0E0E0',borderRadius:4,padding:'8px 10px',fontSize:13,color:'#333',outline:'none',boxSizing:'border-box'}}/>
+                            </div>
+                          ))}
+                          {/* Default toggle */}
+                          <label style={{display:'flex',alignItems:'center',gap:8,marginTop:12,cursor:'pointer'}}>
+                            <input type="checkbox" checked={!!p.is_default} onChange={e=>setEditingProfile(prev=>({...prev,is_default:e.target.checked}))}/>
+                            <span style={{fontSize:13,color:'#333'}}>Set as default company profile</span>
+                          </label>
+                          {/* Save */}
+                          <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'flex-end'}}>
+                            <button onClick={()=>setEditingProfile(null)} style={{padding:'8px 16px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:6,cursor:'pointer',fontSize:12}}>Cancel</button>
+                            <button onClick={async()=>{
+                              if(!p.name?.trim()){alert('Company name is required');return;}
+                              const row={org_id:orgId||null,name:p.name.trim(),address:p.address?.trim()||null,city:p.city?.trim()||null,state:p.state?.trim()||null,zip:p.zip?.trim()||null,phone:p.phone?.trim()||null,email:p.email?.trim()||null,logo_url:p.logo_url||null,is_default:!!p.is_default};
+                              if(p.is_default){await supabase.from('company_profiles').update({is_default:false}).eq('is_default',true);}
+                              if(p.id){
+                                const {error}=await supabase.from('company_profiles').update(row).eq('id',p.id);
+                                if(error){alert('Save failed: '+error.message);return;}
+                                setCompanyProfiles(prev=>prev.map(c=>c.id===p.id?{...c,...row}:c.is_default&&p.is_default?{...c,is_default:false}:c));
+                                if(selCompanyProfile?.id===p.id) setSelCompanyProfile({...selCompanyProfile,...row});
+                              }else{
+                                const {data,error}=await supabase.from('company_profiles').insert([row]).select().single();
+                                if(error){alert('Save failed: '+error.message);return;}
+                                setCompanyProfiles(prev=>[...prev.map(c=>p.is_default?{...c,is_default:false}:c),data]);
+                                if(!selCompanyProfile||p.is_default){setSelCompanyProfile(data);setCompanyProfile(data);
+                                  supabase.from('precon_projects').update({company_profile_id:data.id}).eq('id',project.id).then(()=>{});}
+                              }
+                              setEditingProfile(null);
+                            }} style={{padding:'8px 16px',background:'#10B981',border:'none',color:'#fff',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                              {p.id?'Save Changes':'Create Profile'}
+                            </button>
+                          </div>
+                        </>);
+                      })():(
+                        <>
+                          {/* Profile list */}
+                          {companyProfiles.length===0&&(
+                            <div style={{textAlign:'center',padding:'30px 0',color:'#9CA3AF',fontSize:13}}>No company profiles yet. Add one to use on proposals.</div>
+                          )}
+                          {companyProfiles.map(cp=>(
+                            <div key={cp.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid #F3F4F6'}}>
+                              {cp.logo_url?(
+                                <img src={cp.logo_url} alt="" style={{width:60,height:30,objectFit:'contain',borderRadius:2,flexShrink:0}}/>
+                              ):(
+                                <div style={{width:32,height:32,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:14,flexShrink:0}}>
+                                  {(cp.name||'?')[0]}
+                                </div>
+                              )}
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:600,color:'#333'}}>{cp.name}{cp.is_default&&<span style={{fontSize:10,color:'#10B981',marginLeft:6}}>Default</span>}</div>
+                                <div style={{fontSize:11,color:'#999',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                  {[cp.address,cp.city,cp.state].filter(Boolean).join(', ')}{cp.phone?` \u00B7 ${cp.phone}`:''}
+                                </div>
+                              </div>
+                              <button onClick={()=>setEditingProfile({...cp})} style={{background:'none',border:'none',color:'#666',cursor:'pointer',fontSize:11}}>Edit</button>
+                              <button onClick={async()=>{
+                                if(!confirm(`Delete "${cp.name}"?`))return;
+                                await supabase.from('company_profiles').delete().eq('id',cp.id);
+                                setCompanyProfiles(prev=>prev.filter(c=>c.id!==cp.id));
+                                if(selCompanyProfile?.id===cp.id)setSelCompanyProfile(companyProfiles.find(c=>c.id!==cp.id)||null);
+                              }} style={{background:'none',border:'none',color:'#EF4444',cursor:'pointer',fontSize:11}}>Delete</button>
+                            </div>
+                          ))}
+                          <button onClick={()=>setEditingProfile({})}
+                            style={{width:'100%',padding:'12px',border:'1px dashed #ccc',borderRadius:6,background:'#FAFAFA',color:'#666',cursor:'pointer',fontSize:13,marginTop:16}}>
+                            + Add Company Profile
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

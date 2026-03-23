@@ -27,10 +27,51 @@ const DEFAULT_TERMS = [
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
 const addDays = (d, n) => { const dt = new Date(d + 'T00:00:00'); dt.setDate(dt.getDate() + n); return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); };
 
-export function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId, clientInfo, companyProfile, proposalScope, proposalTerms }) {
+// Load image as data URL for embedding in PDF
+async function loadImageAsDataUrl(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+// Get image dimensions to maintain aspect ratio
+function getImageDims(dataUrl, maxW, maxH) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = h * (maxW / w); w = maxW; }
+      if (h > maxH) { w = w * (maxH / h); h = maxH; }
+      resolve({ w, h });
+    };
+    img.onerror = () => resolve({ w: maxW, h: maxH });
+    img.src = dataUrl;
+  });
+}
+
+export async function generateProposalPdf({ project, items, plans, categories, overheadPct, profitPct, companyId, clientInfo, companyProfile, proposalScope, proposalTerms }) {
   try {
   const co = companyProfile?.name ? companyProfile : (COMPANY_INFO[companyId] || COMPANY_INFO[project.company] || COMPANY_INFO.default);
+  // Build city line from separate fields if available
+  const coCityLine = co.city && co.state ? `${co.city}, ${co.state} ${co.zip || ''}`.trim() : co.city || '';
   const client = clientInfo?.name ? clientInfo : { name: project.gc_name || '', company: '', address: project.address || '', email: '', phone: '' };
+
+  // Load logo if available
+  let logoData = null, logoDims = null;
+  if (co.logo_url) {
+    logoData = await loadImageAsDataUrl(co.logo_url);
+    if (logoData) {
+      logoDims = await getImageDims(logoData, 150, 60);
+    }
+  }
 
   const doc = new jsPDF('p', 'pt', 'letter'); // 612 x 792
   const W = 612, H = 792;
@@ -49,6 +90,13 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
   // ═══════════════════════════════════════════════════════
   // HEADER ZONE
   // ═══════════════════════════════════════════════════════
+
+  // Logo — top left (if available)
+  if (logoData && logoDims) {
+    const fmt = co.logo_url.toLowerCase().includes('.png') ? 'PNG' : 'JPEG';
+    try { doc.addImage(logoData, fmt, M, y, logoDims.w, logoDims.h); } catch {}
+    y += logoDims.h + 8;
+  }
 
   // Project name — left
   doc.setFont('helvetica', 'bold');
@@ -93,7 +141,7 @@ export function generateProposalPdf({ project, items, plans, categories, overhea
   doc.setTextColor(...gray);
   doc.setFontSize(9);
   if (co.address) { doc.text(co.address, M, y); y += 11; }
-  if (co.city) { doc.text(co.city, M, y); y += 11; }
+  if (coCityLine) { doc.text(coCityLine, M, y); y += 11; }
   if (co.phone) { doc.text(co.phone, M, y); y += 11; }
   if (co.email) { doc.text(co.email, M, y); y += 11; }
 
