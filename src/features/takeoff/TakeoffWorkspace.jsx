@@ -254,6 +254,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     setAiScopeLoading(false);
   };
   const [estSubTab, setEstSubTab] = useState('worksheet'); // 'summary' | 'worksheet'
+  const [estVersions, setEstVersions] = useState([]);
+  const [activeVersion, setActiveVersion] = useState(null); // null = live data, id = snapshot
+  const [showNewVersion, setShowNewVersion] = useState(false);
+  const [newVersionName, setNewVersionName] = useState('');
+  const [newVersionType, setNewVersionType] = useState('addendum');
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
@@ -446,6 +451,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   useEffect(()=>{
     loadCategories().then(cats=>setDynamicCats(cats)).catch(()=>{});
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
+    supabase.from('estimate_versions').select('*').eq('project_id',project.id).order('created_at')
+      .then(({data})=>{if(data) setEstVersions(data);}).catch(()=>{});
     supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',project.id)
       .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
   },[]);
@@ -5322,6 +5329,25 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Selling Price</div></div>
               </div>
             </div>
+            {/* Version selector */}
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <select value={activeVersion||'live'} onChange={e=>setActiveVersion(e.target.value==='live'?null:e.target.value)}
+                style={{padding:'5px 8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#333',outline:'none',cursor:'pointer',background:'#fff'}}>
+                <option value="live">Current (Live)</option>
+                {estVersions.map(v=><option key={v.id} value={v.id}>{v.name} — ${Math.round(v.total||0).toLocaleString()}</option>)}
+              </select>
+              <button onClick={async()=>{
+                const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent,pitch_multiplier:it.pitch_multiplier,height:it.height}));
+                const name=estVersions.length===0?'Original Bid':`Version ${estVersions.length+1}`;
+                const {data}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_type:'original',items_snapshot:snapshot,overhead_pct:overheadPct,profit_pct:profitPct,total:sellingPrice}]).select().single();
+                if(data) setEstVersions(prev=>[...prev,data]);
+              }} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'5px 10px',borderRadius:4,cursor:'pointer',fontSize:11}}>
+                Save Version
+              </button>
+              <button onClick={()=>setShowNewVersion(true)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#10B981',padding:'5px 10px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500}}>
+                + New Version
+              </button>
+            </div>
             {/* Summary/Worksheet toggle + Download */}
             <div style={{display:'flex',gap:0,border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
               {[{id:'summary',label:'Summary'},{id:'worksheet',label:'Worksheet'}].map(tab=>(
@@ -5880,6 +5906,74 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           </div>
           );
           })()}
+
+          {/* Version comparison banner */}
+          {activeVersion&&(()=>{
+            const ver=estVersions.find(v=>String(v.id)===String(activeVersion));
+            if(!ver) return null;
+            const snapItems=Array.isArray(ver.items_snapshot)?ver.items_snapshot:[];
+            const snapTotal=snapItems.reduce((s,i)=>s+(i.total_cost||0),0);
+            const liveTotal=extendedCost;
+            const diff=liveTotal-snapTotal;
+            const pct=snapTotal>0?((diff/snapTotal)*100).toFixed(1):0;
+            return(
+              <div style={{padding:'10px 24px',background:diff>0?'#FEF2F2':diff<0?'#ECFDF5':'#F3F4F6',borderTop:'1px solid #E5E7EB',fontSize:12,display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+                <span style={{fontWeight:600,color:'#333'}}>Viewing: {ver.name}</span>
+                <span style={{color:'#6B7280'}}>Saved {new Date(ver.created_at).toLocaleDateString()}</span>
+                <span style={{color:'#6B7280'}}>·</span>
+                <span style={{color:'#6B7280'}}>Snapshot: ${Math.round(snapTotal).toLocaleString()}</span>
+                <span style={{color:'#6B7280'}}>·</span>
+                <span style={{color:diff>0?'#991B1B':diff<0?'#065F46':'#6B7280',fontWeight:600}}>
+                  vs Live: {diff>=0?'+':''}${Math.round(diff).toLocaleString()} ({diff>=0?'+':''}{pct}%)
+                </span>
+                <div style={{flex:1}}/>
+                <button onClick={()=>setActiveVersion(null)} style={{background:'#fff',border:'1px solid #E5E7EB',color:'#333',padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:11}}>Back to Live</button>
+              </div>
+            );
+          })()}
+
+          {/* New Version Modal */}
+          {showNewVersion&&(
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.3)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowNewVersion(false)}>
+              <div style={{background:'#fff',borderRadius:12,padding:24,width:400,boxShadow:'0 20px 60px rgba(0,0,0,0.12)'}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:16,fontWeight:600,color:'#1A1A1A',marginBottom:16}}>New Estimate Version</div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:12,color:'#6B7280',marginBottom:4}}>Version Name</div>
+                  <input value={newVersionName} onChange={e=>setNewVersionName(e.target.value)}
+                    placeholder={newVersionType==='addendum'?`ADD #${estVersions.filter(v=>v.version_type==='addendum').length+1}`:newVersionType==='change_order'?`CCD #${estVersions.filter(v=>v.version_type==='change_order').length+1}`:'Version Name'}
+                    style={{width:'100%',padding:'10px 12px',border:'1px solid #E5E7EB',borderRadius:6,fontSize:13,outline:'none',boxSizing:'border-box',background:'#F9FAFB'}}/>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:12,color:'#6B7280',marginBottom:4}}>Type</div>
+                  <select value={newVersionType} onChange={e=>setNewVersionType(e.target.value)}
+                    style={{width:'100%',padding:'10px',border:'1px solid #E5E7EB',borderRadius:6,fontSize:13,outline:'none',background:'#F9FAFB'}}>
+                    <option value="original">Original Bid</option>
+                    <option value="addendum">Addendum (ADD)</option>
+                    <option value="change_order">Change Order (CCD)</option>
+                    <option value="revised">Revised Bid</option>
+                  </select>
+                </div>
+                <div style={{display:'flex',gap:8,marginTop:20,justifyContent:'flex-end'}}>
+                  <button onClick={()=>setShowNewVersion(false)} style={{padding:'8px 16px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:6,cursor:'pointer',fontSize:12}}>Cancel</button>
+                  <button onClick={async()=>{
+                    const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent||0,pitch_multiplier:it.pitch_multiplier||1,height:it.height||0}));
+                    const name=newVersionName.trim()||
+                      (newVersionType==='addendum'?`ADD #${estVersions.filter(v=>v.version_type==='addendum').length+1}`:
+                       newVersionType==='change_order'?`CCD #${estVersions.filter(v=>v.version_type==='change_order').length+1}`:
+                       `Version ${estVersions.length+1}`);
+                    const {data}=await supabase.from('estimate_versions').insert([{
+                      project_id:project.id, name, version_type:newVersionType,
+                      items_snapshot:snapshot, overhead_pct:overheadPct, profit_pct:profitPct, total:sellingPrice
+                    }]).select().single();
+                    if(data){setEstVersions(prev=>[...prev,data]);setActiveVersion(data.id);}
+                    setShowNewVersion(false);setNewVersionName('');
+                  }} style={{padding:'8px 16px',background:'#10B981',border:'none',color:'#fff',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:500}}>
+                    Create Version
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         );
       })()}
