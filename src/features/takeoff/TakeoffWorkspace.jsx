@@ -259,6 +259,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [showNewVersion, setShowNewVersion] = useState(false);
   const [newVersionName, setNewVersionName] = useState('');
   const [newVersionType, setNewVersionType] = useState('addendum');
+  const [companyProfiles, setCompanyProfiles] = useState([]);
+  const [selCompanyProfile, setSelCompanyProfile] = useState(null);
+  const [rectDrag, setRectDrag] = useState(null); // {start:{x,y}} for shift-drag rectangle
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
@@ -453,6 +456,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
     supabase.from('estimate_versions').select('*').eq('project_id',project.id).order('created_at')
       .then(({data})=>{if(data) setEstVersions(data);}).catch(()=>{});
+    supabase.from('company_profiles').select('*').order('is_default',{ascending:false})
+      .then(({data})=>{
+        if(data?.length){setCompanyProfiles(data);setSelCompanyProfile(data.find(c=>c.is_default)||data[0]);}
+      }).catch(()=>{});
     supabase.from('project_shares').select('*, profiles(email,full_name)').eq('project_id',project.id)
       .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
   },[]);
@@ -1348,6 +1355,27 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   };
 
   const handleSvgMouseDown=(e)=>{
+    // Shift+drag for rectangle in area mode
+    if(e.shiftKey && e.button===0 && (tool==='area'||tool==='cutout') && activeCondId){
+      const pt=getSvgPos(e);
+      setRectDrag({start:pt});
+      const onMove=(ev)=>{const p=getSvgPos(ev);setHoverPt(p);};
+      const onUp=(ev)=>{
+        const end=getSvgPos(ev);
+        const s=rectDrag?.start||pt;
+        if(Math.abs(end.x-s.x)>5&&Math.abs(end.y-s.y)>5){
+          const shape=[{x:s.x,y:s.y,_planId:selPlan?.id},{x:end.x,y:s.y},{x:end.x,y:end.y},{x:s.x,y:end.y}];
+          if(tool==='cutout') appendMeasurementHole(activeCondId,shape);
+          else appendMeasurement(activeCondId,shape);
+        }
+        setRectDrag(null);
+        window.removeEventListener('mousemove',onMove);
+        window.removeEventListener('mouseup',onUp);
+      };
+      window.addEventListener('mousemove',onMove);
+      window.addEventListener('mouseup',onUp);
+      return;
+    }
     // Middle-click or space+left = always pan
     const forceP = e.button===1 || panRef.current._spaceHeld;
     // Select tool + left-click without space = lasso box
@@ -4730,6 +4758,24 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             </g>
                           ));
                         })()}
+                        {/* Rectangle drag preview */}
+                        {rectDrag&&hoverPt&&(()=>{
+                          const s=rectDrag.start,e=hoverPt;
+                          const x=Math.min(s.x,e.x),y=Math.min(s.y,e.y),w=Math.abs(e.x-s.x),h=Math.abs(e.y-s.y);
+                          if(w<5||h<5) return null;
+                          const area=scale?Math.round(w*h/(scale*scale)*10)/10:Math.round(w*h);
+                          const wFt=scale?Math.round(w/scale*10)/10:Math.round(w);
+                          const hFt=scale?Math.round(h/scale*10)/10:Math.round(h);
+                          const fs=11/zoom;
+                          const ac=tool==='cutout'?'#C0504D':'#10B981';
+                          return(<g style={{pointerEvents:'none'}}>
+                            <rect x={x} y={y} width={w} height={h} fill={ac+'20'} stroke={ac} strokeWidth={2/zoom} strokeDasharray={`${6/zoom},${3/zoom}`}/>
+                            <text x={x+w/2} y={y-6/zoom} fontSize={fs} fill={ac} textAnchor="middle" fontFamily="monospace" fontWeight={600}>{wFt} {scale?'ft':'px'}</text>
+                            <text x={x+w+6/zoom} y={y+h/2} fontSize={fs} fill={ac} fontFamily="monospace" fontWeight={600}>{hFt} {scale?'ft':'px'}</text>
+                            <rect x={x+w/2-30/zoom} y={y+h/2-8/zoom} width={60/zoom} height={16/zoom} rx={3/zoom} fill="rgba(0,0,0,0.7)"/>
+                            <text x={x+w/2} y={y+h/2+4/zoom} fontSize={fs} fill="#fff" textAnchor="middle" fontFamily="monospace" fontWeight={700}>{area} {scale?'SF':'px²'}</text>
+                          </g>);
+                        })()}
                         {/* Lasso selection box */}
                         {lassoRect&&(()=>{
                           const {sx,sy,ex,ey}=lassoRect;
@@ -5468,25 +5514,40 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 </div>
 
                 {/* Card 3: Your Company */}
-                <div style={{background:'#fff',border:companyProfile?.name?'1px solid #E0E0E0':'1px dashed #ccc',borderRadius:8,padding:20}}>
-                  <div style={{display:'flex',alignItems:'center',marginBottom:12}}>
-                    <span style={{flex:1,fontSize:16,fontWeight:600,color:'#333'}}>{companyProfile?.name||'Your Company'}</span>
-                    {companyProfile?.name&&<button onClick={()=>setEditModal('company')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:16}}>&#8942;</button>}
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:8,padding:20}}>
+                  <div style={{display:'flex',alignItems:'center',marginBottom:12,gap:8}}>
+                    {companyProfiles.length>1?(
+                      <select value={selCompanyProfile?.id||''} onChange={e=>{
+                        const cp=companyProfiles.find(c=>String(c.id)===e.target.value);
+                        setSelCompanyProfile(cp);
+                        if(cp) setCompanyProfile({name:cp.name,address:cp.address,city:`${cp.city||''}${cp.state?', '+cp.state:''} ${cp.zip||''}`.trim(),phone:cp.phone,email:cp.email});
+                      }} style={{flex:1,fontSize:13,fontWeight:600,color:'#333',border:'none',outline:'none',background:'transparent',cursor:'pointer'}}>
+                        {companyProfiles.map(cp=><option key={cp.id} value={cp.id}>{cp.name}</option>)}
+                      </select>
+                    ):(
+                      <span style={{flex:1,fontSize:16,fontWeight:600,color:'#333'}}>{selCompanyProfile?.name||companyProfile?.name||'Your Company'}</span>
+                    )}
+                    <button onClick={()=>setEditModal('company')} style={{background:'none',border:'none',color:'#999',cursor:'pointer',fontSize:16}}>&#8942;</button>
                   </div>
-                  {companyProfile?.name?(
+                  {(selCompanyProfile||companyProfile?.name)?(()=>{
+                    const cp=selCompanyProfile||companyProfile;
+                    return(
                     <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                      <div style={{width:36,height:36,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
-                        {companyProfile.name[0]}
-                      </div>
+                      {cp.logo_url?(
+                        <img src={cp.logo_url} alt="" style={{width:48,height:48,objectFit:'contain',borderRadius:4,flexShrink:0}}/>
+                      ):(
+                        <div style={{width:36,height:36,borderRadius:'50%',background:'#10B981',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:16,flexShrink:0}}>
+                          {(cp.name||'?')[0]}
+                        </div>
+                      )}
                       <div style={{fontSize:13,color:'#333',lineHeight:1.7}}>
-                        <div style={{fontWeight:600}}>{companyProfile.name}</div>
-                        {companyProfile.address&&<div style={{color:'#666'}}>{companyProfile.address}</div>}
-                        {companyProfile.city&&<div style={{color:'#666'}}>{companyProfile.city}</div>}
-                        {companyProfile.email&&<div><a href={`mailto:${companyProfile.email}`} style={{color:'#1976D2',textDecoration:'none'}}>{companyProfile.email}</a></div>}
-                        {companyProfile.phone&&<div style={{color:'#666'}}>{companyProfile.phone}</div>}
+                        <div style={{fontWeight:600}}>{cp.name}</div>
+                        {(cp.address||cp.city)&&<div style={{color:'#666'}}>{cp.address}{cp.city?`, ${cp.city}`:''}{cp.state?` ${cp.state}`:''} {cp.zip||''}</div>}
+                        {cp.email&&<div><a href={`mailto:${cp.email}`} style={{color:'#1976D2',textDecoration:'none'}}>{cp.email}</a></div>}
+                        {cp.phone&&<div style={{color:'#666'}}>{cp.phone}</div>}
                       </div>
-                    </div>
-                  ):(
+                    </div>);
+                  })():(
                     <button onClick={()=>setEditModal('company')}
                       style={{background:'none',border:'1px dashed #ccc',color:'#999',padding:'12px 20px',borderRadius:4,cursor:'pointer',fontSize:13,width:'100%'}}>
                       + Add Company Profile
