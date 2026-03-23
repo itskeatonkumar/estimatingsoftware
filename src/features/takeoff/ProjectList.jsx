@@ -49,12 +49,15 @@ function ProjectList({ onSelectProject, user }) {
   const [shareMembers, setShareMembers] = useState([]);
 
   useEffect(() => {
+    if(!orgId && !(isSuperAdmin&&viewAllOrgs)){ setLoading(false); return; }
     (async()=>{
       const {data:{user:me}}=await supabase.auth.getUser();
-      // My projects (org-filtered)
+      // My projects (strict org filter — no null fallback)
       let q=supabase.from('precon_projects').select('*').order('created_at',{ascending:false});
-      if(orgId && !(isSuperAdmin&&viewAllOrgs)) q=q.or(`org_id.eq.${orgId},org_id.is.null`);
+      if(orgId && !(isSuperAdmin&&viewAllOrgs)) q=q.eq('org_id', orgId);
+      console.log('[ProjectList] loading projects for org:', orgId, 'superAdmin:', isSuperAdmin, 'viewAll:', viewAllOrgs);
       const {data:myProjects,error}=await q;
+      console.log('[ProjectList] returned:', myProjects?.length, 'projects, first org_id:', myProjects?.[0]?.org_id);
       if(error) console.error('[projects] load error:',error);
       let all=myProjects||[];
       // Shared projects
@@ -84,7 +87,7 @@ function ProjectList({ onSelectProject, user }) {
     // Safety: force loading off after 5s in case query hangs
     const t = setTimeout(() => setLoading(false), 5000);
     return () => clearTimeout(t);
-  }, []);
+  }, [orgId, isSuperAdmin, viewAllOrgs]);
 
   const handleSave = async (data, type) => {
     if (type === 'delete') {

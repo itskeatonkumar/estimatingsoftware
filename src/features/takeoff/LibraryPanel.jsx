@@ -26,10 +26,9 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
   const [assemblyItems, setAssemblyItems] = useState([]);
 
   useEffect(() => {
-    const orgQ = orgId ? `.or('org_id.eq.${orgId},org_id.is.null')` : '';
     let liQ = supabase.from('library_items').select('*').order('name');
     let laQ = supabase.from('library_assemblies').select('*').order('name');
-    if (orgId) { liQ = liQ.or(`org_id.eq.${orgId},org_id.is.null`); laQ = laQ.or(`org_id.eq.${orgId},org_id.is.null`); }
+    if (orgId) { liQ = liQ.eq('org_id', orgId); laQ = laQ.eq('org_id', orgId); }
     Promise.all([liQ, laQ]).then(async ([{ data: li }, { data: la }]) => {
       let myItems = li || [];
       // Add any missing starter items (by name)
@@ -118,7 +117,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
     });
     loadRegionalPricing().then(d => setRegionalPricing(d)).catch(() => {});
     let tQ = supabase.from('takeoff_templates').select('*').order('created_at',{ascending:false});
-    if (orgId) tQ = tQ.or(`org_id.eq.${orgId},org_id.is.null`);
+    if (orgId) tQ = tQ.eq('org_id', orgId);
     tQ.then(({data})=>setTemplates(data||[]));
   }, [orgId]);
 

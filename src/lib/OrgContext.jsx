@@ -41,7 +41,9 @@ export function OrgProvider({ children }) {
         // Restore last selected org or use first
         const saved = localStorage.getItem('selectedOrgId');
         const match = orgList.find(o => o.id === saved);
-        setOrgId(match ? match.id : orgList[0].id);
+        const selectedId = match ? match.id : orgList[0].id;
+        console.log('[OrgContext] SETTING ORG ID:', selectedId, 'from', orgList.length, 'orgs:', orgList.map(o=>o.name));
+        setOrgId(selectedId);
       }
       setReady(true);
     })();
@@ -58,12 +60,11 @@ export function OrgProvider({ children }) {
     try { localStorage.setItem('selectedOrgId', id); } catch {}
   };
 
-  // Helper: apply org filter to a Supabase query
-  // Shows org data + legacy null data
+  // Helper: apply strict org filter to a Supabase query
   const orgFilter = (query, col = 'org_id') => {
     if (isSuperAdmin && viewAllOrgs) return query;
     if (!orgId) return query;
-    return query.or(`${col}.eq.${orgId},${col}.is.null`);
+    return query.eq(col, orgId);
   };
 
   return (

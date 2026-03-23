@@ -88,7 +88,7 @@ function AppShell() {
       const id = parseInt(hash.split('/')[2]) || null;
       if (id) {
         let q = supabase.from('precon_projects').select('*').eq('id', id);
-        if (orgId && !(isSuperAdmin && viewAllOrgs)) q = q.or(`org_id.eq.${orgId},org_id.is.null`);
+        if (orgId && !(isSuperAdmin && viewAllOrgs)) q = q.eq('org_id', orgId);
         q.single().then(({ data }) => { if (data) setSelProject(data); });
       }
     }

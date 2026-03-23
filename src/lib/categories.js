@@ -28,7 +28,7 @@ let _cache = null;
 
 export async function loadCategories(orgId) {
   let q = supabase.from('takeoff_categories').select('*').order('sort_order');
-  if (orgId) q = q.or(`org_id.eq.${orgId},org_id.is.null`);
+  if (orgId) q = q.eq('org_id', orgId);
   const { data, error } = await q;
 
   if (error) {

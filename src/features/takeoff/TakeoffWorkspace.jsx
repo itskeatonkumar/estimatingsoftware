@@ -459,7 +459,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
     supabase.from('estimate_versions').select('*').eq('project_id',project.id).order('created_at')
       .then(({data})=>{if(data) setEstVersions(data);}).catch(()=>{});
-    supabase.from('company_profiles').select('*').or(orgId?`org_id.eq.${orgId},org_id.is.null`:'org_id.is.null').order('is_default',{ascending:false})
+    supabase.from('company_profiles').select('*').eq('org_id', orgId||'00000000-0000-0000-0000-000000000000').order('is_default',{ascending:false})
       .then(({data})=>{
         if(data?.length){
           setCompanyProfiles(data);
