@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme, labelStyle, inputStyle } from "../../lib/theme.jsx";
 import { TAKEOFF_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES } from "../../lib/constants.js";
 import { supabase } from "../../lib/supabase.js";
+import { useOrg } from "../../lib/OrgContext.jsx";
 import { US_STATES } from "../../lib/regionalPricing.js";
 import { APMModal, APMField } from "../../components/ui/Modal.jsx";
 
@@ -19,6 +20,7 @@ const WASTE_DEFAULTS = {
 
 function TakeoffItemModal({ item, onSave, onClose }) {
   const { t } = useTheme();
+  const { orgId } = useOrg();
   const isNew = !item?.id;
   const cat = TAKEOFF_CATS.find(c=>c.id===item?.category) || TAKEOFF_CATS[0];
   const [form, setForm] = useState({
@@ -42,7 +44,7 @@ function TakeoffItemModal({ item, onSave, onClose }) {
   const handleSave = async () => {
     const payload = {...form, quantity:Number(form.quantity)||0, unit_cost:Number(form.unit_cost)||0, multiplier:Number(form.multiplier)||1, height:Number(form.height)||0, pitch_multiplier:_pitchMult, waste_percent:_wastePct, total_cost:total};
     if (isNew) {
-      const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
+      const {data} = await supabase.from('takeoff_items').insert([{...payload, org_id:orgId||null}]).select().single();
       if (data) onSave(data, true);
     } else {
       await supabase.from('takeoff_items').update(payload).eq('id', item.id);
@@ -342,6 +344,7 @@ function BidSummaryModal({ project, items, onClose }) {
 // ── Takeoff Project Modal ─────────────────────────────
 function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
   const { t } = useTheme();
+  const { orgId } = useOrg();
   const isNew = !project?.id;
   const [form, setForm] = useState({
     name:'', company:'fcg', address:'', gc_name:'', bid_date:'', contract_value:'', apm_project_id:null, status:'estimating',
@@ -357,7 +360,7 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
     const payload = {...form, contract_value: form.contract_value?Number(form.contract_value):null};
     delete payload.id; delete payload.created_at;
     if (isNew) {
-      const {data, error} = await supabase.from('precon_projects').insert([payload]).select().single();
+      const {data, error} = await supabase.from('precon_projects').insert([{...payload, org_id:orgId||null}]).select().single();
       if (error) { alert('Error creating project: ' + error.message); setSaving(false); return; }
       if (data) onSave(data, true);
     } else {
@@ -417,6 +420,7 @@ function TakeoffProjectModal({ project, apmProjects, onSave, onClose }) {
 // Fast: type name → pick measurement type → creates and arms
 function AddItemInline({ cat, selPlan, project, items, onCreated }) {
   const { t } = useTheme();
+  const { orgId } = useOrg();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [mt, setMt] = useState('area');
@@ -443,7 +447,7 @@ function AddItemInline({ cat, selPlan, project, items, onCreated }) {
       category:cat.id, description:name.trim(),
       quantity:0, unit:unitMap[mt]||cat.unit, unit_cost:cat.defaultCost, total_cost:0,
       measurement_type:mt, points:[], color:cat.color,
-      ai_generated:false, sort_order:items.length,
+      ai_generated:false, sort_order:items.length, org_id:orgId||null,
     };
     const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
     if(data) onCreated(data);
@@ -483,6 +487,7 @@ function AddItemInline({ cat, selPlan, project, items, onCreated }) {
 
 function NewConditionRow({ selPlan, project, items, onCreated }) {
   const { t } = useTheme();
+  const { orgId } = useOrg();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [cat, setCat] = useState('site_concrete');
@@ -502,7 +507,7 @@ function NewConditionRow({ selPlan, project, items, onCreated }) {
       category: cat, description: name.trim(),
       quantity: 0, unit: unitLabel, unit_cost: catDef.defaultCost, total_cost: 0,
       measurement_type: mt, points: [], color: catDef.color,
-      ai_generated: false, sort_order: items.length,
+      ai_generated: false, sort_order: items.length, org_id:orgId||null,
     };
     const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
     if(data) onCreated(data);

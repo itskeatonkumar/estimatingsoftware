@@ -96,14 +96,14 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
         <button onClick={async () => {
           if (p.id === 'preview') return;
           const withTakeoffs = window.confirm('Duplicate with takeoffs?\n\nOK = Plan + Takeoffs\nCancel = Plan Only');
-          const { data: newPlan } = await supabase.from('precon_plans').insert([{ project_id: p.project_id, name: (p.name || 'Sheet') + ' (Copy)', file_url: p.file_url, file_type: p.file_type, scale_px_per_ft: p.scale_px_per_ft }]).select().single();
+          const { data: newPlan } = await supabase.from('precon_plans').insert([{ project_id: p.project_id, name: (p.name || 'Sheet') + ' (Copy)', file_url: p.file_url, file_type: p.file_type, scale_px_per_ft: p.scale_px_per_ft, org_id: orgId||null }]).select().single();
           if (!newPlan) return;
           const clonedItems = [];
           if (withTakeoffs) {
             const planItemsToDup = H.items.filter(i => i.plan_id === p.id);
             for (const it of planItemsToDup) {
               const { id, ...rest } = it;
-              const { data: ni } = await supabase.from('takeoff_items').insert([{ ...rest, plan_id: newPlan.id }]).select().single();
+              const { data: ni } = await supabase.from('takeoff_items').insert([{ ...rest, plan_id: newPlan.id, org_id: orgId||null }]).select().single();
               if (ni) clonedItems.push(ni);
             }
           }
@@ -455,11 +455,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
   // Load dynamic categories + regional pricing + collaborators
   useEffect(()=>{
-    loadCategories().then(cats=>setDynamicCats(cats)).catch(()=>{});
+    loadCategories(orgId).then(cats=>setDynamicCats(cats)).catch(()=>{});
     loadRegionalPricing().then(data=>setRegionalData(data)).catch(()=>{});
     supabase.from('estimate_versions').select('*').eq('project_id',project.id).order('created_at')
       .then(({data})=>{if(data) setEstVersions(data);}).catch(()=>{});
-    supabase.from('company_profiles').select('*').order('is_default',{ascending:false})
+    supabase.from('company_profiles').select('*').or(orgId?`org_id.eq.${orgId},org_id.is.null`:'org_id.is.null').order('is_default',{ascending:false})
       .then(({data})=>{
         if(data?.length){
           setCompanyProfiles(data);
@@ -905,7 +905,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     if(uc == null) uc = (costs[itemData.category]?.mat||0)+(costs[itemData.category]?.lab||0);
     const total_cost = (itemData.quantity||0)*(itemData.multiplier||1)*uc;
     const pid = project.id;
-    const payload = {...itemData, project_id:pid, plan_id:selPlan?.id, unit_cost:uc, total_cost, color:catDef.color, ai_generated:false, sort_order:items.length};
+    const payload = {...itemData, project_id:pid, plan_id:selPlan?.id, unit_cost:uc, total_cost, color:catDef.color, ai_generated:false, sort_order:items.length, org_id:orgId||null};
     const {data, error} = await supabase.from('takeoff_items').insert([payload]).select().single();
     if(error) console.error('[saveItem] insert error:', error);
     if(data){
@@ -1851,7 +1851,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               const publicUrl = ud?.publicUrl || '';
               // Insert plan row (without ocr_text to avoid column-missing errors)
               const {data:plan, error:insErr} = await supabase.from('precon_plans')
-                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg'}])
+                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', org_id:orgId||null}])
                 .select().single();
               if(insErr){ console.error('[upload] plan insert error:', insErr); return null; }
               if(!plan) return null;
@@ -1961,7 +1961,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       if(error){setUploading(false);alert('Upload failed: '+error.message);return;}
       const {data:ud}=supabase.storage.from('attachments').getPublicUrl(path);
       const publicUrl = ud?.publicUrl || ud?.data?.publicUrl || '';
-      const {data:plan}=await supabase.from('precon_plans').insert([{project_id:pid,name:sheetName,file_url:publicUrl,file_type:file.type}]).select().single();
+      const {data:plan}=await supabase.from('precon_plans').insert([{project_id:pid,name:sheetName,file_url:publicUrl,file_type:file.type,org_id:orgId||null}]).select().single();
       if(plan){
         setPlans(prev=>[...prev.filter(p=>p.id!=='preview'),plan]);
         setSelPlan(plan);
@@ -2066,6 +2066,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           total_cost:it.measurement_type==='count'?(it.estimated_count||0)*uc:0,
           measurement_type:it.measurement_type||'manual', points:null,
           color:TO_COLORS[i%TO_COLORS.length], ai_generated:true, sort_order:items.length+i,
+          org_id:orgId||null,
         };
       });
       const {data,error} = await supabase.from('takeoff_items').insert(toInsert).select();
@@ -2077,7 +2078,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
   const applyAssembly = async (assemblyItems) => {
     const pid = project.id;
-    const toInsert = assemblyItems.map((it,i)=>({...it,project_id:pid,plan_id:selPlan?.id,measurement_type:'manual',points:null,color:TAKEOFF_CATS.find(c=>c.id===it.category)?.color||'#555',ai_generated:false,sort_order:items.length+i}));
+    const toInsert = assemblyItems.map((it,i)=>({...it,project_id:pid,plan_id:selPlan?.id,measurement_type:'manual',points:null,color:TAKEOFF_CATS.find(c=>c.id===it.category)?.color||'#555',ai_generated:false,sort_order:items.length+i,org_id:orgId||null}));
     const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
     if(data) setItems(prev=>[...prev,...data]);
     setShowAssembly(false);
@@ -3278,7 +3279,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                           unit:it.unit||catDef.unit,unit_cost:uc,
                           total_cost:it.measurement_type==='count'?(it.estimated_count||0)*uc:0,
                           measurement_type:it.measurement_type||'manual',points:null,
-                          color:TO_COLORS[(totalFound+j)%TO_COLORS.length],ai_generated:true,sort_order:items.length+totalFound+j};
+                          color:TO_COLORS[(totalFound+j)%TO_COLORS.length],ai_generated:true,sort_order:items.length+totalFound+j,org_id:orgId||null};
                       });
                       const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
                       if(data){setItems(prev=>[...prev,...data]);totalFound+=data.length;}
@@ -3997,6 +3998,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                         color: newTOColor,
                         ai_generated: false,
                         sort_order: items.length,
+                        org_id: orgId||null,
                       };
                       console.log('inserting takeoff:', payload);
                       const {data, error} = await supabase.from('takeoff_items').insert([payload]).select().single();
@@ -4272,6 +4274,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             <LibraryPanel
               onClose={()=>setLeftTab('takeoffs')}
               projectRegion={projectRegion}
+              orgId={orgId}
               onApplyItem={async(libItem)=>{
                 const catDef = TAKEOFF_CATS.find(c=>c.id===libItem.category)||TAKEOFF_CATS[TAKEOFF_CATS.length-1];
                 const uc = libItem.unit_cost || catDef.defaultCost;
@@ -4280,7 +4283,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                   project_id:project.id, plan_id:selPlan?.id, category:catDef.id,
                   description:libItem.name, quantity:0, unit:libItem.unit||catDef.unit,
                   unit_cost:uc, total_cost:0, measurement_type:mt, points:null,
-                  color:catDef.color, ai_generated:false, sort_order:items.length,
+                  color:catDef.color, ai_generated:false, sort_order:items.length, org_id:orgId||null,
                 };
                 const {data} = await supabase.from('takeoff_items').insert([payload]).select().single();
                 if(data){ setItems(prev=>[...prev,data]); setLeftTab('takeoffs'); }
@@ -4294,7 +4297,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     description:ai.custom_name||li.name||assembly.name, quantity:0,
                     unit:ai.unit||li.unit||'SF', unit_cost:ai.unit_cost||li.unit_cost||0,
                     total_cost:0, measurement_type:{SF:'area',LF:'linear',EA:'count'}[ai.unit||li.unit]||'manual',
-                    points:null, color:catDef.color, ai_generated:false, sort_order:items.length+i,
+                    points:null, color:catDef.color, ai_generated:false, sort_order:items.length+i, org_id:orgId||null,
                   };
                 });
                 if(toInsert.length){
@@ -4314,7 +4317,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     unit_cost:it.unit_cost||catDef.defaultCost, total_cost:0,
                     measurement_type:it.measurement_type||'manual', points:null,
                     color:it.color||catDef.color, ai_generated:false, sort_order:items.length+i,
-                    waste_percent:it.waste_percent||0,
+                    waste_percent:it.waste_percent||0, org_id:orgId||null,
                   };
                 });
                 const {data}=await supabase.from('takeoff_items').insert(toInsert).select();
@@ -5495,7 +5498,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent,pitch_multiplier:it.pitch_multiplier,height:it.height}));
                 const name=estVersions.length===0?'Original Bid':`Version ${estVersions.length+1}`;
                 console.log('Saving version:', {project_id:project.id,name,items:snapshot.length});
-                const {data,error}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_number:estVersions.length+1,items_snapshot:snapshot,overhead_percent:overheadPct,profit_percent:profitPct,total_cost:sellingPrice}]).select().single();
+                const {data,error}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_number:estVersions.length+1,items_snapshot:snapshot,overhead_percent:overheadPct,profit_percent:profitPct,total_cost:sellingPrice,org_id:orgId||null}]).select().single();
                 if(error){console.error('Save version error:',error);alert('Failed to save version: '+error.message);return;}
                 console.log('Version saved:',data);
                 if(data) setEstVersions(prev=>[...prev,data]);
@@ -6247,7 +6250,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     console.log('Creating new version:', {project_id:project.id,name,items:snapshot.length});
                     const {data,error}=await supabase.from('estimate_versions').insert([{
                       project_id:project.id, name, version_number:estVersions.length+1,
-                      items_snapshot:snapshot, overhead_percent:overheadPct, profit_percent:profitPct, total_cost:sellingPrice
+                      items_snapshot:snapshot, overhead_percent:overheadPct, profit_percent:profitPct, total_cost:sellingPrice, org_id:orgId||null
                     }]).select().single();
                     if(error){console.error('Create version error:',error);alert('Failed to create version: '+error.message);return;}
                     console.log('Version created:',data);
@@ -6345,7 +6348,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 if(!window.confirm('Reset all categories to defaults? This will NOT delete your takeoff items.')) return;
                 await supabase.from('takeoff_categories').delete().neq('id','_never_');
                 const {loadCategories}=await import('../../lib/categories.js');
-                const cats=await loadCategories();
+                const cats=await loadCategories(orgId);
                 setDynamicCats(cats);
               }} style={{background:'none',border:'1px solid #E0E0E0',color:'#999',padding:'7px 14px',borderRadius:4,cursor:'pointer',fontSize:11}}>
                 Reset to Defaults
@@ -6396,7 +6399,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 } else {
                   // New category — generate slug ID from label
                   const slug = editCat.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||('cat_'+Date.now());
-                  const payload={id:slug,label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0,is_default:false};
+                  const payload={id:slug,label:editCat.label.trim(),color:editCat.color,unit:editCat.unit,default_cost:editCat.default_cost||0,sort_order:editCat.sort_order||0,is_default:false,org_id:orgId||null};
                   const {data,error}=await supabase.from('takeoff_categories').insert([payload]).select().single();
                   console.log('[cat save] insert result:', data, error);
                   if(error){alert('Add failed: '+error.message);return;}

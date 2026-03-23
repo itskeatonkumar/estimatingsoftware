@@ -54,6 +54,7 @@ function TrialBanner() {
 
 function AppShell() {
   const { t } = useTheme();
+  const { orgId, isSuperAdmin, viewAllOrgs } = useOrg();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [selProject, setSelProject] = useState(null);
@@ -85,7 +86,11 @@ function AppShell() {
     if (!user) return;
     if (hash.startsWith('/project/')) {
       const id = parseInt(hash.split('/')[2]) || null;
-      if (id) supabase.from('precon_projects').select('*').eq('id', id).single().then(({ data }) => { if (data) setSelProject(data); });
+      if (id) {
+        let q = supabase.from('precon_projects').select('*').eq('id', id);
+        if (orgId && !(isSuperAdmin && viewAllOrgs)) q = q.or(`org_id.eq.${orgId},org_id.is.null`);
+        q.single().then(({ data }) => { if (data) setSelProject(data); });
+      }
     }
   }, [hash, user]);
 

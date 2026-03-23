@@ -73,12 +73,14 @@ function ProjectList({ onSelectProject, user }) {
       setProjects(all);
       setLoading(false);
     })();
-    // Fetch team members from profiles table (skip silently if table doesn't exist)
-    supabase.from('profiles').select('id, email, full_name')
-      .then(({ data, error }) => {
-        if (!error && data?.length) setOrgMembers(data.map(p => ({ user_id: p.id, email: p.email, name: p.full_name })));
-      })
-      .catch(() => {});
+    // Fetch team members — only those in the current org
+    if(orgId){
+      supabase.from('memberships').select('user_id, role, profiles:user_id(id, email, full_name)').eq('org_id', orgId)
+        .then(({ data, error }) => {
+          if (!error && data?.length) setOrgMembers(data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
+        })
+        .catch(() => {});
+    }
     // Safety: force loading off after 5s in case query hangs
     const t = setTimeout(() => setLoading(false), 5000);
     return () => clearTimeout(t);

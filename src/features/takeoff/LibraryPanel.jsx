@@ -5,7 +5,7 @@ import { loadRegionalPricing, getRegionalCost, getRegionForState } from '../../l
 
 const CAT_MAP = Object.fromEntries(TAKEOFF_CATS.map(c => [c.id, c]));
 
-export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemplate, onSaveTemplate, onClose, projectRegion, projectItems }) {
+export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemplate, onSaveTemplate, onClose, projectRegion, projectItems, orgId }) {
   const [tab, setTab] = useState('items');
   const [regionalPricing, setRegionalPricing] = useState(null);
   const [rpSearch, setRpSearch] = useState('');
@@ -26,10 +26,11 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
   const [assemblyItems, setAssemblyItems] = useState([]);
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('library_items').select('*').order('name'),
-      supabase.from('library_assemblies').select('*').order('name'),
-    ]).then(async ([{ data: li }, { data: la }]) => {
+    const orgQ = orgId ? `.or('org_id.eq.${orgId},org_id.is.null')` : '';
+    let liQ = supabase.from('library_items').select('*').order('name');
+    let laQ = supabase.from('library_assemblies').select('*').order('name');
+    if (orgId) { liQ = liQ.or(`org_id.eq.${orgId},org_id.is.null`); laQ = laQ.or(`org_id.eq.${orgId},org_id.is.null`); }
+    Promise.all([liQ, laQ]).then(async ([{ data: li }, { data: la }]) => {
       let myItems = li || [];
       // Add any missing starter items (by name)
       {
@@ -105,7 +106,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
           {name:'Electrical Outlet',category:'electrical',unit:'EA',unit_cost:100.00,trade:'Remodeling',source:'starter'},
           {name:'Recessed Light',category:'electrical',unit:'EA',unit_cost:150.00,trade:'Remodeling',source:'starter'},
         ];
-        const newStarters = allStarters.filter(s => !existingNames.has(s.name));
+        const newStarters = allStarters.filter(s => !existingNames.has(s.name)).map(s => ({...s, ...(orgId ? {org_id: orgId} : {})}));
         if (newStarters.length > 0) {
           const { data: inserted } = await supabase.from('library_items').insert(newStarters).select();
           if (inserted) myItems = [...myItems, ...inserted];
@@ -116,8 +117,10 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
       setLoading(false);
     });
     loadRegionalPricing().then(d => setRegionalPricing(d)).catch(() => {});
-    supabase.from('takeoff_templates').select('*').order('created_at',{ascending:false}).then(({data})=>setTemplates(data||[]));
-  }, []);
+    let tQ = supabase.from('takeoff_templates').select('*').order('created_at',{ascending:false});
+    if (orgId) tQ = tQ.or(`org_id.eq.${orgId},org_id.is.null`);
+    tQ.then(({data})=>setTemplates(data||[]));
+  }, [orgId]);
 
   const loadAssemblyItems = async (assemblyId) => {
     const { data } = await supabase.from('library_assembly_items').select('*, library_items(*)').eq('assembly_id', assemblyId).order('sort_order');
@@ -151,7 +154,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
         name: item.name, category: item.category || 'other', unit: item.unit || 'SF',
         unit_cost: Number(item.unit_cost) || 0, labor_cost: Number(item.labor_cost) || 0,
         material_cost: Number(item.material_cost) || 0, description: item.description,
-        trade: item.trade, source: 'custom',
+        trade: item.trade, source: 'custom', ...(orgId ? {org_id: orgId} : {}),
       }]).select().single();
       if (data) setItems(prev => [...prev, data]);
     }
@@ -401,6 +404,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                           name:p.item_name, category:catToApp(p.category), unit:p.unit,
                           unit_cost:rc.total, material_cost:rc.material, labor_cost:rc.labor,
                           trade:p.category.split(' - ')[0]||'', source:'regional',
+                          ...(orgId ? {org_id: orgId} : {}),
                         }]).select().single();
                         if(data){setItems(prev=>[...prev,data]);alert('Saved to My Items');}
                       }}
@@ -438,7 +442,7 @@ export default function LibraryPanel({ onApplyItem, onApplyAssembly, onApplyTemp
                   category:i.category,description:i.description,unit:i.unit,unit_cost:i.unit_cost,
                   color:i.color,measurement_type:i.measurement_type,waste_percent:i.waste_percent||0,
                 }));
-                const {data}=await supabase.from('takeoff_templates').insert([{name:newTemplateName.trim(),items:tItems}]).select().single();
+                const {data}=await supabase.from('takeoff_templates').insert([{name:newTemplateName.trim(),items:tItems,...(orgId?{org_id:orgId}:{})}]).select().single();
                 if(data){setTemplates(prev=>[data,...prev]);setNewTemplateName('');}
               }} style={{padding:'6px 12px',background:'#10B981',border:'none',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,opacity:newTemplateName.trim()?1:0.4}}>
                 Save Current

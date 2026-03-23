@@ -26,8 +26,10 @@ export const DEFAULT_CATEGORIES = [
 
 let _cache = null;
 
-export async function loadCategories() {
-  const { data, error } = await supabase.from('takeoff_categories').select('*').order('sort_order');
+export async function loadCategories(orgId) {
+  let q = supabase.from('takeoff_categories').select('*').order('sort_order');
+  if (orgId) q = q.or(`org_id.eq.${orgId},org_id.is.null`);
+  const { data, error } = await q;
 
   if (error) {
     // Table might not exist — fall back to defaults
@@ -37,8 +39,8 @@ export async function loadCategories() {
   }
 
   if (!data || data.length === 0) {
-    // First use — seed defaults
-    const toInsert = DEFAULT_CATEGORIES.map(c => ({ ...c, is_default: true }));
+    // First use — seed defaults with org_id
+    const toInsert = DEFAULT_CATEGORIES.map(c => ({ ...c, is_default: true, ...(orgId ? { org_id: orgId } : {}) }));
     const { data: inserted } = await supabase.from('takeoff_categories').insert(toInsert).select();
     _cache = inserted || DEFAULT_CATEGORIES;
     return _cache;
