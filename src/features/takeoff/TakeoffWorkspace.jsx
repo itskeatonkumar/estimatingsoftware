@@ -5282,12 +5282,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
       {/* ── Full-screen Estimate Page ── */}
       {rightTab==='estimate'&&(()=>{
-        const allItems = items.filter(i=>i.plan_id!=null);
+        // Use snapshot data if viewing a saved version, otherwise live items
+        const activeVer = activeVersion ? estVersions.find(v=>String(v.id)===String(activeVersion)) : null;
+        const allItems = activeVer ? (Array.isArray(activeVer.items_snapshot)?activeVer.items_snapshot:[]) : items.filter(i=>i.plan_id!=null);
         const allCatGroups=TAKEOFF_CATS.map(cat=>{
           const its=allItems.filter(i=>i.category===cat.id);
           return its.length?{...cat,items:its,subtotal:its.reduce((s,i)=>s+(i.total_cost||0),0)}:null;
         }).filter(Boolean);
-        const GC_OVERHEAD = overheadPct/100, PROFIT = profitPct/100;
+        const GC_OVERHEAD = activeVer ? (activeVer.overhead_pct||0)/100 : overheadPct/100;
+        const PROFIT = activeVer ? (activeVer.profit_pct||0)/100 : profitPct/100;
         const extendedCost = allItems.reduce((s,i)=>s+(i.total_cost||0),0);
         const sellingPrice = Math.round(extendedCost*(1+GC_OVERHEAD+PROFIT));
         const netProfit = sellingPrice - extendedCost;
