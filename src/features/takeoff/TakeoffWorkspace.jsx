@@ -9,6 +9,7 @@ import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, Take
 import { generateProposalPdf } from "./proposalPdf.js";
 import LibraryPanel from "./LibraryPanel.jsx";
 import PlanChat from "./PlanChat.jsx";
+import PlanUploadManager from "./PlanUploadManager.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
@@ -267,6 +268,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [logoUploading, setLogoUploading] = useState(false);
   const [rectDrag, setRectDrag] = useState(null); // {start:{x,y}} for shift-drag rectangle
   const [dragOverUpload, setDragOverUpload] = useState(false);
+  const [uploadManagerFiles, setUploadManagerFiles] = useState(null); // FileList to show upload manager
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
@@ -672,56 +674,68 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
   const handleMultiUpload = async (fileList) => {
     if(!fileList||!fileList.length) return;
-    uploadCancelRef.current = false;
     const files = Array.from(fileList);
-    // Expand ZIPs into PDFs
-    const allFiles = [];
-    let skippedCount = 0;
-    for(const file of files){
-      if(file.name.toLowerCase().endsWith('.zip') || file.type==='application/zip' || file.type==='application/x-zip-compressed'){
-        setUploading(`Extracting ${file.name}…`);
-        const JSZip = await ensureJSZip();
-        if(!JSZip){alert('Could not load ZIP library');continue;}
-        try {
-          const zip = await JSZip.loadAsync(file);
-          const entries = [];
-          zip.forEach((path, entry) => {
-            if(!entry.dir && path.toLowerCase().endsWith('.pdf')) entries.push({path, entry});
-          });
-          if(entries.length===0){alert(`No PDF files found in ${file.name}`);continue;}
-          setUploading(`Found ${entries.length} PDFs in ${file.name}…`);
-          for(const {path, entry} of entries){
-            const blob = await entry.async('blob');
-            const name = path.split('/').pop();
-            allFiles.push(new File([blob], name, {type:'application/pdf'}));
-          }
-          const totalInZip = Object.keys(zip.files).filter(k=>!zip.files[k].dir).length;
-          skippedCount += totalInZip - entries.length;
-        } catch(e){alert(`Failed to read ZIP ${file.name}: ${e.message}`);}
-      } else if(file.type?.includes('pdf') || file.type?.startsWith('image/')){
-        allFiles.push(file);
-      } else {
-        skippedCount++;
-      }
+    const hasZip = files.some(f => f.name.toLowerCase().endsWith('.zip') || f.type==='application/zip' || f.type==='application/x-zip-compressed');
+    const isMulti = files.length > 1;
+
+    // For single non-ZIP file, upload directly (fast path)
+    if(!hasZip && !isMulti){
+      uploadCancelRef.current = false;
+      await handleUpload(files[0]);
+      return;
     }
-    if(allFiles.length===0){setUploading(false);return;}
-    const errors = [];
-    for(let i=0;i<allFiles.length;i++){
-      if(uploadCancelRef.current){ setUploading(`Cancelled — ${i} of ${allFiles.length} uploaded`); setTimeout(()=>setUploading(false),2500); return; }
-      setUploading(`Processing file ${i+1} of ${allFiles.length}: ${allFiles[i].name}`);
+
+    // For ZIP or multiple files, open the Upload Manager
+    setUploadManagerFiles(fileList);
+  };
+
+  // Called by PlanUploadManager when user clicks "Start Upload"
+  const executeManagerUpload = async ({ files: checkedFiles, folders: checkedFolders, createFolders: doCreateFolders, skipDuplicates: doSkipDups, cancelRef, onFileStart, onFileComplete, onFileError, onProgress, onComplete }) => {
+    uploadCancelRef.current = false;
+    const existingNames = new Set(plans.map(p => p.name));
+
+    for(let i=0; i<checkedFiles.length; i++){
+      if(cancelRef.current){ onComplete(); return; }
+      const f = checkedFiles[i];
+      const fileName = f.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').trim();
+      if(doSkipDups && existingNames.has(fileName)){ onFileComplete(f.path, f.folder); continue; }
+      onFileStart(f.path, f.folder);
+      onProgress(i, checkedFiles.length, f.name, f.folder);
+
       try {
-        await handleUpload(allFiles[i], i>0); // skipStatusReset for subsequent files
+        // Get the actual File object
+        let file;
+        if(f.rawFile) file = f.rawFile;
+        else if(f.entry) {
+          const blob = await f.entry.async('blob');
+          file = new File([blob], f.name, {type:'application/pdf'});
+        } else continue;
+
+        // Set the upload target folder if createFolders is on
+        if(doCreateFolders && f.folder && f.folder !== 'Root' && f.folder !== 'Selected Files'){
+          // Find or create the folder in planSets
+          const existingFolder = Object.entries(planSets).find(([,v]) => v.name === f.folder);
+          if(existingFolder){
+            setUploadTargetFolder(existingFolder[0]);
+          } else {
+            const fid = 'folder_' + f.folder.replace(/[^a-zA-Z0-9]/g,'_') + '_' + Date.now();
+            savePlanSets({...planSets, [fid]: {name:f.folder, planIds:[], collapsed:false}});
+            setUploadTargetFolder(fid);
+          }
+        } else {
+          setUploadTargetFolder(null);
+        }
+
+        // Use OCR naming or filename naming
+        await handleUpload(file, true); // skipStatusReset=true
+        onFileComplete(f.path, f.folder);
+        existingNames.add(fileName);
       } catch(e){
-        console.error('Upload failed:',allFiles[i].name,e);
-        errors.push(`${allFiles[i].name}: ${e.message}`);
+        console.error('Upload manager: file failed', f.name, e);
+        onFileError(f.path, f.folder, e.message);
       }
     }
-    const msg = `✓ Done — ${allFiles.length - errors.length} of ${allFiles.length} files uploaded`;
-    const extra = skippedCount ? ` (skipped ${skippedCount} non-PDF files)` : '';
-    const errMsg = errors.length ? `\n${errors.length} failed: ${errors.join(', ')}` : '';
-    setUploading(msg + extra);
-    if(errMsg) console.warn(errMsg);
-    setTimeout(()=>setUploading(false), 3000);
+    onComplete();
   };
 
   // Cleanup blob URLs on unmount
@@ -5342,6 +5356,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               } else { alert('AI returned no text.'); }
             }catch(e){alert('Re-extract failed: '+e.message);}
           }}/>
+
+        {/* Plan Upload Manager Modal */}
+        {uploadManagerFiles && (
+          <PlanUploadManager
+            rawFiles={uploadManagerFiles}
+            onStartUpload={executeManagerUpload}
+            onClose={() => setUploadManagerFiles(null)}
+          />
+        )}
 
         {/* ── Right Tool Bar ── */}
         <div style={{width:52,flexShrink:0,display:'flex',flexDirection:'column',borderLeft:`1px solid ${t.border}`,background:t.bg2,alignItems:'center',paddingTop:4,gap:0,overflowY:'auto'}}>
