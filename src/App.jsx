@@ -8,6 +8,7 @@ import SignupPage from './features/auth/SignupPage.jsx';
 import OnboardingPage from './features/auth/OnboardingPage.jsx';
 import ProjectList from './features/takeoff/ProjectList.jsx';
 import TakeoffWorkspace from './features/takeoff/TakeoffWorkspace.jsx';
+import OrgSettings from './features/settings/OrgSettings.jsx';
 
 function TrialBanner() {
   const { orgId } = useOrg();
@@ -104,6 +105,13 @@ function AppShell() {
 
   // Onboarding
   if (hash === '/onboarding') return <OnboardingPage onGoToDashboard={() => { window.location.hash = '/'; setHash('/'); }} />;
+
+  // Settings
+  if (hash === '/settings') return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: t.bg, color: t.text }}>
+      <OrgSettings user={user} onBack={() => { window.location.hash = ''; setHash(''); }} />
+    </div>
+  );
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: t.bg, color: t.text }}>

@@ -40,6 +40,7 @@ function ProjectList({ onSelectProject, user }) {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [orgMembers, setOrgMembers] = useState([]);
+  const [myRole, setMyRole] = useState(null);
   const [viewMode, setViewMode] = useState(()=>{ try{return localStorage.getItem('projectView')||'grid';}catch{return 'grid';} });
   const [calMonth, setCalMonth] = useState(()=>{ const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()}; });
   const [dragCard, setDragCard] = useState(null);
@@ -80,7 +81,11 @@ function ProjectList({ onSelectProject, user }) {
     if(orgId){
       supabase.from('memberships').select('user_id, role, profiles:user_id(id, email, full_name)').eq('org_id', orgId)
         .then(({ data, error }) => {
-          if (!error && data?.length) setOrgMembers(data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
+          if (!error && data?.length) {
+            setOrgMembers(data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
+            const me = data.find(m => m.user_id === user?.id);
+            if(me) setMyRole(me.role);
+          }
         })
         .catch(() => {});
     }
@@ -166,6 +171,13 @@ function ProjectList({ onSelectProject, user }) {
           </label>
         )}
         <div style={{ flex: 1 }} />
+        {(myRole==='owner'||myRole==='admin'||isSuperAdmin)&&(
+          <button onClick={()=>{window.location.hash='/settings';}}
+            style={{background:'none',border:'none',color:t.text3,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:4,display:'flex',alignItems:'center',gap:4}}
+            title="Organization Settings">
+            <span>&#9881;</span><span style={{fontSize:11}}>Settings</span>
+          </button>
+        )}
         <span style={{ fontSize: 12, color: t.text3 }}>{user?.email}</span>
         <ThemeToggle />
         <button onClick={() => supabase.auth.signOut()}
