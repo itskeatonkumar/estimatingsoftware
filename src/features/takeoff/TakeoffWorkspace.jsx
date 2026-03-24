@@ -150,6 +150,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const uploadCancelRef = useRef(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiCredits, setAiCredits] = useState(null); // {available, monthly, used, purchased, reset_at}
   const [showCreditsDD, setShowCreditsDD] = useState(false);
@@ -667,8 +668,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   });
 
   // Multi-file + ZIP upload handler
+  const cancelUpload = () => { uploadCancelRef.current = true; };
+
   const handleMultiUpload = async (fileList) => {
     if(!fileList||!fileList.length) return;
+    uploadCancelRef.current = false;
     const files = Array.from(fileList);
     // Expand ZIPs into PDFs
     const allFiles = [];
@@ -703,6 +707,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     if(allFiles.length===0){setUploading(false);return;}
     const errors = [];
     for(let i=0;i<allFiles.length;i++){
+      if(uploadCancelRef.current){ setUploading(`Cancelled — ${i} of ${allFiles.length} uploaded`); setTimeout(()=>setUploading(false),2500); return; }
       setUploading(`Processing file ${i+1} of ${allFiles.length}: ${allFiles[i].name}`);
       try {
         await handleUpload(allFiles[i], i>0); // skipStatusReset for subsequent files
@@ -1837,6 +1842,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       const titleCrops = []; // store b64 crops for naming phase
 
       for(let pageN=1; pageN<=numPages; pageN++){
+        if(uploadCancelRef.current){ setUploading('Cancelled'); setTimeout(()=>setUploading(false),2000); return; }
         setUploading(`Rendering ${pageN} / ${numPages}…`);
         const page = await doc.getPage(pageN);
         // Extract embedded text + positions (free — no AI needed)
@@ -1973,6 +1979,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       if(needsAI.length > 0){
         const BATCH = 5;
         for(let i=0; i<needsAI.length; i+=BATCH){
+          if(uploadCancelRef.current) break;
           const slice = needsAI.slice(i, i+BATCH);
           setUploading(`AI naming ${i+1}–${Math.min(i+BATCH, needsAI.length)} of ${needsAI.length} remaining…`);
           await Promise.all(slice.map(async({plan:p, cropIdx})=>{
@@ -3677,6 +3684,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                       : <><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> {uploading}</>
                     : <>＋ Upload</>}
                 </button>
+                {uploading&&!uploading.startsWith('✓')&&(
+                  <button onClick={cancelUpload} title="Cancel upload"
+                    style={{padding:'6px 6px',borderRadius:6,border:'1px solid rgba(239,68,68,0.4)',background:'rgba(239,68,68,0.08)',color:'#EF4444',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0}}>
+                    &#10005;
+                  </button>
+                )}
                 <button disabled={namingAll||plans.length===0} onClick={async()=>{
                   setNamingAll(true);
                   const realPlans=plans.filter(p=>p.id!=='preview');
