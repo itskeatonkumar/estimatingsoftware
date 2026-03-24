@@ -265,6 +265,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [editingProfile, setEditingProfile] = useState(null); // null=list, {}=new, {id:...}=editing
   const [logoUploading, setLogoUploading] = useState(false);
   const [rectDrag, setRectDrag] = useState(null); // {start:{x,y}} for shift-drag rectangle
+  const [dragOverUpload, setDragOverUpload] = useState(false);
   const [estGroupBy, setEstGroupBy] = useState('category'); // 'category'|'sheet'|'trade'|'location'|'none'
   const [collapsedEstGroups, setCollapsedEstGroups] = useState({});
   const [regionalData, setRegionalData] = useState(null); // {pricing, multipliers, states, stateToRegion}
@@ -655,6 +656,68 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     s.onerror=()=>resolve(null);
     document.head.appendChild(s);
   });
+
+  const ensureJSZip = () => new Promise((resolve)=>{
+    if(window.JSZip){ resolve(window.JSZip); return; }
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload=()=>resolve(window.JSZip);
+    s.onerror=()=>resolve(null);
+    document.head.appendChild(s);
+  });
+
+  // Multi-file + ZIP upload handler
+  const handleMultiUpload = async (fileList) => {
+    if(!fileList||!fileList.length) return;
+    const files = Array.from(fileList);
+    // Expand ZIPs into PDFs
+    const allFiles = [];
+    let skippedCount = 0;
+    for(const file of files){
+      if(file.name.toLowerCase().endsWith('.zip') || file.type==='application/zip' || file.type==='application/x-zip-compressed'){
+        setUploading(`Extracting ${file.name}…`);
+        const JSZip = await ensureJSZip();
+        if(!JSZip){alert('Could not load ZIP library');continue;}
+        try {
+          const zip = await JSZip.loadAsync(file);
+          const entries = [];
+          zip.forEach((path, entry) => {
+            if(!entry.dir && path.toLowerCase().endsWith('.pdf')) entries.push({path, entry});
+          });
+          if(entries.length===0){alert(`No PDF files found in ${file.name}`);continue;}
+          setUploading(`Found ${entries.length} PDFs in ${file.name}…`);
+          for(const {path, entry} of entries){
+            const blob = await entry.async('blob');
+            const name = path.split('/').pop();
+            allFiles.push(new File([blob], name, {type:'application/pdf'}));
+          }
+          const totalInZip = Object.keys(zip.files).filter(k=>!zip.files[k].dir).length;
+          skippedCount += totalInZip - entries.length;
+        } catch(e){alert(`Failed to read ZIP ${file.name}: ${e.message}`);}
+      } else if(file.type?.includes('pdf') || file.type?.startsWith('image/')){
+        allFiles.push(file);
+      } else {
+        skippedCount++;
+      }
+    }
+    if(allFiles.length===0){setUploading(false);return;}
+    const errors = [];
+    for(let i=0;i<allFiles.length;i++){
+      setUploading(`Processing file ${i+1} of ${allFiles.length}: ${allFiles[i].name}`);
+      try {
+        await handleUpload(allFiles[i], i>0); // skipStatusReset for subsequent files
+      } catch(e){
+        console.error('Upload failed:',allFiles[i].name,e);
+        errors.push(`${allFiles[i].name}: ${e.message}`);
+      }
+    }
+    const msg = `✓ Done — ${allFiles.length - errors.length} of ${allFiles.length} files uploaded`;
+    const extra = skippedCount ? ` (skipped ${skippedCount} non-PDF files)` : '';
+    const errMsg = errors.length ? `\n${errors.length} failed: ${errors.join(', ')}` : '';
+    setUploading(msg + extra);
+    if(errMsg) console.warn(errMsg);
+    setTimeout(()=>setUploading(false), 3000);
+  };
 
   // Cleanup blob URLs on unmount
   useEffect(()=>{
@@ -3606,7 +3669,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                   📁 New
                 </button>
                 <button onClick={()=>{ setUploadTargetFolder(null); fileRef.current?.click(); }} disabled={!!uploading}
-                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}>
+                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}
+                  title="Upload PDFs, ZIPs, or images">
                   {uploading
                     ? uploading.startsWith('✓')
                       ? <>{uploading}</>
@@ -3643,7 +3707,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
                   {namingAll?<span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>:'✦'}
                 </button>
-                <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>handleUpload(e.target.files[0])}/>
+                <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{handleMultiUpload(e.target.files);e.target.value='';}}/>
+
               </div>
 
               {/* Filter strip */}
@@ -4488,11 +4553,23 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 display:'flex',alignItems:'center',gap:5,flexShrink:0,whiteSpace:'nowrap'}}>
               {analyzing?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> Analyzing…</>:<>✦ AI Takeoff</>}
             </button>}
-            <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{display:'none'}} onChange={e=>handleUpload(e.target.files[0])}/>
+            <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{handleMultiUpload(e.target.files);e.target.value='';}}/>
+
           </div>
 
           {/* Plan canvas + floating overlays */}
-          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}>
+          <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}
+            onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverUpload(true);}}
+            onDragLeave={e=>{e.preventDefault();setDragOverUpload(false);}}
+            onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(e.dataTransfer.files);}}}>
+            {/* Drag overlay */}
+            {dragOverUpload&&<div style={{position:'absolute',inset:0,background:'rgba(16,185,129,0.08)',border:'3px dashed #10B981',borderRadius:8,zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+              <div style={{background:'#fff',padding:'20px 32px',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',textAlign:'center'}}>
+                <div style={{fontSize:32,color:'#10B981',marginBottom:4}}>&#8615;</div>
+                <div style={{fontSize:14,fontWeight:600,color:'#10B981'}}>Drop to upload</div>
+                <div style={{fontSize:11,color:'#999'}}>PDFs, ZIPs, or images</div>
+              </div>
+            </div>}
           {/* Find on page bar */}
           {planSearch.trim()&&selPlan&&!showOverview&&(()=>{
             let tp = selPlan.text_positions;
@@ -4607,14 +4684,25 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     );})}
                   </div>
                 ):(
-                  <div style={{textAlign:'center',padding:'80px 20px'}}>
-                    <div style={{fontSize:48,color:'#ccc',marginBottom:16}}>&#8862;</div>
-                    <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>{q?'No matching sheets':'No plans yet'}</div>
-                    <div style={{fontSize:13,color:'#999',marginBottom:24}}>{q?'Try a different search term':'Upload your construction plans to get started'}</div>
-                    {!q&&<button onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}
-                      style={{background:'#10B981',border:'none',color:'#fff',padding:'10px 24px',borderRadius:4,cursor:'pointer',fontSize:13,fontWeight:500}}>
-                      Upload Plans
-                    </button>}
+                  <div style={{textAlign:'center',padding:'60px 20px'}}
+                    onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverUpload(true);}}
+                    onDragLeave={e=>{e.preventDefault();setDragOverUpload(false);}}
+                    onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(e.dataTransfer.files);}}}>
+                    {q ? <>
+                      <div style={{fontSize:48,color:'#ccc',marginBottom:16}}>&#8862;</div>
+                      <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>No matching sheets</div>
+                      <div style={{fontSize:13,color:'#999'}}>Try a different search term</div>
+                    </> : <>
+                      <div style={{border:dragOverUpload?'2px dashed #10B981':'2px dashed #E5E7EB',borderRadius:12,padding:'40px 20px',background:dragOverUpload?'#ECFDF5':'#FAFAFA',transition:'all 0.15s',cursor:'pointer'}}
+                        onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}>
+                        <div style={{fontSize:48,color:dragOverUpload?'#10B981':'#ccc',marginBottom:12}}>{dragOverUpload?'&#8615;':'&#8862;'}</div>
+                        <div style={{fontSize:16,fontWeight:500,color:dragOverUpload?'#10B981':'#333',marginBottom:6}}>
+                          {dragOverUpload?'Drop files to upload':'No plans yet'}
+                        </div>
+                        <div style={{fontSize:13,color:'#999',marginBottom:4}}>Drop PDFs or ZIP files here, or click to browse</div>
+                        <div style={{fontSize:11,color:'#bbb'}}>Supports multiple files, ZIP archives, and images</div>
+                      </div>
+                    </>}
                   </div>
                 );
                 })()}
