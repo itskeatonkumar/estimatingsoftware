@@ -3734,7 +3734,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
                   {namingAll?<span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>:'✦'}
                 </button>
-                <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{handleMultiUpload(e.target.files);e.target.value='';}}/>
+                <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{const f=Array.from(e.target.files);e.target.value='';handleMultiUpload(f);}}/>
 
               </div>
 
@@ -4580,7 +4580,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 display:'flex',alignItems:'center',gap:5,flexShrink:0,whiteSpace:'nowrap'}}>
               {analyzing?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span> Analyzing…</>:<>✦ AI Takeoff</>}
             </button>}
-            <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{handleMultiUpload(e.target.files);e.target.value='';}}/>
+            <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{const f=Array.from(e.target.files);e.target.value='';handleMultiUpload(f);}}/>
 
           </div>
 

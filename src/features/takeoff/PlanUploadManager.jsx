@@ -59,7 +59,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
             tree[folder].files.push({ name: filename, path, checked: true, size: entry._data?.uncompressedSize || 0, entry });
           });
         } catch (e) { console.error('ZIP parse error:', e); }
-      } else if (file.type?.includes('pdf') || file.type?.startsWith('image/')) {
+      } else if (file.type?.includes('pdf') || file.type?.startsWith('image/') || file.name.toLowerCase().endsWith('.pdf')) {
         const folder = 'Selected Files';
         if (!tree[folder]) tree[folder] = { name: folder, checked: true, namingMode: 'filename', files: [] };
         tree[folder].files.push({ name: file.name, path: file.name, checked: true, size: file.size, rawFile: file });
