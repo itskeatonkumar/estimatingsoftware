@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useTheme } from "../../lib/theme.jsx";
 import { TAKEOFF_CATS as STATIC_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
 import { loadCategories, getCachedCategories, findCategory } from "../../lib/categories.js";
-import { useOrg } from "../../lib/OrgContext.jsx";
+import { useOrg, canEdit } from "../../lib/OrgContext.jsx";
 import { supabase } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
@@ -141,7 +141,8 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
 
 function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const { t } = useTheme();
-  const { orgId } = useOrg();
+  const { orgId, userRole } = useOrg();
+  const isViewer = !canEdit(userRole);
   const [plans, setPlans] = useState([]);
   const [planSets, setPlanSets] = useState({}); // {batchId:{name,planIds:[]}} persisted to localStorage
   const [namingAll, setNamingAll] = useState(false);
@@ -1112,7 +1113,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   // processClick: single-click adds a point
   // Applies angle snap when enabled. Handles arc-pending 3-click flow, cutout, area, linear.
   const processClick=(rawPt)=>{
-    if(!activeCondId) return;
+    if(isViewer||!activeCondId) return;
     const activeCond = itemsRef.current.find(i=>String(i.id)===String(activeCondId));
     if(!activeCond) return;
     const mt = activeCond.measurement_type;
@@ -3689,8 +3690,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 }} style={{padding:'6px 8px',borderRadius:6,border:`1px solid ${t.border}`,background:'none',color:t.text3,cursor:'pointer',fontSize:11,fontWeight:600,display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
                   📁 New
                 </button>
-                <button onClick={()=>{ setUploadTargetFolder(null); fileRef.current?.click(); }} disabled={!!uploading}
-                  style={{flex:1,background:uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:'#fff',padding:'6px 0',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}
+                <button onClick={()=>{ if(isViewer)return; setUploadTargetFolder(null); fileRef.current?.click(); }} disabled={!!uploading||isViewer}
+                  style={{flex:1,background:isViewer?'#E5E7EB':uploading&&uploading.startsWith('✓')?'#10B981':uploading?'#6B7280':'#10B981',border:'none',color:isViewer?'#9CA3AF':'#fff',padding:'6px 0',borderRadius:6,cursor:isViewer?'default':'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:5,transition:'background 0.2s'}}
                   title="Upload PDFs, ZIPs, or images">
                   {uploading
                     ? uploading.startsWith('✓')
@@ -4307,7 +4308,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             );
                           })}
                           {/* Add item (only if a plan is open) */}
-                          {selPlan&&(
+                          {selPlan&&!isViewer&&(
                             <AddItemInline cat={cat} selPlan={selPlan} project={project} items={items}
                               onCreated={(newItem)=>{setItems(prev=>[...prev,newItem]);armItem(newItem);}}/>
                           )}
@@ -4574,7 +4575,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               </div>
             )}
             {/* AI Takeoff */}
-            {selPlan&&<button onClick={runAITakeoff} disabled={analyzing}
+            {selPlan&&!isViewer&&<button onClick={runAITakeoff} disabled={analyzing}
               style={{marginLeft:'auto',height:'100%',padding:'0 14px',border:'none',borderLeft:`1px solid ${t.border}`,
                 background:'none',color:analyzing?t.text4:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,
                 display:'flex',alignItems:'center',gap:5,flexShrink:0,whiteSpace:'nowrap'}}>
@@ -5388,8 +5389,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             if(!btn) return <div key={i} style={{height:1,background:t.border,width:32,margin:'3px 0'}}/>;
             const isMarkupActive = btn.markup && markupMode===btn.id;
             const isActive = btn.markup ? isMarkupActive : btn.id==='markup_toggle' ? markupMode!==null : btn.isLabel ? (activeCondId && tool!=='select' && tool!=='eraser' && tool!=='cutout') : tool===btn.id;
+            const viewerBlocked = isViewer && btn.id!=='select' && btn.id!=='markup_toggle' && !btn.markup;
             const onClick = ()=>{
-              if(btn.isLabel) return; // just a label, not clickable
+              if(btn.isLabel) return;
+              if(viewerBlocked) return;
               if(btn.id==='markup_toggle'){
                 setMarkupMode(prev => prev !== null ? null : 'highlight');
                 return;
@@ -5414,10 +5417,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               setSelectedShapes(new Set());setEraserHover(null);
             };
             return(
-              <button key={btn.id} onClick={onClick} title={btn.label}
+              <button key={btn.id} onClick={onClick} title={viewerBlocked?'View only — contact your admin for edit access':btn.label}
                 style={{width:'100%',padding:btn.markup?'5px 0':'7px 0',border:'none',
                   background:isActive?`${btn.color}15`:'none',
-                  color:isActive?btn.color:t.text3,cursor:btn.isLabel?'default':'pointer',
+                  color:viewerBlocked?t.text4+'80':isActive?btn.color:t.text3,cursor:btn.isLabel||viewerBlocked?'default':'pointer',
+                  opacity:viewerBlocked?0.35:btn.isLabel?0.7:1,
                   display:'flex',flexDirection:'column',alignItems:'center',gap:1,
                   borderRight:isActive?`2px solid ${btn.color}`:'2px solid transparent',
                   boxSizing:'border-box',transition:'all 0.1s',
@@ -5659,7 +5663,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 + Add Company
               </button>
             )}
-            <button onClick={async()=>await generateProposalPdf({
+            {!isViewer&&<><button onClick={async()=>await generateProposalPdf({
                 project, items, plans, categories:TAKEOFF_CATS,
                 overheadPct, profitPct, companyId:proposalCompany,
                 clientInfo, companyProfile:selCompanyProfile||companyProfile, proposalScope, proposalTerms,
@@ -5670,7 +5674,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             <button onClick={doProposalExport}
               style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
               &#8595; CSV
-            </button>
+            </button></>}
             {regionalData&&(
               <button onClick={async()=>{
                 const region = projectRegion;

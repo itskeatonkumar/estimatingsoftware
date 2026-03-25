@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../lib/theme.jsx';
 import { ThemeToggle } from '../../lib/theme.jsx';
 import { supabase } from '../../lib/supabase.js';
-import { useOrg } from '../../lib/OrgContext.jsx';
+import { useOrg, canEdit, canManageTeam } from '../../lib/OrgContext.jsx';
 import { TakeoffProjectModal } from './TakeoffComponents.jsx';
 
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '';
@@ -30,7 +30,7 @@ const STATUS_OPTIONS = ['estimating', 'pending_approval', 'approved', 'bid_submi
 
 function ProjectList({ onSelectProject, user }) {
   const { t } = useTheme();
-  const { orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter } = useOrg();
+  const { orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter, userRole } = useOrg();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newModal, setNewModal] = useState(false);
@@ -40,7 +40,6 @@ function ProjectList({ onSelectProject, user }) {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [orgMembers, setOrgMembers] = useState([]);
-  const [myRole, setMyRole] = useState(null);
   const [viewMode, setViewMode] = useState(()=>{ try{return localStorage.getItem('projectView')||'grid';}catch{return 'grid';} });
   const [calMonth, setCalMonth] = useState(()=>{ const d=new Date(); return {year:d.getFullYear(),month:d.getMonth()}; });
   const [dragCard, setDragCard] = useState(null);
@@ -83,8 +82,6 @@ function ProjectList({ onSelectProject, user }) {
         .then(({ data, error }) => {
           if (!error && data?.length) {
             setOrgMembers(data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
-            const me = data.find(m => m.user_id === user?.id);
-            if(me) setMyRole(me.role);
           }
         })
         .catch(() => {});
@@ -171,13 +168,14 @@ function ProjectList({ onSelectProject, user }) {
           </label>
         )}
         <div style={{ flex: 1 }} />
-        {(myRole==='owner'||myRole==='admin'||isSuperAdmin)&&(
+        {(canManageTeam(userRole)||isSuperAdmin)&&(
           <button onClick={()=>{window.location.hash='/settings';}}
             style={{background:'none',border:'none',color:t.text3,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:4,display:'flex',alignItems:'center',gap:4}}
             title="Organization Settings">
             <span>&#9881;</span><span style={{fontSize:11}}>Settings</span>
           </button>
         )}
+        {userRole==='viewer'&&<span style={{fontSize:10,fontWeight:600,color:'#E8A317',background:'#FEF3C7',padding:'2px 8px',borderRadius:10}}>View Only</span>}
         <span style={{ fontSize: 12, color: t.text3 }}>{user?.email}</span>
         <ThemeToggle />
         <button onClick={() => supabase.auth.signOut()}
@@ -204,7 +202,7 @@ function ProjectList({ onSelectProject, user }) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {selected.size > 0 && (
+            {selected.size > 0 && canEdit(userRole) && (
               <button onClick={bulkDelete} disabled={deleting}
                 style={{ background: '#C0504D', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
                 {deleting ? 'Deleting...' : `Delete ${selected.size}`}
@@ -216,10 +214,10 @@ function ProjectList({ onSelectProject, user }) {
                 Clear
               </button>
             )}
-            <button onClick={() => setNewModal(true)}
+            {canEdit(userRole)&&<button onClick={() => setNewModal(true)}
               style={{ background: '#10B981', border: 'none', color: '#fff', padding: '8px 20px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
               New Project
-            </button>
+            </button>}
             {/* View toggle */}
             <div style={{ display: 'flex', border: `1px solid ${t.border}`, borderRadius: 4, overflow: 'hidden', marginLeft: 8 }}>
               {[['grid','Grid'],['pipeline','Pipeline'],['calendar','Calendar']].map(([id,lbl])=>(
@@ -379,7 +377,7 @@ function ProjectList({ onSelectProject, user }) {
             <div style={{ fontSize: 13, color: t.text3, marginBottom: 24 }}>
               {search || filterStatus !== 'all' ? 'Try adjusting your filters' : 'Create your first project to start estimating'}
             </div>
-            {!search && filterStatus === 'all' && (
+            {!search && filterStatus === 'all' && canEdit(userRole) && (
               <button onClick={() => setNewModal(true)}
                 style={{ background: '#10B981', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
                 New Project

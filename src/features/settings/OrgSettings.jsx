@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase.js';
-import { useOrg } from '../../lib/OrgContext.jsx';
+import { useOrg, canManageTeam, canManageBilling } from '../../lib/OrgContext.jsx';
 
 const ROLES = ['owner','admin','editor','viewer'];
 const ROLE_LABEL = {owner:'Owner',admin:'Admin',editor:'Editor',viewer:'Viewer'};
 const ROLE_COLOR = {owner:'#7B6BA4',admin:'#1976D2',editor:'#10B981',viewer:'#6B7280'};
 
 export default function OrgSettings({ user, onBack }) {
-  const { orgId, orgs } = useOrg();
+  const { orgId, orgs, userRole } = useOrg();
+  const myRole = userRole;
   const [tab, setTab] = useState('team');
   const [org, setOrg] = useState(null);
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
-  const [myRole, setMyRole] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('editor');
   const [inviteMsg, setInviteMsg] = useState(null);
@@ -30,11 +30,7 @@ export default function OrgSettings({ user, onBack }) {
     // Load members
     supabase.from('memberships').select('user_id, role, created_at, profiles:user_id(id, email, full_name)')
       .eq('org_id', orgId).then(({data}) => {
-        if(data) {
-          setMembers(data);
-          const me = data.find(m => m.user_id === user?.id);
-          setMyRole(me?.role || null);
-        }
+        if(data) setMembers(data);
       });
     // Load invites
     supabase.from('invitations').select('*').eq('org_id', orgId).is('accepted_at', null)
@@ -358,7 +354,7 @@ export default function OrgSettings({ user, onBack }) {
                   Trial ends: <strong>{fmtDate(org.trial_ends_at)}</strong>
                 </div>
               )}
-              <div style={{display:'flex',gap:8}}>
+              {canManageBilling(myRole) && <div style={{display:'flex',gap:8}}>
                 {org?.stripe_customer_id ? (
                   <button onClick={async()=>{
                     const res=await fetch('/api/create-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:org.stripe_customer_id,return_url:window.location.href})});
@@ -376,7 +372,8 @@ export default function OrgSettings({ user, onBack }) {
                     Subscribe
                   </button>
                 )}
-              </div>
+              </div>}
+              {!canManageBilling(myRole) && <div style={{fontSize:12,color:'#9CA3AF'}}>Only the organization owner can manage billing.</div>}
             </div>
           </div>
         )}

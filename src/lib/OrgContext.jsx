@@ -1,9 +1,16 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, useMemo, createContext, useContext } from 'react';
 import { supabase } from './supabase.js';
 
-const OrgContext = createContext({ orgId: null, orgs: [], isSuperAdmin: false, viewAllOrgs: false });
+const ROLE_LEVELS = { owner: 4, admin: 3, editor: 2, viewer: 1 };
+
+const OrgContext = createContext({ orgId: null, orgs: [], isSuperAdmin: false, viewAllOrgs: false, userRole: null });
 
 export function useOrg() { return useContext(OrgContext); }
+
+// Permission helpers — importable by any component
+export const canEdit = (role) => (ROLE_LEVELS[role] || 0) >= ROLE_LEVELS.editor;
+export const canManageTeam = (role) => (ROLE_LEVELS[role] || 0) >= ROLE_LEVELS.admin;
+export const canManageBilling = (role) => role === 'owner';
 
 export function OrgProvider({ children }) {
   const [orgId, setOrgId] = useState(null);
@@ -38,17 +45,15 @@ export function OrgProvider({ children }) {
       if (memberships?.length) {
         const orgList = memberships.map(m => ({ id: m.org_id, name: m.organizations?.name || 'Organization', role: m.role }));
         setOrgs(orgList);
-        // Restore last selected org or use first
         const saved = localStorage.getItem('selectedOrgId');
         const match = orgList.find(o => o.id === saved);
         const selectedId = match ? match.id : orgList[0].id;
-        console.log('[OrgContext] SETTING ORG ID:', selectedId, 'from', orgList.length, 'orgs:', orgList.map(o=>o.name));
+        console.log('[OrgContext] SETTING ORG ID:', selectedId, 'from', orgList.length, 'orgs:', orgList.map(o => o.name));
         setOrgId(selectedId);
       }
       setReady(true);
     })();
 
-    // Re-check on auth change
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       setOrgId(null); setOrgs([]); setIsSuperAdmin(false); setReady(false);
     });
@@ -60,15 +65,21 @@ export function OrgProvider({ children }) {
     try { localStorage.setItem('selectedOrgId', id); } catch {}
   };
 
-  // Helper: apply strict org filter to a Supabase query
   const orgFilter = (query, col = 'org_id') => {
     if (isSuperAdmin && viewAllOrgs) return query;
     if (!orgId) return query;
     return query.eq(col, orgId);
   };
 
+  // Derive userRole from selected org
+  const userRole = useMemo(() => {
+    if (!orgId || !orgs.length) return null;
+    const match = orgs.find(o => o.id === orgId);
+    return match?.role || 'viewer';
+  }, [orgId, orgs]);
+
   return (
-    <OrgContext.Provider value={{ orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter, ready }}>
+    <OrgContext.Provider value={{ orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter, ready, userRole }}>
       {children}
     </OrgContext.Provider>
   );
