@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../../lib/theme.jsx';
 import { ThemeToggle } from '../../lib/theme.jsx';
 import { supabase } from '../../lib/supabase.js';
@@ -48,48 +48,49 @@ function ProjectList({ onSelectProject, user }) {
   const [shareRole, setShareRole] = useState('editor');
   const [shareMembers, setShareMembers] = useState([]);
 
-  useEffect(() => {
-    if(!orgId && !(isSuperAdmin&&viewAllOrgs)){ setLoading(false); return; }
-    (async()=>{
-      const {data:{user:me}}=await supabase.auth.getUser();
-      // My projects (strict org filter — no null fallback)
-      let q=supabase.from('precon_projects').select('*').order('created_at',{ascending:false});
-      if(orgId && !(isSuperAdmin&&viewAllOrgs)) q=q.eq('org_id', orgId);
-      console.log('[ProjectList] loading projects for org:', orgId, 'superAdmin:', isSuperAdmin, 'viewAll:', viewAllOrgs);
-      const {data:myProjects,error}=await q;
-      console.log('[ProjectList] returned:', myProjects?.length, 'projects, first org_id:', myProjects?.[0]?.org_id);
-      if(error) console.error('[projects] load error:',error);
-      let all=myProjects||[];
-      // Shared projects
-      if(me){
-        const {data:shares}=await supabase.from('project_shares').select('project_id').eq('user_id',me.id);
-        if(shares?.length){
-          const sharedIds=shares.map(s=>s.project_id);
-          const myIds=new Set(all.map(p=>p.id));
-          const missing=sharedIds.filter(id=>!myIds.has(id));
-          if(missing.length){
-            const {data:sharedProjects}=await supabase.from('precon_projects').select('*').in('id',missing);
-            if(sharedProjects) all=[...all,...sharedProjects.map(p=>({...p,_shared:true}))];
-          }
+  const loadProjects = useCallback(async () => {
+    if (!orgId && !(isSuperAdmin && viewAllOrgs)) return;
+    setLoading(true);
+    try {
+      // Build projects query
+      let q = supabase.from('precon_projects').select('*').order('created_at', { ascending: false });
+      if (orgId && !(isSuperAdmin && viewAllOrgs)) q = q.eq('org_id', orgId);
+
+      // Run projects + members + shares in parallel
+      const [projectsRes, membersRes, sharesRes] = await Promise.all([
+        q,
+        orgId ? supabase.from('memberships').select('user_id, role, profiles:user_id(id, email, full_name)').eq('org_id', orgId) : { data: null },
+        supabase.auth.getUser().then(({ data: { user: me } }) =>
+          me ? supabase.from('project_shares').select('project_id').eq('user_id', me.id) : { data: null }
+        ),
+      ]);
+
+      let all = projectsRes.data || [];
+      if (projectsRes.error) console.error('[projects] load error:', projectsRes.error);
+
+      // Merge shared projects
+      const shares = sharesRes?.data;
+      if (shares?.length) {
+        const myIds = new Set(all.map(p => p.id));
+        const missing = shares.map(s => s.project_id).filter(id => !myIds.has(id));
+        if (missing.length) {
+          const { data: sharedProjects } = await supabase.from('precon_projects').select('*').in('id', missing);
+          if (sharedProjects) all = [...all, ...sharedProjects.map(p => ({ ...p, _shared: true }))];
         }
       }
+
       setProjects(all);
-      setLoading(false);
-    })();
-    // Fetch team members — only those in the current org
-    if(orgId){
-      supabase.from('memberships').select('user_id, role, profiles:user_id(id, email, full_name)').eq('org_id', orgId)
-        .then(({ data, error }) => {
-          if (!error && data?.length) {
-            setOrgMembers(data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
-          }
-        })
-        .catch(() => {});
+      if (membersRes.data?.length) {
+        setOrgMembers(membersRes.data.map(m => ({ user_id: m.user_id, email: m.profiles?.email, name: m.profiles?.full_name, role: m.role })));
+      }
+    } catch (e) {
+      console.error('[projects] load failed:', e);
     }
-    // Safety: force loading off after 5s in case query hangs
-    const t = setTimeout(() => setLoading(false), 5000);
-    return () => clearTimeout(t);
+    setLoading(false);
   }, [orgId, isSuperAdmin, viewAllOrgs]);
+
+  // Load on mount and when orgId changes
+  useEffect(() => { loadProjects(); }, [loadProjects]);
 
   const handleSave = async (data, type) => {
     if (type === 'delete') {
@@ -378,7 +379,12 @@ function ProjectList({ onSelectProject, user }) {
       {/* Project grid */}
       {viewMode==='grid'&&<div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         {loading && (
-          <div style={{ textAlign: 'center', padding: 60, color: t.text3, fontSize: 13 }}>Loading projects...</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ height: 120, borderRadius: 8, background: `linear-gradient(90deg, ${t.bg2} 25%, ${t.border} 50%, ${t.bg2} 75%)`, backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+            ))}
+            <style>{`@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+          </div>
         )}
 
         {!loading && filtered.length === 0 && (

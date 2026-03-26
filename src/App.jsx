@@ -55,7 +55,7 @@ function TrialBanner() {
 
 function AppShell() {
   const { t } = useTheme();
-  const { orgId, isSuperAdmin, viewAllOrgs } = useOrg();
+  const { orgId, isSuperAdmin, viewAllOrgs, ready: orgReady } = useOrg();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [selProject, setSelProject] = useState(null);
@@ -105,6 +105,14 @@ function AppShell() {
 
   // Onboarding
   if (hash === '/onboarding') return <OnboardingPage onGoToDashboard={() => { window.location.hash = '/'; setHash('/'); }} />;
+
+  // Wait for org context to be ready before rendering data-dependent views
+  if (!orgReady) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fff', flexDirection: 'column', gap: 12 }}>
+      <div style={{ width: 28, height: 28, borderRadius: 6, background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13 }}>S</div>
+      <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading workspace...</div>
+    </div>
+  );
 
   // Settings
   if (hash === '/settings') return (
