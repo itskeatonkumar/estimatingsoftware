@@ -4941,50 +4941,53 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                         {selPlan&&!planSearch.trim()&&(()=>{
                           let tp = selPlan.text_positions;
                           if(!tp){ try{ const raw=localStorage.getItem(`ocrItems_${selPlan.id}`); if(raw) tp=JSON.parse(raw); }catch(e){} }
-                          const items = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
-                          if(!items.length || !plans.length) return null;
-                          // Build sheet number → plan lookup
+                          const tpArr = Array.isArray(tp)?tp:(typeof tp==='string'?(()=>{try{return JSON.parse(tp);}catch{return[];}})():[]);
+                          if(!tpArr.length || !plans.length) return null;
+                          // Build sheet number → plan lookup (only real sheet patterns)
                           const numToPlan = new Map();
                           for(const p of plans){
                             if(p.id===selPlan.id) continue;
                             const m = (p.name||'').match(/^([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
                             if(m) numToPlan.set(m[1].toUpperCase(), p);
                           }
-                          // Find text items that contain or ARE sheet numbers matching other plans
+                          if(!numToPlan.size) return null;
+                          // Filter: only items that ARE or exactly contain a known sheet number
+                          const REF_RE = /^[A-Z]{1,3}\d{0,2}[.-]\d{1,2}[.-]?\d{0,2}$/;
                           const links = [];
-                          for(const item of items){
-                            const str = item.str.toUpperCase().trim();
+                          for(const item of tpArr){
+                            const raw = item.str.trim();
+                            if(raw.length<=2) continue; // grid labels: A, B, 1, 2
+                            if(/^\d+$/.test(raw)) continue; // pure numbers
+                            if(/\d+['''\u2019]-?\d*["""\u201D]/.test(raw)) continue; // dimensions
+                            const upper = raw.toUpperCase();
+                            // Must exactly match a sheet number, or be "SEE X", "DETAIL X"
+                            let matched = null;
                             for(const [num, plan] of numToPlan){
-                              if(str.includes(num)){
-                                links.push({...item, target:plan, refNum:num});
-                                break;
+                              if(upper===num || (upper.length<=num.length+12 && upper.includes(num) && REF_RE.test(num))){
+                                matched = {num, plan}; break;
                               }
                             }
+                            if(!matched) continue;
+                            links.push({x:item.x, y:item.y, w:item.w||0, h:item.h||0, str:raw, target:matched.plan, refNum:matched.num});
                           }
                           if(!links.length) return null;
-                          // Deduplicate overlapping boxes — merge if they overlap
+                          // Deduplicate: same target within 100px = keep first
                           const deduped = [];
                           for(const lk of links){
-                            const w = (lk.w && lk.w > 0) ? lk.w : lk.str.length * (lk.h||10) * 0.6;
-                            const h = (lk.h||10) * 0.9;
-                            const box = {x:lk.x, y:lk.y, w, h, target:lk.target};
-                            // Check overlap with existing
-                            let merged = false;
-                            for(const existing of deduped){
-                              if(box.x < existing.x+existing.w && box.x+box.w > existing.x &&
-                                 box.y < existing.y+existing.h && box.y+box.h > existing.y){
-                                // Merge: expand existing to cover both
-                                const nx = Math.min(existing.x, box.x);
-                                const ny = Math.min(existing.y, box.y);
-                                existing.w = Math.max(existing.x+existing.w, box.x+box.w) - nx;
-                                existing.h = Math.max(existing.y+existing.h, box.y+box.h) - ny;
-                                existing.x = nx; existing.y = ny;
-                                merged = true; break;
-                              }
-                            }
-                            if(!merged) deduped.push(box);
+                            const near = deduped.find(d => d.target.id===lk.target.id && Math.abs(d.x-lk.x)<100 && Math.abs(d.y-lk.y)<100);
+                            if(!near) deduped.push(lk);
                           }
-                          return deduped.map((lk,i)=>(
+                          // Cap at 30
+                          const capped = deduped.slice(0, 30);
+                          const fs = Math.max(8, 10/zoom);
+                          const padX = 3/zoom, padY = 1/zoom;
+                          return capped.map((lk,i)=>{
+                            const textW = lk.refNum.length * fs * 0.62;
+                            const pillW = textW + padX*2;
+                            const pillH = fs + padY*2;
+                            const cx = lk.x + (lk.w||pillW)/2;
+                            const cy = lk.y + (lk.h||pillH)/2;
+                            return(
                             <g key={`ref${i}`} style={{cursor:'pointer'}} onClick={(e)=>{
                               e.stopPropagation();
                               setShowOverview(false);
@@ -4993,10 +4996,14 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                               if(lk.target.scale_px_per_ft) setScale(lk.target.scale_px_per_ft);
                               else{setScale(null);setPresetScale('');}
                             }}>
-                              <rect x={lk.x} y={lk.y} width={lk.w} height={lk.h} rx={2}
-                                fill="rgba(91,155,213,0.12)" stroke="#5B9BD5" strokeWidth={1/zoom} strokeDasharray={`${3/zoom},${2/zoom}`}/>
-                            </g>
-                          ));
+                              <rect x={cx-pillW/2} y={cy-pillH/2} width={pillW} height={pillH} rx={3/zoom}
+                                fill="rgba(59,130,246,0.12)" stroke="rgba(59,130,246,0.3)" strokeWidth={1/zoom}/>
+                              <text x={cx} y={cy+fs*0.35} fontSize={fs} fill="#3B82F6" textAnchor="middle" fontFamily="system-ui,sans-serif" fontWeight={600} style={{pointerEvents:'none'}}>
+                                {lk.refNum}
+                              </text>
+                              <title>{lk.target.name}</title>
+                            </g>);
+                          });
                         })()}
                         {/* Search text highlights on plan */}
                         {planSearch.trim()&&selPlan&&(()=>{
