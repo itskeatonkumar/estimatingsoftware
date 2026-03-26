@@ -93,9 +93,17 @@ function ProjectList({ onSelectProject, user }) {
 
   const handleSave = async (data, type) => {
     if (type === 'delete') {
-      const { error } = await supabase.rpc('delete_precon_project', { p_id: data?.id });
-      if (error) { alert('Delete failed: ' + error.message); }
-      else { setProjects(prev => prev.filter(p => p.id !== data?.id)); }
+      // Delete related data first, then the project
+      const pid = data?.id;
+      if(pid){
+        await supabase.from('takeoff_items').delete().eq('project_id', pid);
+        await supabase.from('precon_plans').delete().eq('project_id', pid);
+        await supabase.from('project_shares').delete().eq('project_id', pid);
+        await supabase.from('estimate_versions').delete().eq('project_id', pid);
+        const { error } = await supabase.from('precon_projects').delete().eq('id', pid);
+        if (error) { console.error('[delete] project delete failed:', error); alert('Delete failed: ' + error.message); }
+        else { setProjects(prev => prev.filter(p => p.id !== pid)); }
+      }
       setNewModal(false);
       return;
     }
@@ -110,8 +118,12 @@ function ProjectList({ onSelectProject, user }) {
     setDeleting(true);
     const ids = [...selected];
     for (const id of ids) {
-      const { error } = await supabase.rpc('delete_precon_project', { p_id: id });
-      if (error) { console.error('delete failed', id, error); }
+      await supabase.from('takeoff_items').delete().eq('project_id', id);
+      await supabase.from('precon_plans').delete().eq('project_id', id);
+      await supabase.from('project_shares').delete().eq('project_id', id);
+      await supabase.from('estimate_versions').delete().eq('project_id', id);
+      const { error } = await supabase.from('precon_projects').delete().eq('id', id);
+      if (error) { console.error('[bulkDelete] failed', id, error); }
     }
     setProjects(prev => prev.filter(p => !selected.has(p.id)));
     setSelected(new Set());
