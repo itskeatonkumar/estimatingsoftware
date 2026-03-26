@@ -11,6 +11,7 @@ import LibraryPanel from "./LibraryPanel.jsx";
 import PlanChat from "./PlanChat.jsx";
 import PlanUploadManager from "./PlanUploadManager.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
+import { postProcessOcrItems, parseScaleString } from "../../lib/pdfParsing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
@@ -1900,6 +1901,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           ocrItems.push(...merged.filter(m=>m.str.includes(' '))); // add merged multi-word items
           pageText = ocrItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim().slice(0,50000);
         } catch(e) { console.error('[OCR] text extraction FAILED p'+pageN, e); }
+
+        // Construction-specific post-processing (free — no API)
+        const vpDims = page.getViewport({scale:2.0});
+        let ocrMeta = null;
+        if(ocrItems.length > 0){
+          try { ocrMeta = postProcessOcrItems(ocrItems, vpDims.width, vpDims.height); }
+          catch(e){ console.warn('[OCR] post-process error p'+pageN, e); }
+        }
+
         const viewport = page.getViewport({scale:2.0});
         const offscreen = document.createElement('canvas');
         offscreen.width = viewport.width; offscreen.height = viewport.height;
@@ -1927,6 +1937,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         // Capture for closure
         const _pageText = pageText;
         const _ocrItems = ocrItems;
+        const _ocrMeta = ocrMeta;
         uploadPromises.push(
           supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'})
             .then(async ({error}) => {
@@ -1944,12 +1955,21 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               const updatePayload = {};
               if(_pageText) updatePayload.ocr_text = _pageText;
               if(_ocrItems.length) updatePayload.text_positions = _ocrItems;
+              if(_ocrMeta?.titleBlock) updatePayload.title_block = _ocrMeta.titleBlock;
+              if(_ocrMeta?.roomLabels?.length) updatePayload.room_labels = _ocrMeta.roomLabels;
+              if(_ocrMeta?.detectedScale) updatePayload.detected_scale = _ocrMeta.detectedScale;
+              if(_ocrMeta?.dimensions?.length) updatePayload.dimensions = _ocrMeta.dimensions;
+              // Auto-set scale if detected and plan doesn't have one
+              if(_ocrMeta?.parsedScale && !plan.scale_px_per_ft){
+                updatePayload.scale_px_per_ft = _ocrMeta.parsedScale;
+              }
               if(Object.keys(updatePayload).length){
                 const {error:txtErr} = await supabase.from('precon_plans').update(updatePayload).eq('id',plan.id);
                 if(txtErr) console.warn('[upload] text save skipped:', txtErr.message);
-                else console.log('[upload] text saved for', plan.name, '—', _pageText.length, 'chars,', _ocrItems.length, 'positioned items');
+                else console.log('[upload] text saved for', plan.name, '—', _pageText.length, 'chars,', _ocrItems.length, 'items', _ocrMeta?.titleBlock?.sheetNumber||'', _ocrMeta?.detectedScale||'');
               }
-              return {...plan, ocr_text:_pageText||null, text_positions:_ocrItems.length?_ocrItems:null, _idx:idx};
+              const autoScale = _ocrMeta?.parsedScale && !plan.scale_px_per_ft ? _ocrMeta.parsedScale : null;
+              return {...plan, ocr_text:_pageText||null, text_positions:_ocrItems.length?_ocrItems:null, detected_scale:_ocrMeta?.detectedScale||null, scale_px_per_ft:autoScale||plan.scale_px_per_ft||null, _idx:idx};
             })
         );
       }
@@ -4598,6 +4618,20 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 <div style={{fontSize:11,color:'#999'}}>PDFs, ZIPs, or images</div>
               </div>
             </div>}
+          {/* Scale auto-detect banner */}
+          {selPlan?.detected_scale&&!showOverview&&selPlan?.scale_px_per_ft&&!scale&&(()=>{
+            const parsed = parseScaleString(selPlan.detected_scale, planDpi||144);
+            if(!parsed) return null;
+            return(
+              <div style={{position:'absolute',top:4,left:'50%',transform:'translateX(-50%)',zIndex:30,background:'#FEF3C7',border:'1px solid #F59E0B',borderRadius:6,padding:'6px 14px',display:'flex',alignItems:'center',gap:10,fontSize:12,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
+                <span style={{color:'#92400E'}}>Scale detected: <strong>{selPlan.detected_scale}</strong></span>
+                <button onClick={()=>{setScale(parsed);setPresetScale(selPlan.detected_scale);}}
+                  style={{background:'#10B981',border:'none',color:'#fff',padding:'3px 10px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600}}>Confirm</button>
+                <button onClick={()=>{setShowScalePanel(true);}}
+                  style={{background:'none',border:'1px solid #D97706',color:'#D97706',padding:'3px 10px',borderRadius:4,cursor:'pointer',fontSize:11}}>Change</button>
+              </div>
+            );
+          })()}
           {/* Find on page bar */}
           {planSearch.trim()&&selPlan&&!showOverview&&(()=>{
             let tp = selPlan.text_positions;

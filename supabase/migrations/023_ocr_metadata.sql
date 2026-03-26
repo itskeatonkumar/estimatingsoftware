@@ -1,0 +1,4 @@
+ALTER TABLE precon_plans ADD COLUMN IF NOT EXISTS title_block JSONB;
+ALTER TABLE precon_plans ADD COLUMN IF NOT EXISTS room_labels JSONB;
+ALTER TABLE precon_plans ADD COLUMN IF NOT EXISTS detected_scale TEXT;
+ALTER TABLE precon_plans ADD COLUMN IF NOT EXISTS dimensions JSONB;
