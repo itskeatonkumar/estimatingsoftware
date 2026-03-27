@@ -310,22 +310,28 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         doc = await lib.getDocument({ data: buf.slice(0) }).promise;
       }
 
-      // Render index page(s) to images
+      // Render index page(s) to JPEG images (capped at 2000px)
+      const MAX_DIM = 2000;
       const images = [];
       for (const idx of indexPages) {
         const pageNum = (pages[idx]?.pageNum) || (idx + 1);
         const page = await doc.getPage(pageNum);
-        const vp = page.getViewport({ scale: 2.0 });
+        const rawVp = page.getViewport({ scale: 1.0 });
+        const scale = (rawVp.width > MAX_DIM || rawVp.height > MAX_DIM)
+          ? MAX_DIM / Math.max(rawVp.width, rawVp.height) : 1.0;
+        const vp = page.getViewport({ scale });
         const canvas = document.createElement('canvas');
         canvas.width = vp.width; canvas.height = vp.height;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-        images.push(canvas.toDataURL('image/png').split(',')[1]);
+        const b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+        console.log(`[index] page ${pageNum}: ${vp.width}x${vp.height}, ${Math.round(b64.length/1024)}KB`);
+        images.push(b64);
         canvas.width = 0; canvas.height = 0;
       }
 
       // Send to AI
       const content = [
-        ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: img } })),
+        ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } })),
         { type: 'text', text: 'This is a Sheet Index / Drawing Index from a construction plan set. Extract EVERY sheet number and sheet name from the table.\nReturn ONLY a JSON array, no markdown, no explanation:\n[{"number":"C1","name":"COVER SHEET"},{"number":"A1.1","name":"FLOOR PLAN"}]\nInclude every single row. The sheet number is in the first column and the description in the second.' }
       ];
 
