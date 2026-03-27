@@ -22,7 +22,7 @@ const ensurePdfLib = () => new Promise(r => {
 // ── Sheet name extraction ──────────────────────────────────────
 const SHEET_RE = /^[A-Z]{1,5}\d{0,3}[.-]?\d{0,3}$/;
 
-// Extract ONLY the sheet number from PDF text — no description guessing
+// Extract sheet number by searching the ENTIRE page and scoring candidates
 function extractSheetNumber(textItems, w, h) {
   const items = [];
   for (const it of textItems) {
@@ -34,20 +34,31 @@ function extractSheetNumber(textItems, w, h) {
   }
   if (!items.length) return null;
 
-  // Title block: right 45%, bottom 35% (PDF y=0 at bottom)
-  const tb = items.filter(it => it.x > w * 0.55 && it.y < h * 0.35);
+  // Find ALL text matching sheet number pattern on the entire page
+  const candidates = items
+    .map(it => ({ ...it, cleaned: it.str.replace(/\s+/g, '') }))
+    .filter(it => it.cleaned.length >= 2 && it.cleaned.length <= 10 && SHEET_RE.test(it.cleaned));
 
-  // Find sheet number — largest font matching pattern, title block first
-  const findNum = (pool) => {
-    const sorted = [...pool].sort((a, b) => b.fs - a.fs);
-    for (const it of sorted) {
-      const c = it.str.replace(/\s+/g, '');
-      if (c.length >= 2 && c.length <= 10 && SHEET_RE.test(c)) return c;
-    }
-    return null;
-  };
+  if (!candidates.length) return null;
 
-  return findNum(tb) || findNum(items.filter(it => it.y < h * 0.25)) || null;
+  // Score each candidate
+  const scored = candidates.map(it => {
+    let score = 0;
+    // Font size — larger is better (sheet numbers are prominent)
+    score += it.fs * 2;
+    // Position: prefer bottom-right (PDF coords: y=0 bottom, x=0 left)
+    const xr = it.x / w, yr = it.y / h;
+    if (xr > 0.7) score += 20; else if (xr > 0.5) score += 10;
+    if (yr < 0.3) score += 20; else if (yr < 0.5) score += 10;
+    // Bonus: has both letters AND numbers (real sheet refs like FP1, A1.0)
+    if (/[A-Z]/.test(it.cleaned) && /\d/.test(it.cleaned)) score += 15;
+    // Penalize: short text in the middle of the page (grid bubbles)
+    if (it.cleaned.length <= 2 && xr > 0.2 && xr < 0.8 && yr > 0.2 && yr < 0.8) score -= 50;
+    return { ...it, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.cleaned || null;
 }
 
 // ── Component ──────────────────────────────────────────────────
