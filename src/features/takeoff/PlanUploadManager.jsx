@@ -136,40 +136,109 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     try { doc = await lib.getDocument({ data: buf.slice(0) }).promise; }
     catch { return [fallback]; }
 
-    // Store doc ref for later index page rendering
     if (!pdfDocRef.current) pdfDocRef.current = { file, doc };
 
     const numPages = doc.numPages;
-    const result = [];
+    const names = new Array(numPages).fill(null);
+    const sources = new Array(numPages).fill('not found');
 
-    for (let i = 1; i <= numPages; i++) {
-      const prefix = statusPrefix || file.name;
-      setParseStatus(`${prefix} \u2014 page ${i} of ${numPages}`);
-      setParsePct(Math.round((i / numPages) * 100));
-      try {
-        const page = await doc.getPage(i);
-        const tc = await page.getTextContent();
-        const vp = page.getViewport({ scale: 1 });
-        const name = extractSheetNumber(tc.items, vp.width, vp.height);
-        const ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
-        const baseName = numPages === 1 ? file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() : null;
-        result.push({
-          id: `${folderName}_${file.name}_p${i}`,
-          name: name || baseName || `Page ${i} of ${numPages}`,
-          checked: true,
-          autoNamed: !!name,
-          source: name ? 'sheet-num' : (baseName ? 'filename' : 'not found'),
-          folder: folderName,
-          pageNum: numPages > 1 ? i : undefined,
-          pdfFile: numPages > 1 ? file : undefined,
-          rawFile: numPages === 1 ? file : undefined,
-          ocrText,
-        });
-      } catch (e) {
-        result.push({ id: `${folderName}_${file.name}_p${i}`, name: `Page ${i} of ${numPages}`, checked: true, autoNamed: false, source: 'not found', folder: folderName, pageNum: numPages > 1 ? i : undefined, pdfFile: numPages > 1 ? file : undefined, rawFile: numPages === 1 ? file : undefined, ocrText: '' });
+    // ═══ METHOD 1: PAGE LABELS (Revit/AutoCAD embed these) ═══
+    setParseStatus(`${statusPrefix || file.name} \u2014 checking PDF metadata...`);
+    try {
+      const pageLabels = await doc.getPageLabels();
+      if (pageLabels?.length === numPages) {
+        let labelCount = 0;
+        for (let i = 0; i < numPages; i++) {
+          if (pageLabels[i]?.trim()?.length > 1) {
+            names[i] = pageLabels[i].trim();
+            sources[i] = 'pdf-label';
+            labelCount++;
+          }
+        }
+        if (labelCount) console.log(`[OCR] Page labels: ${labelCount}/${numPages} named`);
       }
-      if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
+    } catch (e) { /* no page labels */ }
+
+    // ═══ METHOD 2: BOOKMARKS / OUTLINE ═══
+    try {
+      const outline = await doc.getOutline();
+      if (outline?.length) {
+        const flat = [];
+        const walk = (items) => { for (const it of items) { flat.push(it); if (it.items?.length) walk(it.items); } };
+        walk(outline);
+        let bmCount = 0;
+        for (const entry of flat) {
+          if (!entry.title || !entry.dest) continue;
+          try {
+            let pageIdx = null;
+            if (typeof entry.dest === 'string') {
+              const destRef = await doc.getDestination(entry.dest);
+              if (destRef) pageIdx = await doc.getPageIndex(destRef[0]);
+            } else if (Array.isArray(entry.dest)) {
+              pageIdx = await doc.getPageIndex(entry.dest[0]);
+            }
+            if (pageIdx != null && pageIdx >= 0 && pageIdx < numPages && !names[pageIdx]) {
+              names[pageIdx] = entry.title.trim();
+              sources[pageIdx] = 'bookmark';
+              bmCount++;
+            }
+          } catch { /* dest resolve failed */ }
+        }
+        if (bmCount) console.log(`[OCR] Bookmarks: ${bmCount} additional names`);
+      }
+    } catch (e) { /* no outline */ }
+
+    const namedSoFar = names.filter(Boolean).length;
+    console.log(`[OCR] After metadata: ${namedSoFar}/${numPages} named`);
+
+    // ═══ METHOD 3: TEXT EXTRACTION (fallback for unnamed pages) ═══
+    const result = [];
+    for (let i = 0; i < numPages; i++) {
+      const prefix = statusPrefix || file.name;
+      setParseStatus(`${prefix} \u2014 page ${i + 1} of ${numPages}`);
+      setParsePct(Math.round(((i + 1) / numPages) * 100));
+
+      let ocrText = '';
+      if (!names[i]) {
+        // Only do text extraction for pages not named by metadata
+        try {
+          const page = await doc.getPage(i + 1);
+          const tc = await page.getTextContent();
+          const vp = page.getViewport({ scale: 1 });
+          ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
+          const sheetNum = extractSheetNumber(tc.items, vp.width, vp.height);
+          if (sheetNum) { names[i] = sheetNum; sources[i] = 'sheet-num'; }
+        } catch { /* text extraction failed */ }
+      } else {
+        // Still grab OCR text for sheet index detection
+        try {
+          const page = await doc.getPage(i + 1);
+          const tc = await page.getTextContent();
+          ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
+        } catch { /* ok */ }
+      }
+
+      const baseName = numPages === 1 ? file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() : null;
+      const finalName = names[i] || baseName || `Page ${i + 1} of ${numPages}`;
+      const finalSource = names[i] ? sources[i] : (baseName ? 'filename' : 'not found');
+
+      result.push({
+        id: `${folderName}_${file.name}_p${i + 1}`,
+        name: finalName,
+        checked: true,
+        autoNamed: !!names[i],
+        source: finalSource,
+        folder: folderName,
+        pageNum: numPages > 1 ? i + 1 : undefined,
+        pdfFile: numPages > 1 ? file : undefined,
+        rawFile: numPages === 1 ? file : undefined,
+        ocrText,
+      });
+
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
+
+    console.log('[OCR] Final:', result.filter(r => r.autoNamed).length + '/' + numPages, 'named');
     return result;
   };
 
@@ -442,7 +511,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'index': { c: '#10B981', l: 'Index' }, 'sheet-num': { c: '#10B981', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF Label' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'index': { c: '#10B981', l: 'Index' }, 'sheet-num': { c: '#3B82F6', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
