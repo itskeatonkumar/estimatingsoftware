@@ -734,14 +734,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       return doc;
     };
 
-    for(let i=0; i<checkedFiles.length; i++){
-      if(cancelRef.current){ stopKeepAlive(); onComplete(); return; }
-      const f = checkedFiles[i];
-      if(doSkipDups && existingNames.has(f.name)){ onFileComplete(f.id); continue; }
+    // Upload a single page (render to JPEG at 1x scale, no OCR)
+    const uploadOne = async (f) => {
+      if(doSkipDups && existingNames.has(f.name)){ onFileComplete(f.id); return; }
       onFileStart(f.id);
-
       try {
-        // Ensure folder exists in planSets
+        // Ensure folder
         if(f.folder && f.folder !== 'Root' && f.folder !== 'Selected Files' && !f.folder.endsWith('.pdf')){
           if(!folderIds[f.folder]){
             const existing = Object.entries(planSets).find(([,v]) => v.name === f.folder);
@@ -752,22 +750,20 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               folderIds[f.folder] = fid;
             }
           }
-          setUploadTargetFolder(folderIds[f.folder]);
-        } else {
-          setUploadTargetFolder(null);
         }
+        const targetFid = folderIds[f.folder] || null;
 
         if(f.pdfFile && f.pageNum){
-          // Multi-page PDF: render single page to JPEG via canvas
+          // Render page at 1x scale (fast) — full-res render happens when user opens it
           const doc = await getPdfDoc(f.pdfFile);
           if(!doc) throw new Error('Could not load PDF');
           const page = await doc.getPage(f.pageNum);
-          const viewport = page.getViewport({scale:2.0});
+          const viewport = page.getViewport({scale:1.0});
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width; canvas.height = viewport.height;
           await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
-          canvas.width = 0; canvas.height = 0; // free memory
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.75));
+          canvas.width = 0; canvas.height = 0;
 
           const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.jpg`;
           const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
@@ -778,13 +774,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           if(insErr) throw new Error(insErr.message);
           if(plan){
             setPlans(prev=>[...prev, plan]);
-            const fid = folderIds[f.folder] || uploadTargetFolder;
-            if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
+            if(targetFid && planSets[targetFid]) savePlanSets({...planSets, [targetFid]:{...planSets[targetFid], planIds:[...(planSets[targetFid].planIds||[]), plan.id]}});
           }
         } else if(f.rawFile){
-          // Single file — use existing handleUpload for full processing
           await handleUpload(f.rawFile, true);
-        } else continue;
+        } else return;
 
         onFileComplete(f.id);
         existingNames.add(f.name);
@@ -792,6 +786,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         console.error('[manager] upload failed:', f.name, e);
         onFileError(f.id, e.message);
       }
+    };
+
+    // Upload in parallel batches of 3
+    const PARALLEL = 3;
+    const todo = checkedFiles.filter(f => !cancelRef.current);
+    for(let i=0; i<todo.length; i+=PARALLEL){
+      if(cancelRef.current) break;
+      const batch = todo.slice(i, i+PARALLEL);
+      await Promise.all(batch.map(f => uploadOne(f)));
     }
     stopKeepAlive();
     setUploadTargetFolder(null);
