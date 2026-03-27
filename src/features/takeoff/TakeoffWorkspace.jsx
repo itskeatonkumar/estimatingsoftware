@@ -765,6 +765,22 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.75));
           canvas.width = 0; canvas.height = 0;
 
+          // Extract OCR text + positions (free, uses PDF.js — needed for search & hyperlinks)
+          let pageText = '', ocrItems = [];
+          try {
+            const tc = await page.getTextContent();
+            const ocrVp = page.getViewport({scale:2.0}); // positions at 2x to match viewer
+            for(const item of tc.items){
+              if(!item.str?.trim()||!item.transform) continue;
+              const [px,py] = ocrVp.convertToViewportPoint(item.transform[4],item.transform[5]);
+              const fontSize=Math.sqrt(item.transform[0]**2+item.transform[1]**2);
+              const hPx=fontSize*ocrVp.scale;
+              const wPx=item.width?item.width*ocrVp.scale:hPx*item.str.length*0.6;
+              ocrItems.push({str:item.str.trim(),x:Math.round(px),y:Math.round(py-hPx),w:Math.round(wPx),h:Math.round(hPx)});
+            }
+            pageText=ocrItems.map(i=>i.str).join(' ').slice(0,50000);
+          } catch(e){ /* text extraction failed — non-fatal */ }
+
           const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.jpg`;
           const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
           if(upErr) throw new Error(upErr.message);
@@ -773,7 +789,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null}]).select().single();
           if(insErr) throw new Error(insErr.message);
           if(plan){
-            setPlans(prev=>[...prev, plan]);
+            // Save OCR text + positions
+            const upd = {};
+            if(pageText) upd.ocr_text = pageText;
+            if(ocrItems.length) upd.text_positions = ocrItems;
+            if(Object.keys(upd).length) await supabase.from('precon_plans').update(upd).eq('id',plan.id);
+            setPlans(prev=>[...prev, {...plan, ocr_text:pageText||null, text_positions:ocrItems.length?ocrItems:null}]);
             if(targetFid && planSets[targetFid]) savePlanSets({...planSets, [targetFid]:{...planSets[targetFid], planIds:[...(planSets[targetFid].planIds||[]), plan.id]}});
           }
         } else if(f.rawFile){
