@@ -21,20 +21,9 @@ const ensurePdfLib = () => new Promise(r => {
 
 // ── Sheet name extraction ──────────────────────────────────────
 const SHEET_RE = /^[A-Z]{1,3}\d{0,2}[.-]?\d{0,3}$/;
-const GARBAGE_RE = /[\^`~|{}<>\\\u0000-\u001F]/;
-const REJECT_RE = /^(SCALE|DATE|DRAWN|CHECKED|APPROVED|REV|NO\.|JOB|PROJECT|DWG|ISSUED|MARK|STAMP|SEAL|OWNER|ARCHITECT|ENGINEER|REVISION|KEY|VICINITY|LOCATION|COPYRIGHT|CONFIDENTIAL|NOTES?:?|AS NOTED|SHEET|PAGE|DRAWING|PRELIMINARY|NOT FOR|ADDENDUM)/i;
-const ADDR_RE = /\b(STREET|ROAD|AVE|BLVD|SUITE|DRIVE|LANE|WAY|COURT|PLACE|HIGHWAY|HWY|PKWY)\b/i;
 
-function isCleanText(s) {
-  if (!s || s.length < 3) return false;
-  if (GARBAGE_RE.test(s)) return false;
-  if (!/[A-Za-z]/.test(s)) return false;
-  const lr = (s.match(/[A-Za-z ]/g) || []).length / s.length;
-  return lr >= 0.75;
-}
-
-function extractSheetInfo(textItems, w, h) {
-  // Build positioned items with font size
+// Extract ONLY the sheet number from PDF text — no description guessing
+function extractSheetNumber(textItems, w, h) {
   const items = [];
   for (const it of textItems) {
     const str = it.str?.trim();
@@ -45,60 +34,20 @@ function extractSheetInfo(textItems, w, h) {
   }
   if (!items.length) return null;
 
-  // Title block: right 45%, bottom 35% (PDF y=0 at bottom → low y values)
+  // Title block: right 45%, bottom 35% (PDF y=0 at bottom)
   const tb = items.filter(it => it.x > w * 0.55 && it.y < h * 0.35);
 
-  // STEP 1: Find sheet number — largest font that matches sheet pattern
+  // Find sheet number — largest font matching pattern, title block first
   const findNum = (pool) => {
     const sorted = [...pool].sort((a, b) => b.fs - a.fs);
     for (const it of sorted) {
       const c = it.str.replace(/\s+/g, '');
-      if (c.length >= 2 && c.length <= 10 && SHEET_RE.test(c)) return { num: c, item: it };
+      if (c.length >= 2 && c.length <= 10 && SHEET_RE.test(c)) return c;
     }
     return null;
   };
 
-  let res = findNum(tb);
-  if (!res) res = findNum(items.filter(it => it.y < h * 0.25)); // bottom quarter fallback
-  if (!res) return null;
-  const { num: sheetNum, item: numItem } = res;
-
-  // STEP 2: Find sheet name — large descriptive ALL-CAPS text in title block
-  // Strategy: sort title block text by font size, skip the sheet number, project names, addresses, labels
-  const nameCandidates = tb
-    .filter(it => {
-      if (it === numItem) return false;
-      const s = it.str;
-      if (s.length < 4 || s.length > 50) return false;
-      if (SHEET_RE.test(s.replace(/\s+/g, ''))) return false; // another sheet number
-      if (GARBAGE_RE.test(s)) return false;
-      if (REJECT_RE.test(s)) return false;
-      if (ADDR_RE.test(s)) return false;
-      if (/^\d+$/.test(s)) return false;
-      if (/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s)) return false; // date
-      if (/\d+\/\d+[""]?\s*=/.test(s)) return false; // scale
-      if (/\d{5}/.test(s)) return false; // zip code
-      // Must be mostly letters
-      const lr = (s.match(/[A-Za-z ]/g) || []).length / s.length;
-      if (lr < 0.75) return false;
-      return true;
-    })
-    .sort((a, b) => b.fs - a.fs); // largest font first
-
-  // The sheet name is usually one of the top 2-3 largest items (after excluding project name)
-  // Project names tend to be the absolute largest and are often very long
-  let sheetName = null;
-  for (const c of nameCandidates) {
-    // Skip likely project names: very large font AND long text
-    // Sheet names are typically shorter (3-30 chars) and use standard construction terms
-    if (c.str.length > 35 && c === nameCandidates[0]) continue; // skip if longest AND first (project name)
-    sheetName = c.str.replace(/\s+/g, ' ').trim();
-    break;
-  }
-
-  // Validate combined result
-  if (sheetName && isCleanText(sheetName)) return `${sheetNum} - ${sheetName}`;
-  return sheetNum;
+  return findNum(tb) || findNum(items.filter(it => it.y < h * 0.25)) || null;
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -143,14 +92,14 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
         const vp = page.getViewport({ scale: 1 });
-        const name = extractSheetInfo(tc.items, vp.width, vp.height);
+        const name = extractSheetNumber(tc.items, vp.width, vp.height);
         const baseName = numPages === 1 ? file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() : null;
         result.push({
           id: `${folderName}_${file.name}_p${i}`,
           name: name || baseName || `Page ${i} of ${numPages}`,
           checked: true,
           autoNamed: !!name,
-          source: name ? 'auto-detect' : (baseName ? 'filename' : 'not found'),
+          source: name ? 'sheet-num' : (baseName ? 'filename' : 'not found'),
           folder: folderName,
           pageNum: numPages > 1 ? i : undefined,
           pdfFile: numPages > 1 ? file : undefined,
@@ -229,7 +178,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         const page = await doc.getPage(p.pageNum || 1);
         const tc = await page.getTextContent();
         const vp = page.getViewport({ scale: 1 });
-        const name = extractSheetInfo(tc.items, vp.width, vp.height);
+        const name = extractSheetNumber(tc.items, vp.width, vp.height);
         if (name) setPages(prev => prev.map(pp => pp.id === p.id ? { ...pp, name, autoNamed: true, source: 'ocr' } : pp));
       } catch (e) { console.warn('[rescan]', e); }
       if (i % 3 === 0) await new Promise(r => setTimeout(r, 10));
@@ -237,17 +186,14 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setNaming(false);
   };
 
-  // AI naming for remaining unnamed
-  const aiName = async () => {
-    const unnamed = pages.filter(p => p.source === 'not found' && p.checked && (p.pdfFile || p.rawFile));
-    if (!unnamed.length) { alert('All selected pages are already named.'); return; }
-    if (!confirm(`Use AI to name ${unnamed.length} sheet${unnamed.length > 1 ? 's' : ''}? This uses AI credits.`)) return;
+  // AI naming — send title block crop to Claude for full sheet number + description
+  const runAiNaming = async (targets) => {
     setNaming(true);
     const lib = await ensurePdfLib();
     if (!lib) { setNaming(false); return; }
-    for (let i = 0; i < unnamed.length; i++) {
-      const p = unnamed[i];
-      setParseStatus(`AI naming ${i + 1}/${unnamed.length}`);
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      setParseStatus(`AI naming ${i + 1}/${targets.length}`);
       try {
         const file = p.pdfFile || p.rawFile;
         const buf = await file.arrayBuffer();
@@ -269,19 +215,35 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
             model: 'claude-haiku-4-5-20251001', max_tokens: 60,
             messages: [{ role: 'user', content: [
               { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-              { type: 'text', text: 'This is the title block of a construction drawing. Extract the sheet number and title.\nReply ONLY: SHEET_NUM - SHEET_TITLE\nExamples: A1.0 - FLOOR PLAN, S2.1 - FOUNDATION PLAN\nIf unreadable reply: UNKNOWN' }
+              { type: 'text', text: 'Read the title block of this construction plan sheet. Return ONLY the sheet number and full sheet name in this exact format:\nSHEET_NUM - SHEET NAME\nExamples: A1.0 - FLOOR PLAN, S2.1 - FOUNDATION PLAN, C3.0 - GRADING PLAN\nIf you cannot determine it, return UNKNOWN' }
             ] }]
           })
         });
         if (!resp.ok) continue;
         const j = await resp.json();
         const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim().replace(/^["'`*\s]+|["'`*\s]+$/g, '');
-        if (raw && !raw.includes('UNKNOWN') && raw.length >= 3 && isCleanText(raw)) {
+        if (raw && !raw.includes('UNKNOWN') && raw.length >= 3 && /[A-Za-z]/.test(raw)) {
           setPages(prev => prev.map(pp => pp.id === p.id ? { ...pp, name: raw, autoNamed: true, source: 'ai' } : pp));
         }
       } catch (e) { console.warn('[ai-name]', e); }
     }
     setNaming(false);
+  };
+
+  // AI name unnamed only
+  const aiNameUnnamed = async () => {
+    const targets = pages.filter(p => p.source === 'not found' && p.checked && (p.pdfFile || p.rawFile));
+    if (!targets.length) { alert('All selected pages are already named.'); return; }
+    if (!confirm(`Use AI to name ${targets.length} unnamed sheet${targets.length > 1 ? 's' : ''}?\nThis uses ${targets.length} AI credit${targets.length > 1 ? 's' : ''}.`)) return;
+    await runAiNaming(targets);
+  };
+
+  // AI name ALL (get full descriptions for everything)
+  const aiNameAll = async () => {
+    const targets = pages.filter(p => p.checked && (p.pdfFile || p.rawFile) && p.source !== 'ai' && p.source !== 'manual');
+    if (!targets.length) return;
+    if (!confirm(`Use AI to name ALL ${targets.length} sheets?\nThis uses ${targets.length} AI credit${targets.length > 1 ? 's' : ''}.\n\nThis will add full descriptions (e.g. "A1.0 - FLOOR PLAN") to sheets that currently only have sheet numbers.`)) return;
+    await runAiNaming(targets);
   };
 
   const toggleFolder = (fname, checked) => {
@@ -313,7 +275,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'auto-detect': { c: '#10B981', l: 'Auto' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'sheet-num': { c: '#10B981', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
@@ -353,14 +315,18 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         {/* ═══ PREVIEW ═══ */}
         {step === 'preview' && (<>
           {/* Action bar */}
-          <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, background: '#FAFAFA' }}>
+          <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#FAFAFA', flexWrap: 'wrap' }}>
             <button onClick={rescanOcr} disabled={naming || unnamedCount === 0}
               style={{ padding: '4px 10px', border: '1px solid #3B82F6', background: '#EFF6FF', color: '#3B82F6', borderRadius: 4, cursor: naming || unnamedCount === 0 ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: unnamedCount === 0 ? 0.4 : 1 }}>
-              {naming ? parseStatus : `Re-scan OCR (${unnamedCount})`}
+              {naming ? parseStatus : `Re-scan # (${unnamedCount})`}
             </button>
-            <button onClick={aiName} disabled={naming || unnamedCount === 0}
+            <button onClick={aiNameUnnamed} disabled={naming || unnamedCount === 0}
               style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming || unnamedCount === 0 ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: unnamedCount === 0 ? 0.4 : 1 }}>
-              AI Name ({unnamedCount})
+              AI Name ({unnamedCount} unnamed)
+            </button>
+            <button onClick={aiNameAll} disabled={naming || selectedCount === 0}
+              style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: 'none', color: '#7B6BA4', borderRadius: 4, cursor: naming || selectedCount === 0 ? 'default' : 'pointer', fontSize: 11, opacity: selectedCount === 0 ? 0.4 : 1 }}>
+              AI Name All ({selectedCount})
             </button>
             <span style={{ fontSize: 10, color: '#bbb' }}>Click names to edit</span>
             <div style={{ flex: 1 }} />
