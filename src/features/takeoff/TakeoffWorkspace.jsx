@@ -11,6 +11,7 @@ import LibraryPanel from "./LibraryPanel.jsx";
 import PlanChat from "./PlanChat.jsx";
 import PlanUploadManager from "./PlanUploadManager.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
+import { PDFDocument } from 'pdf-lib';
 import { postProcessOcrItems, parseScaleString } from "../../lib/pdfParsing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
@@ -700,13 +701,14 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   };
 
   // Called by PlanUploadManager when user clicks "Start Upload"
+  // Uses pdf-lib to extract pages as PDF (no canvas rendering — works in background tabs)
   const executeManagerUpload = async ({ files: checkedFiles, folders: checkedFolders, skipDuplicates: doSkipDups, cancelRef, onFileStart, onFileComplete, onFileError, onComplete }) => {
     uploadCancelRef.current = false;
     const existingNames = new Set(plans.map(p => p.name));
     const pid = project.id;
-
-    // Group pages by folder to create plan sets
     const folderIds = {};
+    // Cache parsed PDF docs by file name to avoid re-parsing the same file for each page
+    const pdfCache = new Map();
 
     for(let i=0; i<checkedFiles.length; i++){
       if(cancelRef.current){ onComplete(); return; }
@@ -732,51 +734,50 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         }
 
         if(f.pdfFile && f.pageNum){
-          // Multi-page PDF: render single page to JPEG and upload
-          const lib = await ensurePdfLib();
-          const buf = await f.pdfFile.arrayBuffer();
-          const doc = await lib.getDocument({data: buf.slice(0)}).promise;
-          const page = await doc.getPage(f.pageNum);
-          const viewport = page.getViewport({scale:2.0});
-          const canvas = document.createElement('canvas');
-          canvas.width = viewport.width; canvas.height = viewport.height;
-          await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
-          // Extract text
-          let pageText = '', ocrItems = [];
-          try {
-            const tc = await page.getTextContent();
-            for(const item of tc.items){
-              if(!item.str?.trim() || !item.transform) continue;
-              const [px,py] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
-              const fontSize = Math.sqrt(item.transform[0]**2 + item.transform[1]**2);
-              const hPx = fontSize * viewport.scale;
-              const wPx = item.width ? item.width * viewport.scale : hPx * item.str.length * 0.6;
-              ocrItems.push({str:item.str.trim(), x:Math.round(px), y:Math.round(py-hPx), w:Math.round(wPx), h:Math.round(hPx)});
-            }
-            pageText = ocrItems.map(it=>it.str).join(' ').slice(0,50000);
-          } catch(e){ console.warn('[manager] text extract failed', e); }
-          // Upload
-          const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.jpg`;
-          const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
+          // Multi-page PDF: extract single page as PDF using pdf-lib (no canvas — background-safe)
+          const cacheKey = f.pdfFile.name + '_' + f.pdfFile.size;
+          if(!pdfCache.has(cacheKey)){
+            const buf = await f.pdfFile.arrayBuffer();
+            pdfCache.set(cacheKey, new Uint8Array(buf));
+          }
+          const srcBytes = pdfCache.get(cacheKey);
+          const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+          const newDoc = await PDFDocument.create();
+          const [page] = await newDoc.copyPages(srcDoc, [f.pageNum - 1]);
+          newDoc.addPage(page);
+          const pdfBytes = await newDoc.save();
+          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+          // Upload PDF page directly (no rendering needed)
+          const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.pdf`;
+          const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'application/pdf'});
           if(upErr) throw new Error(upErr.message);
           const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
           const {data:plan, error:insErr} = await supabase.from('precon_plans')
-            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null}]).select().single();
+            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'application/pdf', org_id:orgId||null}]).select().single();
           if(insErr) throw new Error(insErr.message);
           if(plan){
-            const upd = {};
-            if(pageText) upd.ocr_text = pageText;
-            if(ocrItems.length) upd.text_positions = ocrItems;
-            if(Object.keys(upd).length) await supabase.from('precon_plans').update(upd).eq('id',plan.id);
-            setPlans(prev=>[...prev, {...plan, ocr_text:pageText||null, text_positions:ocrItems.length?ocrItems:null}]);
-            // Add to folder
+            setPlans(prev=>[...prev, plan]);
             const fid = folderIds[f.folder] || uploadTargetFolder;
             if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
           }
         } else if(f.rawFile){
-          // Single file (PDF or image) — use existing handleUpload
-          await handleUpload(f.rawFile, true);
+          // Single file (PDF or image) — upload directly, no canvas
+          const file = f.rawFile;
+          const ext = file.name.split('.').pop()?.toLowerCase();
+          const isPdf = file.type?.includes('pdf') || ext === 'pdf';
+          const path = `precon/${pid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+          const {error:upErr} = await supabase.storage.from('attachments').upload(path, file, {upsert:true, contentType: file.type || (isPdf ? 'application/pdf' : 'image/jpeg')});
+          if(upErr) throw new Error(upErr.message);
+          const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
+          const {data:plan, error:insErr} = await supabase.from('precon_plans')
+            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'), org_id:orgId||null}]).select().single();
+          if(insErr) throw new Error(insErr.message);
+          if(plan){
+            setPlans(prev=>[...prev, plan]);
+            const fid = folderIds[f.folder] || uploadTargetFolder;
+            if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
+          }
         } else continue;
 
         onFileComplete(f.id);
@@ -990,6 +991,43 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     });
     return ()=>cancelAnimationFrame(raf);
   },[blobUrl]);
+
+  // Lazy OCR: extract text when a plan is opened for the first time without ocr_text
+  useEffect(()=>{
+    if(!selPlan?.id || selPlan.id==='preview' || selPlan.ocr_text) return;
+    if(!selPlan.file_type?.includes('pdf')) return;
+    (async()=>{
+      try {
+        const lib = await ensurePdfLib();
+        if(!lib) return;
+        lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const resp = await fetch(selPlan.file_url);
+        const buf = await resp.arrayBuffer();
+        const doc = await lib.getDocument({data:buf}).promise;
+        const page = await doc.getPage(1);
+        const tc = await page.getTextContent();
+        const vp = page.getViewport({scale:2.0});
+        const ocrItems = [];
+        for(const item of tc.items){
+          if(!item.str?.trim()||!item.transform) continue;
+          const [px,py] = vp.convertToViewportPoint(item.transform[4],item.transform[5]);
+          const fontSize=Math.sqrt(item.transform[0]**2+item.transform[1]**2);
+          const hPx=fontSize*vp.scale;
+          const wPx=item.width?item.width*vp.scale:hPx*item.str.length*0.6;
+          ocrItems.push({str:item.str.trim(),x:Math.round(px),y:Math.round(py-hPx),w:Math.round(wPx),h:Math.round(hPx)});
+        }
+        const pageText=ocrItems.map(i=>i.str).join(' ').slice(0,50000);
+        if(pageText){
+          const upd={ocr_text:pageText};
+          if(ocrItems.length) upd.text_positions=ocrItems;
+          await supabase.from('precon_plans').update(upd).eq('id',selPlan.id);
+          setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,ocr_text:pageText,text_positions:ocrItems}:p));
+          setSelPlan(prev=>prev?.id===selPlan.id?{...prev,ocr_text:pageText,text_positions:ocrItems}:prev);
+          console.log('[LazyOCR] Extracted',pageText.length,'chars for',selPlan.name);
+        }
+      } catch(e){ console.warn('[LazyOCR] failed:',e.message); }
+    })();
+  },[selPlan?.id]);
 
   const getUnitCosts = () => { try{ return {...UNIT_COSTS_DEFAULT,...JSON.parse(localStorage.getItem('unitCosts')||'{}')}; }catch{return UNIT_COSTS_DEFAULT;} };
 
