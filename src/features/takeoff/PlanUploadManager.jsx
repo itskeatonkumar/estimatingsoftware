@@ -25,6 +25,20 @@ const ensurePdfLib = () => new Promise(r => {
   document.head.appendChild(s);
 });
 
+// ── Claude API with retry ──────────────────────────────────────
+async function callClaude(body, retries = 3) {
+  for (let i = 1; i <= retries; i++) {
+    const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.ok) return await res.json();
+    if ((res.status === 529 || res.status === 503 || res.status === 429) && i < retries) {
+      console.log(`[claude] ${res.status}, retry ${i}/${retries} in ${i * 3}s...`);
+      await new Promise(r => setTimeout(r, i * 3000));
+      continue;
+    }
+    throw new Error(`AI request failed: ${res.status}`);
+  }
+}
+
 // ── Sheet name extraction ──────────────────────────────────────
 const SHEET_RE = /^[A-Z]{1,5}\d{0,3}[.-]?\d{0,3}$/;
 
@@ -259,18 +273,13 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         crop.width = Math.floor(cw * sc); crop.height = Math.floor(ch * sc);
         crop.getContext('2d').drawImage(canvas, canvas.width - cw, canvas.height - ch, cw, ch, 0, 0, crop.width, crop.height);
         const b64 = crop.toDataURL('image/jpeg', 0.85).split(',')[1];
-        const resp = await fetch('/api/claude', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001', max_tokens: 60,
-            messages: [{ role: 'user', content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-              { type: 'text', text: 'Read the title block of this construction plan sheet. Return ONLY the sheet number and full sheet name in this exact format:\nSHEET_NUM - SHEET NAME\nExamples: A1.0 - FLOOR PLAN, S2.1 - FOUNDATION PLAN, C3.0 - GRADING PLAN\nIf you cannot determine it, return UNKNOWN' }
-            ] }]
-          })
+        const j = await callClaude({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 60,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: 'Read the title block of this construction plan sheet. Return ONLY the sheet number and full sheet name in this exact format:\nSHEET_NUM - SHEET NAME\nExamples: A1.0 - FLOOR PLAN, S2.1 - FOUNDATION PLAN, C3.0 - GRADING PLAN\nIf you cannot determine it, return UNKNOWN' }
+          ] }]
         });
-        if (!resp.ok) continue;
-        const j = await resp.json();
         const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim().replace(/^["'`*\s]+|["'`*\s]+$/g, '');
         if (raw && !raw.includes('UNKNOWN') && raw.length >= 3 && /[A-Za-z]/.test(raw)) {
           setPages(prev => prev.map(pp => pp.id === p.id ? { ...pp, name: raw, autoNamed: true, source: 'ai' } : pp));
@@ -352,13 +361,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
       ];
 
       setParseStatus('AI reading index...');
-      const resp = await fetch('/api/claude', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content }] })
-      });
-
-      if (!resp.ok) { alert('AI request failed: ' + resp.status); setNaming(false); return; }
-      const j = await resp.json();
+      const j = await callClaude({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content }] });
       const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim();
 
       // Parse JSON — handle markdown code fences

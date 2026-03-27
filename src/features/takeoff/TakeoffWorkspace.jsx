@@ -657,7 +657,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     if(window.pdfjsLib){ resolve(window.pdfjsLib); return; }
     const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload=()=>resolve(window.pdfjsLib);
+    s.onload=()=>{
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const _w=console.warn;
+      console.warn=(...a)=>{if(typeof a[0]==='string'&&(a[0].includes('Knockout')||a[0].includes('getOperatorList')))return;_w.apply(console,a);};
+      resolve(window.pdfjsLib);
+    };
     s.onerror=()=>resolve(null);
     document.head.appendChild(s);
   });
