@@ -4953,6 +4953,23 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                           }
                           if(!sheetPrefixes.size) return null;
 
+                          // False positives: common abbreviations that look like sheet numbers
+                          const FALSE_POS = new Set(['WAL','WAT','EXT','INT','TYP','SIM','EQ','MIN','MAX','REF','DET','SEC','EL','FL','FIN','CLR','OC','GA','GR','AD','AS','AT','BE','BY','DO','GO','IF','IN','IS','IT','MY','NO','OF','ON','OR','SO','TO','UP','US','WE']);
+
+                          // Check if a text item is standalone (not jammed against adjacent text)
+                          const isStandalone = (item) => {
+                            const gap = 5;
+                            const ih = item.h || 12;
+                            for(const other of tpArr){
+                              if(other===item) continue;
+                              if(Math.abs(other.y - item.y) > ih*0.5) continue; // different line
+                              const otherEnd = other.x + (other.w||0);
+                              const itemEnd = item.x + (item.w||0);
+                              if(Math.abs(otherEnd - item.x) < gap || Math.abs(other.x - itemEnd) < gap) return false;
+                            }
+                            return true;
+                          };
+
                           const refs = [];
                           const seen = new Set();
 
@@ -4964,27 +4981,35 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             let matchedPlan = null, matchedRef = upper;
 
                             // 1) Exact match: text IS a sheet number
-                            if(sheetPrefixes.has(upper)) matchedPlan = sheetPrefixes.get(upper);
+                            if(sheetPrefixes.has(upper)){
+                              // Must start with letter(s) followed by digit — real sheet refs
+                              if(/^[A-Z]{1,3}\d/.test(upper) && !FALSE_POS.has(upper)){
+                                matchedPlan = sheetPrefixes.get(upper);
+                              }
+                            }
 
                             // 2) Detail callout: "3/S2.1" or "A3/S1" — denominator is the sheet ref
                             if(!matchedPlan){
-                              const detailMatch = upper.match(/\d+\s*\/\s*([A-Z]{1,3}\d{0,2}[.-]?\d{0,2})/);
+                              const detailMatch = upper.match(/^\d+\s*\/\s*([A-Z]{1,3}\d{1,2}[.-]?\d{0,2})$/);
                               if(detailMatch){
                                 const sheetRef = detailMatch[1];
                                 if(sheetPrefixes.has(sheetRef)){ matchedPlan = sheetPrefixes.get(sheetRef); matchedRef = sheetRef; }
                               }
                             }
 
-                            // 3) Text contains a sheet number (e.g. "SEE S2.1", "REFER TO A1.0")
-                            if(!matchedPlan){
+                            // 3) "SEE X" / "REFER TO X" — only if text starts with a reference keyword
+                            if(!matchedPlan && /^(SEE|REFER|SHEET|ON|PER)\b/.test(upper)){
                               for(const [prefix, plan] of sheetPrefixes){
-                                if(prefix.length>=3 && upper.includes(prefix)){
+                                if(prefix.length>=3 && /^[A-Z]{1,3}\d/.test(prefix) && upper.includes(prefix)){
                                   matchedPlan = plan; matchedRef = prefix; break;
                                 }
                               }
                             }
 
                             if(!matchedPlan) continue;
+
+                            // Reject word fragments — must be standalone text, not touching neighbors
+                            if(!isStandalone(item)) continue;
 
                             // Dedup: same ref within 150px
                             const key = matchedRef + '_' + Math.round(item.x/150) + '_' + Math.round(item.y/150);
