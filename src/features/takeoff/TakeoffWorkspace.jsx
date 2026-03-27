@@ -766,16 +766,16 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           canvas.width = 0; canvas.height = 0;
 
           // Extract OCR text + positions (free, uses PDF.js — needed for search & hyperlinks)
+          // Positions MUST match the render scale (1.0) since they overlay the uploaded image
           let pageText = '', ocrItems = [];
           try {
             const tc = await page.getTextContent();
-            const ocrVp = page.getViewport({scale:2.0}); // positions at 2x to match viewer
             for(const item of tc.items){
               if(!item.str?.trim()||!item.transform) continue;
-              const [px,py] = ocrVp.convertToViewportPoint(item.transform[4],item.transform[5]);
+              const [px,py] = viewport.convertToViewportPoint(item.transform[4],item.transform[5]);
               const fontSize=Math.sqrt(item.transform[0]**2+item.transform[1]**2);
-              const hPx=fontSize*ocrVp.scale;
-              const wPx=item.width?item.width*ocrVp.scale:hPx*item.str.length*0.6;
+              const hPx=fontSize*viewport.scale;
+              const wPx=item.width?item.width*viewport.scale:hPx*item.str.length*0.6;
               ocrItems.push({str:item.str.trim(),x:Math.round(px),y:Math.round(py-hPx),w:Math.round(wPx),h:Math.round(hPx)});
             }
             pageText=ocrItems.map(i=>i.str).join(' ').slice(0,50000);
