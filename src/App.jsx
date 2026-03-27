@@ -55,7 +55,7 @@ function TrialBanner() {
 
 function AppShell() {
   const { t } = useTheme();
-  const { orgId, isSuperAdmin, viewAllOrgs, ready: orgReady } = useOrg();
+  const { orgId, isSuperAdmin, viewAllOrgs, ready: orgReady, error: orgError } = useOrg();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [selProject, setSelProject] = useState(null);
@@ -107,10 +107,15 @@ function AppShell() {
   if (hash === '/onboarding') return <OnboardingPage onGoToDashboard={() => { window.location.hash = '/'; setHash('/'); }} />;
 
   // Wait for org context to be ready before rendering data-dependent views
-  if (!orgReady) return (
+  if (!orgReady || orgError) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fff', flexDirection: 'column', gap: 12 }}>
-      <div style={{ width: 28, height: 28, borderRadius: 6, background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13 }}>S</div>
-      <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading workspace...</div>
+      <div style={{ width: 36, height: 36, borderRadius: 8, background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 16 }}>S</div>
+      {orgError ? (<>
+        <div style={{ color: '#EF4444', fontSize: 13 }}>{orgError}</div>
+        <button onClick={() => window.location.reload()} style={{ background: '#10B981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Refresh</button>
+      </>) : (
+        <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading workspace...</div>
+      )}
     </div>
   );
 

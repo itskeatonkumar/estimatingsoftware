@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
 import { supabase } from './supabase.js';
 
 const ROLE_LEVELS = { owner: 4, admin: 3, editor: 2, viewer: 1 };
@@ -12,7 +12,6 @@ export const canManageTeam = (role) => (ROLE_LEVELS[role] || 0) >= ROLE_LEVELS.a
 export const canManageBilling = (role) => role === 'owner';
 
 export function OrgProvider({ children }) {
-  // Use cached orgId for instant render, then verify
   const [orgId, setOrgId] = useState(() => {
     try { return sessionStorage.getItem('cachedOrgId') || localStorage.getItem('selectedOrgId') || null; } catch { return null; }
   });
@@ -20,19 +19,22 @@ export function OrgProvider({ children }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [viewAllOrgs, setViewAllOrgs] = useState(false);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState(null);
+  const loadingRef = useRef(false); // prevent concurrent loads
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const loadOrg = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setError(null);
+
+    try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { if(!cancelled){ setOrgId(null); setReady(true); } return; }
+      if (!user) { setOrgId(null); setOrgs([]); setReady(true); loadingRef.current = false; return; }
 
-      // Parallel: check super admin + get memberships
       const [profileRes, memberRes] = await Promise.all([
         supabase.from('profiles').select('is_super_admin').eq('id', user.id).single(),
         supabase.from('memberships').select('org_id, role, organizations(id, name)').eq('user_id', user.id),
       ]);
-      if (cancelled) return;
 
       if (profileRes.data?.is_super_admin) setIsSuperAdmin(true);
 
@@ -46,7 +48,6 @@ export function OrgProvider({ children }) {
           memberships = [{ org_id: newOrg.id, role: 'owner', organizations: newOrg }];
         }
       }
-      if (cancelled) return;
 
       if (memberships?.length) {
         const orgList = memberships.map(m => ({ id: m.org_id, name: m.organizations?.name || 'Organization', role: m.role }));
@@ -55,19 +56,76 @@ export function OrgProvider({ children }) {
         const match = orgList.find(o => o.id === saved);
         const selectedId = match ? match.id : orgList[0].id;
         setOrgId(selectedId);
-        // Cache for instant load next time
-        try { sessionStorage.setItem('cachedOrgId', selectedId); } catch {}
-        try { localStorage.setItem('selectedOrgId', selectedId); } catch {}
+        try { sessionStorage.setItem('cachedOrgId', selectedId); localStorage.setItem('selectedOrgId', selectedId); } catch {}
       }
-      setReady(true);
-    })();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      setOrgId(null); setOrgs([]); setIsSuperAdmin(false); setReady(false);
-      try { sessionStorage.removeItem('cachedOrgId'); } catch {}
-    });
-    return () => { cancelled = true; subscription?.unsubscribe(); };
+    } catch (e) {
+      console.error('[OrgContext] loadOrg failed:', e);
+      // Recover from cache
+      const cached = sessionStorage.getItem('cachedOrgId');
+      if (cached && !orgId) setOrgId(cached);
+    }
+    setReady(true);
+    loadingRef.current = false;
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadOrg();
+  }, [loadOrg]);
+
+  // Auth state changes — only reset on SIGNED_OUT
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setOrgId(null); setOrgs([]); setIsSuperAdmin(false); setReady(false);
+        try { sessionStorage.removeItem('cachedOrgId'); } catch {}
+        return;
+      }
+      // SIGNED_IN after being signed out — reload org
+      if (event === 'SIGNED_IN' && !orgId && session?.user) {
+        loadOrg();
+        return;
+      }
+      // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED — keep current state
+    });
+    return () => subscription?.unsubscribe();
+  }, [loadOrg, orgId]);
+
+  // Tab visibility — re-verify session on focus, recover if needed
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          // Session still valid — if org missing, reload
+          if (!orgId) loadOrg();
+        } else {
+          // Session gone — sign out
+          setOrgId(null); setOrgs([]); setReady(true);
+        }
+      });
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [orgId, loadOrg]);
+
+  // Timeout fallback — if still not ready after 8s, recover from cache or show error
+  useEffect(() => {
+    if (ready) return;
+    const timeout = setTimeout(() => {
+      if (ready) return;
+      console.warn('[OrgContext] Loading timed out, attempting recovery');
+      const cached = sessionStorage.getItem('cachedOrgId');
+      if (cached) {
+        setOrgId(cached);
+        setReady(true);
+      } else {
+        setError('Failed to load workspace. Please refresh.');
+        setReady(true);
+      }
+    }, 8000);
+    return () => clearTimeout(timeout);
+  }, [ready]);
 
   const switchOrg = useCallback((id) => {
     setOrgId(id);
@@ -86,7 +144,7 @@ export function OrgProvider({ children }) {
   }, [orgId, orgs]);
 
   return (
-    <OrgContext.Provider value={{ orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter, ready, userRole }}>
+    <OrgContext.Provider value={{ orgId, orgs, isSuperAdmin, viewAllOrgs, setViewAllOrgs, switchOrg, orgFilter, ready, userRole, error }}>
       {children}
     </OrgContext.Provider>
   );
