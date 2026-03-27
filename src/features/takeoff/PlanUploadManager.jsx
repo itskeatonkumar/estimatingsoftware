@@ -61,6 +61,27 @@ function extractSheetNumber(textItems, w, h) {
   return scored[0]?.cleaned || null;
 }
 
+// ── Sheet Index detection ──────────────────────────────────────
+const INDEX_KW = ['SHEET INDEX','DRAWING INDEX','SHEET LIST','DRAWING LIST','TABLE OF CONTENTS','INDEX OF DRAWINGS','LIST OF DRAWINGS'];
+
+function findSheetIndexPages(pagesData) {
+  const found = [];
+  for (let i = 0; i < pagesData.length; i++) {
+    const text = (pagesData[i].ocrText || '').toUpperCase();
+    if (INDEX_KW.some(kw => text.includes(kw))) {
+      found.push(i);
+      // Check next page for continuation
+      if (i + 1 < pagesData.length) {
+        const next = (pagesData[i + 1].ocrText || '').toUpperCase();
+        if (/[A-Z]{1,5}\d{1,3}/.test(next) && !next.includes('GENERAL NOTES') && !next.includes('SPECIFICATIONS')) {
+          found.push(i + 1);
+        }
+      }
+    }
+  }
+  return [...new Set(found)].sort((a, b) => a - b);
+}
+
 // ── Component ──────────────────────────────────────────────────
 export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) {
   const [pages, setPages] = useState([]);
@@ -75,7 +96,10 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const [results, setResults] = useState({ success: 0, failed: 0, errors: [] });
   const [editingId, setEditingId] = useState(null);
   const [naming, setNaming] = useState(false);
+  const [indexPages, setIndexPages] = useState([]); // page indices with sheet index
+  const [indexRead, setIndexRead] = useState(false); // true after sheet index has been read
   const cancelRef = useRef(false);
+  const pdfDocRef = useRef(null); // keep PDF doc for rendering index pages later
 
   useEffect(() => {
     if (rawFiles?.length) parseInput(rawFiles);
@@ -84,13 +108,16 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
 
   const parsePdfPages = async (file, folderName, statusPrefix) => {
     const lib = await ensurePdfLib();
-    const fallback = { id: `${folderName}_${file.name}`, name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim(), checked: true, autoNamed: false, source: 'filename', folder: folderName, rawFile: file };
+    const fallback = { id: `${folderName}_${file.name}`, name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim(), checked: true, autoNamed: false, source: 'filename', folder: folderName, rawFile: file, ocrText: '' };
     if (!lib) return [fallback];
 
     const buf = await file.arrayBuffer();
     let doc;
     try { doc = await lib.getDocument({ data: buf.slice(0) }).promise; }
     catch { return [fallback]; }
+
+    // Store doc ref for later index page rendering
+    if (!pdfDocRef.current) pdfDocRef.current = { file, doc };
 
     const numPages = doc.numPages;
     const result = [];
@@ -104,6 +131,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         const tc = await page.getTextContent();
         const vp = page.getViewport({ scale: 1 });
         const name = extractSheetNumber(tc.items, vp.width, vp.height);
+        const ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
         const baseName = numPages === 1 ? file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() : null;
         result.push({
           id: `${folderName}_${file.name}_p${i}`,
@@ -115,11 +143,12 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
           pageNum: numPages > 1 ? i : undefined,
           pdfFile: numPages > 1 ? file : undefined,
           rawFile: numPages === 1 ? file : undefined,
+          ocrText,
         });
       } catch (e) {
-        result.push({ id: `${folderName}_${file.name}_p${i}`, name: `Page ${i} of ${numPages}`, checked: true, autoNamed: false, source: 'not found', folder: folderName, pageNum: numPages > 1 ? i : undefined, pdfFile: numPages > 1 ? file : undefined, rawFile: numPages === 1 ? file : undefined });
+        result.push({ id: `${folderName}_${file.name}_p${i}`, name: `Page ${i} of ${numPages}`, checked: true, autoNamed: false, source: 'not found', folder: folderName, pageNum: numPages > 1 ? i : undefined, pdfFile: numPages > 1 ? file : undefined, rawFile: numPages === 1 ? file : undefined, ocrText: '' });
       }
-      if (i % 5 === 0) await new Promise(r => setTimeout(r, 10)); // let UI breathe
+      if (i % 5 === 0) await new Promise(r => setTimeout(r, 10));
     }
     return result;
   };
@@ -169,6 +198,10 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setPages(allPages);
     setFolders(fl);
     if (fl.length) setSelFolder(fl[0].name);
+    // Detect sheet index pages
+    const idxPages = findSheetIndexPages(allPages);
+    setIndexPages(idxPages);
+    if (idxPages.length) console.log('[UploadManager] Sheet index found on page(s):', idxPages.map(i => i + 1));
     setParsing(false);
   };
 
@@ -257,6 +290,104 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     await runAiNaming(targets);
   };
 
+  // Read Sheet Index page(s) with AI — names ALL sheets for 1 credit
+  const readSheetIndex = async () => {
+    if (!indexPages.length) return;
+    setNaming(true);
+    setParseStatus('Reading Sheet Index...');
+    try {
+      const lib = await ensurePdfLib();
+      if (!lib) { setNaming(false); return; }
+
+      // Re-open PDF to render the index page(s)
+      const ref = pdfDocRef.current;
+      let doc = ref?.doc;
+      if (!doc) {
+        // Fallback: find a page with pdfFile and open it
+        const withPdf = pages.find(p => p.pdfFile);
+        if (!withPdf) { setNaming(false); return; }
+        const buf = await withPdf.pdfFile.arrayBuffer();
+        doc = await lib.getDocument({ data: buf.slice(0) }).promise;
+      }
+
+      // Render index page(s) to images
+      const images = [];
+      for (const idx of indexPages) {
+        const pageNum = (pages[idx]?.pageNum) || (idx + 1);
+        const page = await doc.getPage(pageNum);
+        const vp = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        images.push(canvas.toDataURL('image/png').split(',')[1]);
+        canvas.width = 0; canvas.height = 0;
+      }
+
+      // Send to AI
+      const content = [
+        ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: img } })),
+        { type: 'text', text: 'This is a Sheet Index / Drawing Index from a construction plan set. Extract EVERY sheet number and sheet name from the table.\nReturn ONLY a JSON array, no markdown, no explanation:\n[{"number":"C1","name":"COVER SHEET"},{"number":"A1.1","name":"FLOOR PLAN"}]\nInclude every single row. The sheet number is in the first column and the description in the second.' }
+      ];
+
+      setParseStatus('AI reading index...');
+      const resp = await fetch('/api/claude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content }] })
+      });
+
+      if (!resp.ok) { alert('AI request failed: ' + resp.status); setNaming(false); return; }
+      const j = await resp.json();
+      const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim();
+
+      // Parse JSON — handle markdown code fences
+      let indexData;
+      try {
+        const cleaned = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/, '').trim();
+        indexData = JSON.parse(cleaned);
+      } catch (e) {
+        console.error('[index] JSON parse failed:', raw.slice(0, 300));
+        alert('Could not parse Sheet Index response. Try AI Name All instead.');
+        setNaming(false); return;
+      }
+
+      if (!Array.isArray(indexData) || !indexData.length) {
+        alert('No entries found in Sheet Index.'); setNaming(false); return;
+      }
+
+      console.log('[index] Parsed', indexData.length, 'entries from sheet index');
+
+      // Match pages to index entries
+      let matched = 0;
+      const indexMap = new Map(indexData.map(e => [e.number?.toUpperCase()?.replace(/\s+/g, ''), e]));
+
+      setPages(prev => prev.map(p => {
+        // Try matching by current name (which is the sheet number from OCR)
+        const key = p.name?.toUpperCase()?.replace(/[\s.-]+/g, match => match);
+        const cleanKey = p.name?.toUpperCase()?.replace(/\s+/g, '');
+        const entry = indexMap.get(cleanKey);
+        if (entry) {
+          matched++;
+          return { ...p, name: `${entry.number} - ${entry.name}`, autoNamed: true, source: 'index' };
+        }
+        // Try partial match — the page name might be just the number portion
+        for (const [num, ent] of indexMap) {
+          if (num && cleanKey && (cleanKey === num || num.includes(cleanKey) || cleanKey.includes(num))) {
+            matched++;
+            return { ...p, name: `${ent.number} - ${ent.name}`, autoNamed: true, source: 'index' };
+          }
+        }
+        return p;
+      }));
+
+      setIndexRead(true);
+      alert(`Named ${matched} of ${pages.length} sheets from Sheet Index.\n${pages.length - matched} sheets not found in index.`);
+    } catch (e) {
+      console.error('[index] error:', e);
+      alert('Sheet Index read failed: ' + e.message);
+    }
+    setNaming(false);
+  };
+
   const toggleFolder = (fname, checked) => {
     setFolders(prev => prev.map(f => f.name === fname ? { ...f, checked } : f));
     setPages(prev => prev.map(p => p.folder === fname ? { ...p, checked } : p));
@@ -286,7 +417,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'sheet-num': { c: '#10B981', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'index': { c: '#10B981', l: 'Index' }, 'sheet-num': { c: '#10B981', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
@@ -325,6 +456,22 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
 
         {/* ═══ PREVIEW ═══ */}
         {step === 'preview' && (<>
+          {/* Sheet Index banner */}
+          {indexPages.length > 0 && !indexRead && (
+            <div style={{ padding: '8px 24px', borderBottom: '1px solid #D1FAE5', background: '#ECFDF5', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: '#065F46' }}>Sheet Index found on page {indexPages.map(i => i + 1).join(', ')}</span>
+              <button onClick={readSheetIndex} disabled={naming}
+                style={{ padding: '5px 14px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 12, fontWeight: 600 }}>
+                {naming ? parseStatus : 'Read Sheet Index (1 credit)'}
+              </button>
+              <span style={{ fontSize: 10, color: '#6B7280' }}>Names all sheets at once</span>
+            </div>
+          )}
+          {indexPages.length === 0 && totalPages > 5 && !indexRead && (
+            <div style={{ padding: '6px 24px', borderBottom: '1px solid #FEF3C7', background: '#FFFBEB', fontSize: 11, color: '#92400E', flexShrink: 0 }}>
+              No Sheet Index found. Use AI to name individual sheets or edit manually.
+            </div>
+          )}
           {/* Action bar */}
           <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#FAFAFA', flexWrap: 'wrap' }}>
             <button onClick={rescanOcr} disabled={naming || unnamedCount === 0}
