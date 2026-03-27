@@ -14,7 +14,13 @@ const ensurePdfLib = () => new Promise(r => {
   if (window.pdfjsLib) { r(window.pdfjsLib); return; }
   const s = document.createElement('script');
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; r(window.pdfjsLib); };
+  s.onload = () => {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    // Suppress verbose PDF.js warnings (Knockout groups, etc.)
+    const _w = console.warn;
+    console.warn = (...a) => { if (typeof a[0] === 'string' && (a[0].includes('Knockout') || a[0].includes('getOperatorList'))) return; _w.apply(console, a); };
+    r(window.pdfjsLib);
+  };
   s.onerror = () => r(null);
   document.head.appendChild(s);
 });
@@ -310,21 +316,31 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         doc = await lib.getDocument({ data: buf.slice(0) }).promise;
       }
 
-      // Render index page(s) to JPEG images (capped at 2000px)
-      const MAX_DIM = 2000;
+      // Render index page(s) to small JPEG images (must stay under 4MB total for Vercel)
+      const MAX_W = 1200;
+      const MAX_B64 = 3 * 1024 * 1024; // 3MB per image
       const images = [];
       for (const idx of indexPages) {
         const pageNum = (pages[idx]?.pageNum) || (idx + 1);
-        const page = await doc.getPage(pageNum);
-        const rawVp = page.getViewport({ scale: 1.0 });
-        const scale = (rawVp.width > MAX_DIM || rawVp.height > MAX_DIM)
-          ? MAX_DIM / Math.max(rawVp.width, rawVp.height) : 1.0;
-        const vp = page.getViewport({ scale });
+        const pg = await doc.getPage(pageNum);
+        const rawVp = pg.getViewport({ scale: 1.0 });
+        let scale = Math.min(1.0, MAX_W / rawVp.width);
         const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let vp = pg.getViewport({ scale });
         canvas.width = vp.width; canvas.height = vp.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-        const b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-        console.log(`[index] page ${pageNum}: ${vp.width}x${vp.height}, ${Math.round(b64.length/1024)}KB`);
+        await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+        let b64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+        // If still too large, re-render smaller
+        if (b64.length > MAX_B64) {
+          console.log(`[index] page ${pageNum} too large (${Math.round(b64.length/1024)}KB), shrinking...`);
+          scale *= 0.5;
+          vp = pg.getViewport({ scale });
+          canvas.width = vp.width; canvas.height = vp.height;
+          await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+          b64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
+        }
+        console.log(`[index] page ${pageNum}: ${Math.round(vp.width)}x${Math.round(vp.height)}, ${Math.round(b64.length/1024)}KB`);
         images.push(b64);
         canvas.width = 0; canvas.height = 0;
       }
