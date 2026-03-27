@@ -695,51 +695,93 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   };
 
   // Called by PlanUploadManager when user clicks "Start Upload"
-  const executeManagerUpload = async ({ files: checkedFiles, folders: checkedFolders, createFolders: doCreateFolders, skipDuplicates: doSkipDups, cancelRef, onFileStart, onFileComplete, onFileError, onProgress, onComplete }) => {
+  const executeManagerUpload = async ({ files: checkedFiles, folders: checkedFolders, skipDuplicates: doSkipDups, cancelRef, onFileStart, onFileComplete, onFileError, onComplete }) => {
     uploadCancelRef.current = false;
     const existingNames = new Set(plans.map(p => p.name));
+    const pid = project.id;
+
+    // Group pages by folder to create plan sets
+    const folderIds = {};
 
     for(let i=0; i<checkedFiles.length; i++){
       if(cancelRef.current){ onComplete(); return; }
       const f = checkedFiles[i];
-      const fileName = f.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').trim();
-      if(doSkipDups && existingNames.has(fileName)){ onFileComplete(f.path, f.folder); continue; }
-      onFileStart(f.path, f.folder);
-      onProgress(i, checkedFiles.length, f.name, f.folder);
+      if(doSkipDups && existingNames.has(f.name)){ onFileComplete(f.id); continue; }
+      onFileStart(f.id);
 
       try {
-        // Get the actual File object
-        let file;
-        if(f.rawFile) file = f.rawFile;
-        else if(f.entry) {
-          const blob = await f.entry.async('blob');
-          file = new File([blob], f.name, {type:'application/pdf'});
-        } else continue;
-
-        // Set the upload target folder if createFolders is on
-        if(doCreateFolders && f.folder && f.folder !== 'Root' && f.folder !== 'Selected Files'){
-          // Find or create the folder in planSets
-          const existingFolder = Object.entries(planSets).find(([,v]) => v.name === f.folder);
-          if(existingFolder){
-            setUploadTargetFolder(existingFolder[0]);
-          } else {
-            const fid = 'folder_' + f.folder.replace(/[^a-zA-Z0-9]/g,'_') + '_' + Date.now();
-            savePlanSets({...planSets, [fid]: {name:f.folder, planIds:[], collapsed:false}});
-            setUploadTargetFolder(fid);
+        // Ensure folder exists in planSets
+        if(f.folder && f.folder !== 'Root' && f.folder !== 'Selected Files' && !f.folder.endsWith('.pdf')){
+          if(!folderIds[f.folder]){
+            const existing = Object.entries(planSets).find(([,v]) => v.name === f.folder);
+            if(existing) folderIds[f.folder] = existing[0];
+            else {
+              const fid = 'folder_' + f.folder.replace(/[^a-zA-Z0-9]/g,'_') + '_' + Date.now();
+              savePlanSets({...planSets, [fid]: {name:f.folder, planIds:[], collapsed:false}});
+              folderIds[f.folder] = fid;
+            }
           }
+          setUploadTargetFolder(folderIds[f.folder]);
         } else {
           setUploadTargetFolder(null);
         }
 
-        // Use OCR naming or filename naming
-        await handleUpload(file, true); // skipStatusReset=true
-        onFileComplete(f.path, f.folder);
-        existingNames.add(fileName);
+        if(f.pdfFile && f.pageNum){
+          // Multi-page PDF: render single page to JPEG and upload
+          const lib = await ensurePdfLib();
+          const buf = await f.pdfFile.arrayBuffer();
+          const doc = await lib.getDocument({data: buf.slice(0)}).promise;
+          const page = await doc.getPage(f.pageNum);
+          const viewport = page.getViewport({scale:2.0});
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
+          // Extract text
+          let pageText = '', ocrItems = [];
+          try {
+            const tc = await page.getTextContent();
+            for(const item of tc.items){
+              if(!item.str?.trim() || !item.transform) continue;
+              const [px,py] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+              const fontSize = Math.sqrt(item.transform[0]**2 + item.transform[1]**2);
+              const hPx = fontSize * viewport.scale;
+              const wPx = item.width ? item.width * viewport.scale : hPx * item.str.length * 0.6;
+              ocrItems.push({str:item.str.trim(), x:Math.round(px), y:Math.round(py-hPx), w:Math.round(wPx), h:Math.round(hPx)});
+            }
+            pageText = ocrItems.map(it=>it.str).join(' ').slice(0,50000);
+          } catch(e){ console.warn('[manager] text extract failed', e); }
+          // Upload
+          const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.jpg`;
+          const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
+          if(upErr) throw new Error(upErr.message);
+          const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
+          const {data:plan, error:insErr} = await supabase.from('precon_plans')
+            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null}]).select().single();
+          if(insErr) throw new Error(insErr.message);
+          if(plan){
+            const upd = {};
+            if(pageText) upd.ocr_text = pageText;
+            if(ocrItems.length) upd.text_positions = ocrItems;
+            if(Object.keys(upd).length) await supabase.from('precon_plans').update(upd).eq('id',plan.id);
+            setPlans(prev=>[...prev, {...plan, ocr_text:pageText||null, text_positions:ocrItems.length?ocrItems:null}]);
+            // Add to folder
+            const fid = folderIds[f.folder] || uploadTargetFolder;
+            if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
+          }
+        } else if(f.rawFile){
+          // Single file (PDF or image) — use existing handleUpload
+          await handleUpload(f.rawFile, true);
+        } else continue;
+
+        onFileComplete(f.id);
+        existingNames.add(f.name);
       } catch(e){
-        console.error('Upload manager: file failed', f.name, e);
-        onFileError(f.path, f.folder, e.message);
+        console.error('[manager] upload failed:', f.name, e);
+        onFileError(f.id, e.message);
       }
     }
+    setUploadTargetFolder(null);
     onComplete();
   };
 
