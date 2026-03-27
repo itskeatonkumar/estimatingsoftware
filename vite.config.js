@@ -9,7 +9,6 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-pdf-lib': ['pdf-lib'],
         },
       },
     },

@@ -11,7 +11,6 @@ import LibraryPanel from "./LibraryPanel.jsx";
 import PlanChat from "./PlanChat.jsx";
 import PlanUploadManager from "./PlanUploadManager.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
-import { PDFDocument } from 'pdf-lib';
 import { postProcessOcrItems, parseScaleString } from "../../lib/pdfParsing.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
@@ -700,18 +699,43 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     setUploadManagerFiles(files);
   };
 
+  // Background keepalive — prevents browser from throttling canvas rendering
+  const keepAliveRef = useRef(null);
+  const startKeepAlive = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // silent
+      osc.connect(gain); gain.connect(ctx.destination); osc.start();
+      keepAliveRef.current = ctx;
+    } catch(e) { /* not available */ }
+  };
+  const stopKeepAlive = () => { if(keepAliveRef.current){ keepAliveRef.current.close(); keepAliveRef.current = null; } };
+
   // Called by PlanUploadManager when user clicks "Start Upload"
-  // Uses pdf-lib to extract pages as PDF (no canvas rendering — works in background tabs)
   const executeManagerUpload = async ({ files: checkedFiles, folders: checkedFolders, skipDuplicates: doSkipDups, cancelRef, onFileStart, onFileComplete, onFileError, onComplete }) => {
     uploadCancelRef.current = false;
+    startKeepAlive();
     const existingNames = new Set(plans.map(p => p.name));
     const pid = project.id;
     const folderIds = {};
-    // Cache parsed PDF docs by file name to avoid re-parsing the same file for each page
-    const pdfCache = new Map();
+    // Cache PDF.js docs by file to avoid re-parsing per page
+    const docCache = new Map();
+
+    const getPdfDoc = async (file) => {
+      const key = file.name + '_' + file.size;
+      if (docCache.has(key)) return docCache.get(key);
+      const lib = await ensurePdfLib();
+      if (!lib) return null;
+      const buf = await file.arrayBuffer();
+      const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
+      docCache.set(key, doc);
+      return doc;
+    };
 
     for(let i=0; i<checkedFiles.length; i++){
-      if(cancelRef.current){ onComplete(); return; }
+      if(cancelRef.current){ stopKeepAlive(); onComplete(); return; }
       const f = checkedFiles[i];
       if(doSkipDups && existingNames.has(f.name)){ onFileComplete(f.id); continue; }
       onFileStart(f.id);
@@ -734,27 +758,23 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         }
 
         if(f.pdfFile && f.pageNum){
-          // Multi-page PDF: extract single page as PDF using pdf-lib (no canvas — background-safe)
-          const cacheKey = f.pdfFile.name + '_' + f.pdfFile.size;
-          if(!pdfCache.has(cacheKey)){
-            const buf = await f.pdfFile.arrayBuffer();
-            pdfCache.set(cacheKey, new Uint8Array(buf));
-          }
-          const srcBytes = pdfCache.get(cacheKey);
-          const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
-          const newDoc = await PDFDocument.create();
-          const [page] = await newDoc.copyPages(srcDoc, [f.pageNum - 1]);
-          newDoc.addPage(page);
-          const pdfBytes = await newDoc.save();
-          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          // Multi-page PDF: render single page to JPEG via canvas
+          const doc = await getPdfDoc(f.pdfFile);
+          if(!doc) throw new Error('Could not load PDF');
+          const page = await doc.getPage(f.pageNum);
+          const viewport = page.getViewport({scale:2.0});
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
+          canvas.width = 0; canvas.height = 0; // free memory
 
-          // Upload PDF page directly (no rendering needed)
-          const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.pdf`;
-          const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'application/pdf'});
+          const path = `precon/${pid}/${Date.now()}_p${f.pageNum}.jpg`;
+          const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
           if(upErr) throw new Error(upErr.message);
           const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
           const {data:plan, error:insErr} = await supabase.from('precon_plans')
-            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'application/pdf', org_id:orgId||null}]).select().single();
+            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null}]).select().single();
           if(insErr) throw new Error(insErr.message);
           if(plan){
             setPlans(prev=>[...prev, plan]);
@@ -762,22 +782,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
           }
         } else if(f.rawFile){
-          // Single file (PDF or image) — upload directly, no canvas
-          const file = f.rawFile;
-          const ext = file.name.split('.').pop()?.toLowerCase();
-          const isPdf = file.type?.includes('pdf') || ext === 'pdf';
-          const path = `precon/${pid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-          const {error:upErr} = await supabase.storage.from('attachments').upload(path, file, {upsert:true, contentType: file.type || (isPdf ? 'application/pdf' : 'image/jpeg')});
-          if(upErr) throw new Error(upErr.message);
-          const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
-          const {data:plan, error:insErr} = await supabase.from('precon_plans')
-            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'), org_id:orgId||null}]).select().single();
-          if(insErr) throw new Error(insErr.message);
-          if(plan){
-            setPlans(prev=>[...prev, plan]);
-            const fid = folderIds[f.folder] || uploadTargetFolder;
-            if(fid && planSets[fid]) savePlanSets({...planSets, [fid]:{...planSets[fid], planIds:[...(planSets[fid].planIds||[]), plan.id]}});
-          }
+          // Single file — use existing handleUpload for full processing
+          await handleUpload(f.rawFile, true);
         } else continue;
 
         onFileComplete(f.id);
@@ -787,6 +793,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         onFileError(f.id, e.message);
       }
     }
+    stopKeepAlive();
     setUploadTargetFolder(null);
     onComplete();
   };
