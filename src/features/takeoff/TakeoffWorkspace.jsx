@@ -1789,7 +1789,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
     // Strategy: find ALL sheet-number-like patterns, then pick the best one
     // Sheet numbers: A1.0, C-3, S1.1, ES1.0, FP1.0, M2.0, etc.
-    const sheetNumRe = /\b([A-Z]{1,3}\d{1,2}(?:\.\d{1,2})?)\b/g;
+    const sheetNumRe = /\b([A-Z]{1,5}\d{1,2}(?:\.\d{1,2})?)\b/g;
     const titleKeywords = /(?:SITE|FLOOR|FOUNDATION|FRAMING|ROOF|CEILING|MECHANICAL|ELECTRICAL|PLUMBING|STRUCTURAL|GRADING|UTILITY|LANDSCAPE|DEMOLITION|DETAIL|ELEVATION|SECTION|PLAN|LAYOUT|SCHEDULE|DRAINAGE|PAVING|LIGHTING|LIFE SAFETY|FIRE PROTECTION|FIRE|REFLECTED|ENLARGED|PARTIAL|OVERALL|GENERAL|POWER|SYSTEMS|INTERIOR|EXTERIOR|ARCHITECTURAL|CONCRETE|LEGEND|RISER|SPECIFICATION|NOTE|ACCESSIBILITY|VENDOR|CRITERIA|RECEIVING|PET WASH|STANDARD)/i;
 
     let bestMatch = null;
@@ -3208,16 +3208,16 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       if (p.id === selPlan.id) continue;
       const name = p.name || '';
       // Extract sheet number from name: "A1.0 - FLOOR PLAN" → "A1.0"
-      const m = name.match(/^([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
+      const m = name.match(/^([A-Z]{1,5}[-.]?\d{1,3}(?:\.\d{1,3})?)/);
       if (m) sheetNumMap.set(m[1].toUpperCase(), p);
       // Also map the full name
       sheetNumMap.set(name.toUpperCase(), p);
     }
     // Find references in OCR text
     const refs = new Map(); // planId → {plan, contexts:[]}
-    const refPatterns = /(?:SEE|REFER TO|DETAIL|SECTION|SHEET|ON SHEET|PER)\s+([A-Z]{1,3}[-.]?\d{1,3}(?:\.\d{1,3})?)/gi;
+    const refPatterns = /(?:SEE|REFER TO|DETAIL|SECTION|SHEET|ON SHEET|PER)\s+([A-Z]{1,5}[-.]?\d{1,3}(?:\.\d{1,3})?)/gi;
     // Also find bare sheet numbers that match known plans
-    const bareNumPattern = /\b([A-Z]{1,3}\d{1,2}(?:\.\d{1,2})?)\b/g;
+    const bareNumPattern = /\b([A-Z]{1,5}\d{1,2}(?:\.\d{1,2})?)\b/g;
     let match;
     // First pass: explicit references
     while ((match = refPatterns.exec(text)) !== null) {
@@ -4993,7 +4993,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                           const sheetPrefixes = new Map();
                           for(const p of plans){
                             if(p.id===selPlan.id) continue;
-                            const m = (p.name||'').match(/^([A-Z]{1,3}\d{0,2}[.-]?\d{0,2}[.-]?\d{0,2})/i);
+                            const m = (p.name||'').match(/^([A-Z]{1,5}\d{0,3}[.-]?\d{0,3}[.-]?\d{0,3})/i);
                             if(m) sheetPrefixes.set(m[1].toUpperCase(), p);
                           }
                           if(!sheetPrefixes.size) return null;
@@ -5028,14 +5028,14 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             // 1) Exact match: text IS a sheet number
                             if(sheetPrefixes.has(upper)){
                               // Must start with letter(s) followed by digit — real sheet refs
-                              if(/^[A-Z]{1,3}\d/.test(upper) && !FALSE_POS.has(upper)){
+                              if(/^[A-Z]{1,5}\d/.test(upper) && !FALSE_POS.has(upper)){
                                 matchedPlan = sheetPrefixes.get(upper);
                               }
                             }
 
                             // 2) Detail callout: "3/S2.1" or "A3/S1" — denominator is the sheet ref
                             if(!matchedPlan){
-                              const detailMatch = upper.match(/^\d+\s*\/\s*([A-Z]{1,3}\d{1,2}[.-]?\d{0,2})$/);
+                              const detailMatch = upper.match(/^\d+\s*\/\s*([A-Z]{1,5}\d{1,2}[.-]?\d{0,2})$/);
                               if(detailMatch){
                                 const sheetRef = detailMatch[1];
                                 if(sheetPrefixes.has(sheetRef)){ matchedPlan = sheetPrefixes.get(sheetRef); matchedRef = sheetRef; }
@@ -5045,7 +5045,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             // 3) "SEE X" / "REFER TO X" — only if text starts with a reference keyword
                             if(!matchedPlan && /^(SEE|REFER|SHEET|ON|PER)\b/.test(upper)){
                               for(const [prefix, plan] of sheetPrefixes){
-                                if(prefix.length>=3 && /^[A-Z]{1,3}\d/.test(prefix) && upper.includes(prefix)){
+                                if(prefix.length>=3 && /^[A-Z]{1,5}\d/.test(prefix) && upper.includes(prefix)){
                                   matchedPlan = plan; matchedRef = prefix; break;
                                 }
                               }

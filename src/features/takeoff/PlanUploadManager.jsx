@@ -20,7 +20,7 @@ const ensurePdfLib = () => new Promise(r => {
 });
 
 // ── Sheet name extraction ──────────────────────────────────────
-const SHEET_RE = /^[A-Z]{1,3}\d{0,2}[.-]?\d{0,3}$/;
+const SHEET_RE = /^[A-Z]{1,5}\d{0,3}[.-]?\d{0,3}$/;
 
 // Extract ONLY the sheet number from PDF text — no description guessing
 function extractSheetNumber(textItems, w, h) {
