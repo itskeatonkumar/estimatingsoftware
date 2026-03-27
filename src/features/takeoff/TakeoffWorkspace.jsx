@@ -680,15 +680,16 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     console.log('[Upload] handleMultiUpload:', files.length, 'files:', files.map(f=>f.name));
     const hasZip = files.some(f => f.name.toLowerCase().endsWith('.zip') || f.type==='application/zip' || f.type==='application/x-zip-compressed');
     const isMulti = files.length > 1;
+    const isSingleImage = files.length===1 && !hasZip && files[0].type?.startsWith('image/') && !files[0].type?.includes('pdf');
 
-    // For single non-ZIP file, upload directly (fast path)
-    if(!hasZip && !isMulti){
+    // Single image (non-PDF): upload directly, no manager needed
+    if(isSingleImage){
       uploadCancelRef.current = false;
       await handleUpload(files[0]);
       return;
     }
 
-    // For ZIP or multiple files, open the Upload Manager
+    // Everything else (PDFs, ZIPs, multiple files): open the Upload Manager
     console.log('[Upload] Opening upload manager for', files.length, 'files');
     setUploadManagerFiles(files);
   };
@@ -4753,13 +4754,13 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     onDragLeave={e=>{e.preventDefault();setDragOverUpload(false);}}
                     onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(Array.from(e.dataTransfer.files));}}}>
                     {q ? <>
-                      <div style={{fontSize:36,color:'#ccc',marginBottom:16}}>&#128269;</div>
+                      <div style={{fontSize:36,color:'#ccc',marginBottom:16}}>{'\uD83D\uDD0D'}</div>
                       <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>No matching sheets</div>
                       <div style={{fontSize:13,color:'#999'}}>Try a different search term</div>
                     </> : <>
                       <div style={{border:dragOverUpload?'2px dashed #10B981':'2px dashed #E5E7EB',borderRadius:12,padding:'40px 20px',background:dragOverUpload?'#ECFDF5':'#FAFAFA',transition:'all 0.15s',cursor:'pointer'}}
                         onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}>
-                        <div style={{fontSize:36,color:dragOverUpload?'#10B981':'#ccc',marginBottom:12}}>{dragOverUpload?'\u2B07':'&#128195;'}</div>
+                        <div style={{fontSize:36,color:dragOverUpload?'#10B981':'#ccc',marginBottom:12}}>{dragOverUpload?'\u2B07':'\uD83D\uDCC4'}</div>
                         <div style={{fontSize:16,fontWeight:500,color:dragOverUpload?'#10B981':'#333',marginBottom:6}}>
                           {dragOverUpload?'Drop files to upload':'No plans yet'}
                         </div>
