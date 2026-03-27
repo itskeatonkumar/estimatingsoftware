@@ -23,7 +23,9 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
 
   // Parse files on mount
   useEffect(() => {
-    parseInput(rawFiles);
+    console.log('[UploadManager] mounted, rawFiles:', rawFiles?.length, Array.isArray(rawFiles) ? rawFiles.map(f=>f.name) : typeof rawFiles);
+    if(rawFiles?.length) parseInput(rawFiles);
+    else { console.warn('[UploadManager] no files received'); setParsing(false); }
   }, []);
 
   const ensureJSZip = () => new Promise((resolve) => {

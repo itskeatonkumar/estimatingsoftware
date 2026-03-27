@@ -676,7 +676,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
   const handleMultiUpload = async (fileList) => {
     if(!fileList||!fileList.length) return;
-    const files = Array.from(fileList);
+    const files = Array.isArray(fileList) ? fileList : Array.from(fileList);
+    console.log('[Upload] handleMultiUpload:', files.length, 'files:', files.map(f=>f.name));
     const hasZip = files.some(f => f.name.toLowerCase().endsWith('.zip') || f.type==='application/zip' || f.type==='application/x-zip-compressed');
     const isMulti = files.length > 1;
 
@@ -688,7 +689,8 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     }
 
     // For ZIP or multiple files, open the Upload Manager
-    setUploadManagerFiles(fileList);
+    console.log('[Upload] Opening upload manager for', files.length, 'files');
+    setUploadManagerFiles(files);
   };
 
   // Called by PlanUploadManager when user clicks "Start Upload"
@@ -4452,7 +4454,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 background:showOverview?t.bg:'transparent',
                 borderBottom:showOverview?'2px solid #10B981':'2px solid transparent',
                 boxSizing:'border-box'}}>
-              <span style={{fontSize:12}}>&#8862;</span>
+              <span style={{fontSize:11}}>&#9638;</span>
               <span style={{fontSize:11,fontWeight:showOverview?600:400,color:showOverview?t.text:t.text3}}>Overview</span>
             </div>
             {openTabs.map(tabId=>{
@@ -4609,7 +4611,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:0,minWidth:0}}
             onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverUpload(true);}}
             onDragLeave={e=>{e.preventDefault();setDragOverUpload(false);}}
-            onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(e.dataTransfer.files);}}}>
+            onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(Array.from(e.dataTransfer.files));}}}>
             {/* Drag overlay */}
             {dragOverUpload&&<div style={{position:'absolute',inset:0,background:'rgba(16,185,129,0.08)',border:'3px dashed #10B981',borderRadius:8,zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
               <div style={{background:'#fff',padding:'20px 32px',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',textAlign:'center'}}>
@@ -4749,15 +4751,15 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                   <div style={{textAlign:'center',padding:'60px 20px'}}
                     onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverUpload(true);}}
                     onDragLeave={e=>{e.preventDefault();setDragOverUpload(false);}}
-                    onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(e.dataTransfer.files);}}}>
+                    onDrop={e=>{e.preventDefault();setDragOverUpload(false);if(e.dataTransfer.files?.length){setUploadTargetFolder(null);handleMultiUpload(Array.from(e.dataTransfer.files));}}}>
                     {q ? <>
-                      <div style={{fontSize:48,color:'#ccc',marginBottom:16}}>&#8862;</div>
+                      <div style={{fontSize:36,color:'#ccc',marginBottom:16}}>&#128269;</div>
                       <div style={{fontSize:16,fontWeight:500,color:'#333',marginBottom:8}}>No matching sheets</div>
                       <div style={{fontSize:13,color:'#999'}}>Try a different search term</div>
                     </> : <>
                       <div style={{border:dragOverUpload?'2px dashed #10B981':'2px dashed #E5E7EB',borderRadius:12,padding:'40px 20px',background:dragOverUpload?'#ECFDF5':'#FAFAFA',transition:'all 0.15s',cursor:'pointer'}}
                         onClick={()=>{setUploadTargetFolder(null);fileRef.current?.click();}}>
-                        <div style={{fontSize:48,color:dragOverUpload?'#10B981':'#ccc',marginBottom:12}}>{dragOverUpload?'&#8615;':'&#8862;'}</div>
+                        <div style={{fontSize:36,color:dragOverUpload?'#10B981':'#ccc',marginBottom:12}}>{dragOverUpload?'\u2B07':'&#128195;'}</div>
                         <div style={{fontSize:16,fontWeight:500,color:dragOverUpload?'#10B981':'#333',marginBottom:6}}>
                           {dragOverUpload?'Drop files to upload':'No plans yet'}
                         </div>
