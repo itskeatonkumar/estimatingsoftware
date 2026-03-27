@@ -81,27 +81,6 @@ function extractSheetNumber(textItems, w, h) {
   return scored[0]?.cleaned || null;
 }
 
-// ── Sheet Index detection ──────────────────────────────────────
-const INDEX_KW = ['SHEET INDEX','DRAWING INDEX','SHEET LIST','DRAWING LIST','TABLE OF CONTENTS','INDEX OF DRAWINGS','LIST OF DRAWINGS'];
-
-function findSheetIndexPages(pagesData) {
-  const found = [];
-  for (let i = 0; i < pagesData.length; i++) {
-    const text = (pagesData[i].ocrText || '').toUpperCase();
-    if (INDEX_KW.some(kw => text.includes(kw))) {
-      found.push(i);
-      // Check next page for continuation
-      if (i + 1 < pagesData.length) {
-        const next = (pagesData[i + 1].ocrText || '').toUpperCase();
-        if (/[A-Z]{1,5}\d{1,3}/.test(next) && !next.includes('GENERAL NOTES') && !next.includes('SPECIFICATIONS')) {
-          found.push(i + 1);
-        }
-      }
-    }
-  }
-  return [...new Set(found)].sort((a, b) => a - b);
-}
-
 // ── Component ──────────────────────────────────────────────────
 export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) {
   const [pages, setPages] = useState([]);
@@ -116,10 +95,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const [results, setResults] = useState({ success: 0, failed: 0, errors: [] });
   const [editingId, setEditingId] = useState(null);
   const [naming, setNaming] = useState(false);
-  const [indexPages, setIndexPages] = useState([]); // page indices with sheet index
-  const [indexRead, setIndexRead] = useState(false); // true after sheet index has been read
   const cancelRef = useRef(false);
-  const pdfDocRef = useRef(null); // keep PDF doc for rendering index pages later
 
   useEffect(() => {
     if (rawFiles?.length) parseInput(rawFiles);
@@ -135,8 +111,6 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     let doc;
     try { doc = await lib.getDocument({ data: buf.slice(0) }).promise; }
     catch { return [fallback]; }
-
-    if (!pdfDocRef.current) pdfDocRef.current = { file, doc };
 
     const numPages = doc.numPages;
     const names = new Array(numPages).fill(null);
@@ -287,38 +261,10 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setPages(allPages);
     setFolders(fl);
     if (fl.length) setSelFolder(fl[0].name);
-    // Detect sheet index pages
-    const idxPages = findSheetIndexPages(allPages);
-    setIndexPages(idxPages);
-    if (idxPages.length) console.log('[UploadManager] Sheet index found on page(s):', idxPages.map(i => i + 1));
     setParsing(false);
   };
 
   // Re-scan unnamed pages with improved extraction (free)
-  const rescanOcr = async () => {
-    const unnamed = pages.filter(p => p.source === 'not found' && p.checked && (p.pdfFile || p.rawFile));
-    if (!unnamed.length) return;
-    setNaming(true);
-    const lib = await ensurePdfLib();
-    if (!lib) { setNaming(false); return; }
-    for (let i = 0; i < unnamed.length; i++) {
-      const p = unnamed[i];
-      setParseStatus(`Re-scanning ${i + 1}/${unnamed.length}`);
-      try {
-        const file = p.pdfFile || p.rawFile;
-        const buf = await file.arrayBuffer();
-        const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
-        const page = await doc.getPage(p.pageNum || 1);
-        const tc = await page.getTextContent();
-        const vp = page.getViewport({ scale: 1 });
-        const name = extractSheetNumber(tc.items, vp.width, vp.height);
-        if (name) setPages(prev => prev.map(pp => pp.id === p.id ? { ...pp, name, autoNamed: true, source: 'ocr' } : pp));
-      } catch (e) { console.warn('[rescan]', e); }
-      if (i % 3 === 0) await new Promise(r => setTimeout(r, 10));
-    }
-    setNaming(false);
-  };
-
   // AI naming — send title block crop to Claude for full sheet number + description
   const runAiNaming = async (targets) => {
     setNaming(true);
@@ -366,121 +312,6 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     await runAiNaming(targets);
   };
 
-  // AI name ALL (get full descriptions for everything)
-  const aiNameAll = async () => {
-    const targets = pages.filter(p => p.checked && (p.pdfFile || p.rawFile) && p.source !== 'ai' && p.source !== 'manual');
-    if (!targets.length) return;
-    if (!confirm(`Use AI to name ALL ${targets.length} sheets?\nThis uses ${targets.length} AI credit${targets.length > 1 ? 's' : ''}.\n\nThis will add full descriptions (e.g. "A1.0 - FLOOR PLAN") to sheets that currently only have sheet numbers.`)) return;
-    await runAiNaming(targets);
-  };
-
-  // Read Sheet Index page(s) with AI — names ALL sheets for 1 credit
-  const readSheetIndex = async () => {
-    if (!indexPages.length) return;
-    setNaming(true);
-    setParseStatus('Reading Sheet Index...');
-    try {
-      const lib = await ensurePdfLib();
-      if (!lib) { setNaming(false); return; }
-
-      // Re-open PDF to render the index page(s)
-      const ref = pdfDocRef.current;
-      let doc = ref?.doc;
-      if (!doc) {
-        // Fallback: find a page with pdfFile and open it
-        const withPdf = pages.find(p => p.pdfFile);
-        if (!withPdf) { setNaming(false); return; }
-        const buf = await withPdf.pdfFile.arrayBuffer();
-        doc = await lib.getDocument({ data: buf.slice(0) }).promise;
-      }
-
-      // Render index page(s) to small JPEG images (must stay under 4MB total for Vercel)
-      const MAX_W = 1200;
-      const MAX_B64 = 3 * 1024 * 1024; // 3MB per image
-      const images = [];
-      for (const idx of indexPages) {
-        const pageNum = (pages[idx]?.pageNum) || (idx + 1);
-        const pg = await doc.getPage(pageNum);
-        const rawVp = pg.getViewport({ scale: 1.0 });
-        let scale = Math.min(1.0, MAX_W / rawVp.width);
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        let vp = pg.getViewport({ scale });
-        canvas.width = vp.width; canvas.height = vp.height;
-        await pg.render({ canvasContext: ctx, viewport: vp }).promise;
-        let b64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-        // If still too large, re-render smaller
-        if (b64.length > MAX_B64) {
-          console.log(`[index] page ${pageNum} too large (${Math.round(b64.length/1024)}KB), shrinking...`);
-          scale *= 0.5;
-          vp = pg.getViewport({ scale });
-          canvas.width = vp.width; canvas.height = vp.height;
-          await pg.render({ canvasContext: ctx, viewport: vp }).promise;
-          b64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
-        }
-        console.log(`[index] page ${pageNum}: ${Math.round(vp.width)}x${Math.round(vp.height)}, ${Math.round(b64.length/1024)}KB`);
-        images.push(b64);
-        canvas.width = 0; canvas.height = 0;
-      }
-
-      // Send to AI
-      const content = [
-        ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } })),
-        { type: 'text', text: 'This is a Sheet Index / Drawing Index from a construction plan set. Extract EVERY sheet number and sheet name from the table.\nReturn ONLY a JSON array, no markdown, no explanation:\n[{"number":"C1","name":"COVER SHEET"},{"number":"A1.1","name":"FLOOR PLAN"}]\nInclude every single row. The sheet number is in the first column and the description in the second.' }
-      ];
-
-      setParseStatus('AI reading index...');
-      const j = await callClaude({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content }] });
-      const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim();
-
-      // Parse JSON — handle markdown code fences
-      let indexData;
-      try {
-        const cleaned = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/, '').trim();
-        indexData = JSON.parse(cleaned);
-      } catch (e) {
-        console.error('[index] JSON parse failed:', raw.slice(0, 300));
-        alert('Could not parse Sheet Index response. Try AI Name All instead.');
-        setNaming(false); return;
-      }
-
-      if (!Array.isArray(indexData) || !indexData.length) {
-        alert('No entries found in Sheet Index.'); setNaming(false); return;
-      }
-
-      console.log('[index] Parsed', indexData.length, 'entries from sheet index');
-
-      // Match pages to index entries
-      let matched = 0;
-      const indexMap = new Map(indexData.map(e => [e.number?.toUpperCase()?.replace(/\s+/g, ''), e]));
-
-      setPages(prev => prev.map(p => {
-        // Try matching by current name (which is the sheet number from OCR)
-        const key = p.name?.toUpperCase()?.replace(/[\s.-]+/g, match => match);
-        const cleanKey = p.name?.toUpperCase()?.replace(/\s+/g, '');
-        const entry = indexMap.get(cleanKey);
-        if (entry) {
-          matched++;
-          return { ...p, name: `${entry.number} - ${entry.name}`, autoNamed: true, source: 'index' };
-        }
-        // Try partial match — the page name might be just the number portion
-        for (const [num, ent] of indexMap) {
-          if (num && cleanKey && (cleanKey === num || num.includes(cleanKey) || cleanKey.includes(num))) {
-            matched++;
-            return { ...p, name: `${ent.number} - ${ent.name}`, autoNamed: true, source: 'index' };
-          }
-        }
-        return p;
-      }));
-
-      setIndexRead(true);
-      alert(`Named ${matched} of ${pages.length} sheets from Sheet Index.\n${pages.length - matched} sheets not found in index.`);
-    } catch (e) {
-      console.error('[index] error:', e);
-      alert('Sheet Index read failed: ' + e.message);
-    }
-    setNaming(false);
-  };
 
   const toggleFolder = (fname, checked) => {
     setFolders(prev => prev.map(f => f.name === fname ? { ...f, checked } : f));
@@ -511,7 +342,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF Label' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'index': { c: '#10B981', l: 'Index' }, 'sheet-num': { c: '#3B82F6', l: 'Sheet #' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'sheet-num': { c: '#3B82F6', l: 'Sheet #' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
@@ -550,37 +381,15 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
 
         {/* ═══ PREVIEW ═══ */}
         {step === 'preview' && (<>
-          {/* Sheet Index banner */}
-          {indexPages.length > 0 && !indexRead && (
-            <div style={{ padding: '8px 24px', borderBottom: '1px solid #D1FAE5', background: '#ECFDF5', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: '#065F46' }}>Sheet Index found on page {indexPages.map(i => i + 1).join(', ')}</span>
-              <button onClick={readSheetIndex} disabled={naming}
-                style={{ padding: '5px 14px', background: '#10B981', border: 'none', color: '#fff', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 12, fontWeight: 600 }}>
-                {naming ? parseStatus : 'Read Sheet Index (1 credit)'}
-              </button>
-              <span style={{ fontSize: 10, color: '#6B7280' }}>Names all sheets at once</span>
-            </div>
-          )}
-          {indexPages.length === 0 && totalPages > 5 && !indexRead && (
-            <div style={{ padding: '6px 24px', borderBottom: '1px solid #FEF3C7', background: '#FFFBEB', fontSize: 11, color: '#92400E', flexShrink: 0 }}>
-              No Sheet Index found. Use AI to name individual sheets or edit manually.
-            </div>
-          )}
           {/* Action bar */}
           <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#FAFAFA', flexWrap: 'wrap' }}>
-            <button onClick={rescanOcr} disabled={naming || unnamedCount === 0}
-              style={{ padding: '4px 10px', border: '1px solid #3B82F6', background: '#EFF6FF', color: '#3B82F6', borderRadius: 4, cursor: naming || unnamedCount === 0 ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: unnamedCount === 0 ? 0.4 : 1 }}>
-              {naming ? parseStatus : `Re-scan # (${unnamedCount})`}
-            </button>
-            <button onClick={aiNameUnnamed} disabled={naming || unnamedCount === 0}
-              style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming || unnamedCount === 0 ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: unnamedCount === 0 ? 0.4 : 1 }}>
-              AI Name ({unnamedCount} unnamed)
-            </button>
-            <button onClick={aiNameAll} disabled={naming || selectedCount === 0}
-              style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: 'none', color: '#7B6BA4', borderRadius: 4, cursor: naming || selectedCount === 0 ? 'default' : 'pointer', fontSize: 11, opacity: selectedCount === 0 ? 0.4 : 1 }}>
-              AI Name All ({selectedCount})
-            </button>
-            <span style={{ fontSize: 10, color: '#bbb' }}>Click names to edit</span>
+            {unnamedCount > 0 && (
+              <button onClick={aiNameUnnamed} disabled={naming}
+                style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 11, fontWeight: 600 }}>
+                {naming ? parseStatus : `AI Name (${unnamedCount} unnamed)`}
+              </button>
+            )}
+            <span style={{ fontSize: 10, color: '#bbb' }}>Click any name to edit</span>
             <div style={{ flex: 1 }} />
             <button onClick={() => { setPages(p => p.map(x => ({ ...x, checked: true }))); setFolders(f => f.map(x => ({ ...x, checked: true }))); }}
               style={{ fontSize: 10, color: '#10B981', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>All</button>
