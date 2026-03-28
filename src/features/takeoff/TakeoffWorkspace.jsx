@@ -5888,128 +5888,86 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         return(
         <div style={{position:'absolute',inset:0,background:'#fff',zIndex:100,display:'flex',flexDirection:'column',overflow:'hidden'}}>
 
-          {/* ── Header Bar ── */}
-          <div style={{display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:52,borderBottom:'1px solid #E0E0E0',background:'#fff',flexShrink:0}}>
+          {/* ── Row 1: Project info + metrics ── */}
+          <div style={{display:'flex',alignItems:'center',gap:16,padding:'0 20px',height:48,borderBottom:'1px solid #E0E0E0',background:'#fff',flexShrink:0}}>
             <button onClick={()=>{setRightTab('items');setMainView('workspace');}}
-              style={{background:'none',border:'none',color:'#666',padding:'4px 8px',cursor:'pointer',fontSize:18,lineHeight:1}}>
-              &#8249;
+              style={{background:'none',border:'none',color:'#666',padding:'4px 6px',cursor:'pointer',fontSize:18,lineHeight:1,flexShrink:0}}>
+              &lsaquo;
             </button>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:15,fontWeight:500,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{project.name}</div>
-              <div style={{fontSize:11,color:'#999',marginTop:1}}>Updated: {new Date().toLocaleString()}</div>
+              <div style={{fontSize:15,fontWeight:600,color:'#1A1A1A',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:300}}>{project.name}</div>
             </div>
-            {/* Three metric badges */}
-            <div style={{display:'flex',gap:12,alignItems:'center'}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#FEF2F2',borderRadius:4,border:'1px solid #FECACA'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#C0504D'}}/>
-                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Extended Cost</div></div>
+            <div style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
+              <div style={{minWidth:100,textAlign:'center'}}>
+                <div style={{fontSize:14,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</div>
+                <div style={{fontSize:9,color:'#999'}}>Extended Cost</div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
-                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(2)}%</div><div style={{fontSize:9,color:'#999'}}>Net Profit</div></div>
+              <div style={{width:1,height:24,background:'#E5E7EB'}}/>
+              <div style={{minWidth:80,textAlign:'center'}}>
+                <div style={{fontSize:14,fontWeight:700,color:netProfitPct>0?'#10B981':'#C0504D',fontVariantNumeric:'tabular-nums'}}>{netProfitPct.toFixed(1)}%</div>
+                <div style={{fontSize:9,color:'#999'}}>Net Profit</div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',background:'#E8F5E9',borderRadius:4,border:'1px solid #C8E6C9'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#10B981'}}/>
-                <div><div style={{fontSize:14,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</div><div style={{fontSize:9,color:'#999'}}>Selling Price</div></div>
+              <div style={{width:1,height:24,background:'#E5E7EB'}}/>
+              <div style={{minWidth:100,textAlign:'center'}}>
+                <div style={{fontSize:14,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</div>
+                <div style={{fontSize:9,color:'#999'}}>Selling Price</div>
               </div>
             </div>
-            {/* Version selector */}
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <select value={activeVersion||'live'} onChange={e=>setActiveVersion(e.target.value==='live'?null:e.target.value)}
-                style={{padding:'5px 8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#333',outline:'none',cursor:'pointer',background:'#fff'}}>
-                <option value="live">Current (Live)</option>
-                {estVersions.map(v=><option key={v.id} value={v.id}>{v.name} — ${Math.round(v.total_cost||0).toLocaleString()}</option>)}
-              </select>
-              <button onClick={async()=>{
-                const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent,pitch_multiplier:it.pitch_multiplier,height:it.height}));
-                const name=estVersions.length===0?'Original Bid':`Version ${estVersions.length+1}`;
-                console.log('Saving version:', {project_id:project.id,name,items:snapshot.length});
-                const {data,error}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_number:estVersions.length+1,items_snapshot:snapshot,overhead_percent:overheadPct,profit_percent:profitPct,total_cost:sellingPrice,org_id:orgId||null}]).select().single();
-                if(error){console.error('Save version error:',error);alert('Failed to save version: '+error.message);return;}
-                console.log('Version saved:',data);
-                if(data) setEstVersions(prev=>[...prev,data]);
-              }} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'5px 10px',borderRadius:4,cursor:'pointer',fontSize:11}}>
-                Save Version
-              </button>
-              <button onClick={()=>setShowNewVersion(true)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#10B981',padding:'5px 10px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500}}>
-                + New Version
-              </button>
-            </div>
-            {/* Summary/Worksheet toggle + Download */}
+          </div>
+
+          {/* ── Row 2: Actions toolbar ── */}
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'0 20px',height:40,borderBottom:'1px solid #E0E0E0',background:'#F9FAFB',flexShrink:0}}>
+            {/* View toggles */}
             <div style={{display:'flex',gap:0,border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
               {[{id:'summary',label:'Summary'},{id:'worksheet',label:'Worksheet'}].map(tab=>(
                 <button key={tab.id} onClick={()=>setEstSubTab(tab.id)}
-                  style={{padding:'6px 16px',border:'none',cursor:'pointer',fontSize:12,fontWeight:500,
-                    background:estSubTab===tab.id?'#10B981':'#fff',
-                    color:estSubTab===tab.id?'#fff':'#666'}}>
+                  style={{padding:'4px 14px',border:'none',cursor:'pointer',fontSize:12,fontWeight:500,height:32,
+                    background:estSubTab===tab.id?'#10B981':'#fff',color:estSubTab===tab.id?'#fff':'#666'}}>
                   {tab.label}
                 </button>
               ))}
             </div>
             {/* Format toggle */}
-            <div style={{display:'flex',gap:0,border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+            <div style={{display:'flex',gap:0,border:'1px solid #D1D5DB',borderRadius:4,overflow:'hidden'}}>
               {[{id:'unit_price',label:'Unit Price'},{id:'detailed',label:'Detailed'}].map(f=>(
                 <button key={f.id} onClick={()=>{setEstFormat(f.id);saveEstSetting('estimate_format',f.id);}}
-                  style={{padding:'6px 12px',border:'none',cursor:'pointer',fontSize:11,fontWeight:500,
-                    background:estFormat===f.id?'#7B6BA4':'#fff',
-                    color:estFormat===f.id?'#fff':'#666'}}>
+                  style={{padding:'4px 10px',border:'none',cursor:'pointer',fontSize:11,fontWeight:500,height:32,
+                    background:estFormat===f.id?'#7B6BA4':'#fff',color:estFormat===f.id?'#fff':'#666'}}>
                   {f.label}
                 </button>
               ))}
             </div>
-            {/* Company selector */}
-            {companyProfiles.length>0?(
-              <select value={selCompanyProfile?.id||''} onChange={e=>{
-                const cp=companyProfiles.find(c=>String(c.id)===e.target.value);
-                if(cp){setSelCompanyProfile(cp);setCompanyProfile(cp);
-                  supabase.from('precon_projects').update({company_profile_id:cp.id}).eq('id',project.id).then(()=>{});}
-              }} style={{padding:'6px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:12,color:'#333',background:'#fff',outline:'none',cursor:'pointer'}}>
-                {companyProfiles.map(cp=><option key={cp.id} value={cp.id}>{cp.name}</option>)}
-              </select>
-            ):(
-              <button onClick={()=>{setEditingProfile({});setShowCompanyMgmt(true);}}
-                style={{padding:'6px 10px',border:'1px dashed #ccc',borderRadius:4,fontSize:12,color:'#999',background:'#fff',cursor:'pointer'}}>
-                + Add Company
-              </button>
-            )}
-            {!isViewer&&<><button onClick={async()=>await generateProposalPdf({
-                project, items, plans, categories:TAKEOFF_CATS,
-                overheadPct, profitPct, companyId:proposalCompany,
-                clientInfo, companyProfile:selCompanyProfile||companyProfile, proposalScope, proposalTerms,
-              })}
-              style={{background:'#10B981',border:'none',color:'#fff',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
-              &#8595; Download Proposal PDF
+            <div style={{width:1,height:20,background:'#E5E7EB'}}/>
+            {/* Version controls */}
+            <select value={activeVersion||'live'} onChange={e=>setActiveVersion(e.target.value==='live'?null:e.target.value)}
+              style={{padding:'4px 8px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#333',outline:'none',cursor:'pointer',background:'#fff',height:32}}>
+              <option value="live">Current (Live)</option>
+              {estVersions.map(v=><option key={v.id} value={v.id}>{v.name} — ${Math.round(v.total_cost||0).toLocaleString()}</option>)}
+            </select>
+            <button onClick={async()=>{
+              const snapshot=allItems.map(it=>({description:it.description,category:it.category,quantity:it.quantity,unit:it.unit,unit_cost:it.unit_cost,total_cost:it.total_cost,measurement_type:it.measurement_type,waste_percent:it.waste_percent,pitch_multiplier:it.pitch_multiplier,height:it.height}));
+              const name=estVersions.length===0?'Original Bid':`Version ${estVersions.length+1}`;
+              const {data,error}=await supabase.from('estimate_versions').insert([{project_id:project.id,name,version_number:estVersions.length+1,items_snapshot:snapshot,overhead_percent:overheadPct,profit_percent:profitPct,total_cost:sellingPrice,org_id:orgId||null}]).select().single();
+              if(error){alert('Failed: '+error.message);return;}
+              if(data) setEstVersions(prev=>[...prev,data]);
+            }} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'4px 10px',borderRadius:4,cursor:'pointer',fontSize:11,height:32}}>
+              Save Version
             </button>
-            <button onClick={doProposalExport}
-              style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',gap:4}}>
-              &#8595; CSV
-            </button></>}
-            {regionalData&&(
-              <button onClick={async()=>{
-                const region = projectRegion;
-                const itemsToUpdate = allItems.filter(i=>i.plan_id!=null);
-                if(!itemsToUpdate.length){alert('No items to update.');return;}
-                const preview = itemsToUpdate.slice(0,5).map(i=>{
-                  const newCost = getDefaultCostForCategory(i.category, region, regionalData.pricing, regionalData.multipliers);
-                  return `${i.description}: $${(i.unit_cost||0).toFixed(2)} → $${(newCost||i.unit_cost||0).toFixed(2)}`;
-                }).join('\n');
-                if(!window.confirm(`Update unit costs for ${itemsToUpdate.length} items to ${region} regional pricing?\n\nPreview:\n${preview}${itemsToUpdate.length>5?'\n... and '+(itemsToUpdate.length-5)+' more':''}\n\nThis will overwrite existing costs.`)) return;
-                let updated = 0;
-                for(const it of itemsToUpdate){
-                  const newCost = getDefaultCostForCategory(it.category, region, regionalData.pricing, regionalData.multipliers);
-                  if(newCost!=null && newCost !== it.unit_cost){
-                    const total_cost = computeTotalCost({...it, unit_cost:newCost});
-                    await supabase.from('takeoff_items').update({unit_cost:newCost,total_cost}).eq('id',it.id);
-                    setItems(prev=>prev.map(x=>x.id===it.id?{...x,unit_cost:newCost,total_cost}:x));
-                    updated++;
-                  }
-                }
-                alert(`Updated ${updated} of ${itemsToUpdate.length} items to ${region} pricing.`);
-              }}
-                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#5B9BD5',padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:500}}>
-                &#9733; Regional Pricing ({projectRegion})
+            <button onClick={()=>setShowNewVersion(true)} style={{background:'#fff',border:'1px solid #E0E0E0',color:'#10B981',padding:'4px 10px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500,height:32}}>
+              + New Version
+            </button>
+            <div style={{flex:1}}/>
+            {/* Download buttons */}
+            {!isViewer&&<>
+              <button onClick={async()=>await generateProposalPdf({project,items,plans,categories:TAKEOFF_CATS,overheadPct,profitPct,companyId:proposalCompany,clientInfo,companyProfile:selCompanyProfile||companyProfile,proposalScope,proposalTerms})}
+                style={{background:'#fff',border:'1px solid #10B981',color:'#10B981',padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,height:32}}>
+                &darr; Proposal PDF
               </button>
-            )}
+              <button onClick={doProposalExport}
+                style={{background:'#fff',border:'1px solid #E0E0E0',color:'#666',padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:11,height:32}}>
+                &darr; CSV
+              </button>
+            </>}
           </div>
 
           {/* ── SUMMARY SUB-TAB ── */}
