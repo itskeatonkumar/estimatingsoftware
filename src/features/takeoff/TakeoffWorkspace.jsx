@@ -290,7 +290,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [zoom, setZoom] = useState(1);
   const [showScalePicker, setShowScalePicker] = useState(false);
   const [presetScale, setPresetScale] = useState('');
-  const [planDpi, setPlanDpi] = useState(144); // DPI — PDFs render at scale 2.0 (72*2=144)
+  const [planDpi, setPlanDpi] = useState(144); // DPI — matches the image pixel density
   const [showAssembly, setShowAssembly] = useState(false);
   const [showUnitCosts, setShowUnitCosts] = useState(false);
   const [showBidSummary, setShowBidSummary] = useState(false);
@@ -806,8 +806,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           const {error:upErr} = await supabase.storage.from('attachments').upload(path, blob, {upsert:true, contentType:'image/jpeg'});
           if(upErr) throw new Error(upErr.message);
           const {data:ud} = supabase.storage.from('attachments').getPublicUrl(path);
+          const UPLOAD_DPI = 72; // scale:1.0 × 72pt/in
           const {data:plan, error:insErr} = await supabase.from('precon_plans')
-            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null}]).select().single();
+            .insert([{project_id:pid, name:f.name, file_url:ud?.publicUrl||'', file_type:'image/jpeg', org_id:orgId||null, render_dpi:UPLOAD_DPI}]).select().single();
           if(insErr) throw new Error(insErr.message);
           if(plan){
             // Save OCR text + positions
@@ -815,7 +816,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             if(pageText) upd.ocr_text = pageText;
             if(ocrItems.length) upd.text_positions = ocrItems;
             if(Object.keys(upd).length) await supabase.from('precon_plans').update(upd).eq('id',plan.id);
-            setPlans(prev=>[...prev, {...plan, ocr_text:pageText||null, text_positions:ocrItems.length?ocrItems:null}]);
+            setPlans(prev=>[...prev, {...plan, ocr_text:pageText||null, text_positions:ocrItems.length?ocrItems:null, render_dpi:UPLOAD_DPI}]);
             if(targetFid && planSets[targetFid]) savePlanSets({...planSets, [targetFid]:{...planSets[targetFid], planIds:[...(planSets[targetFid].planIds||[]), plan.id]}});
           }
         } else if(f.rawFile){
@@ -1028,7 +1029,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   useEffect(()=>{
     if(!blobUrl || !selPlan) return;
     if(selPlan.file_type?.includes('pdf') || selPlan.file_url?.startsWith('data:application/pdf')){
-      loadPdf(blobUrl);
+      loadPdf(blobUrl); // sets planDpi=144 inside renderPdfPage
+    } else {
+      // JPEG/image plan — use stored render_dpi (72 for scale:1.0 uploads, 144 for scale:2.0)
+      setPlanDpi(selPlan.render_dpi || 144);
     }
   },[blobUrl]);
 
@@ -2086,7 +2090,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
               const publicUrl = ud?.publicUrl || '';
               // Insert plan row (without ocr_text to avoid column-missing errors)
               const {data:plan, error:insErr} = await supabase.from('precon_plans')
-                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', org_id:orgId||null}])
+                .insert([{project_id:pid, name:sheetName, file_url:publicUrl, file_type:'image/jpeg', org_id:orgId||null, render_dpi:144}])
                 .select().single();
               if(insErr){ console.error('[upload] plan insert error:', insErr); return null; }
               if(!plan) return null;
@@ -2206,7 +2210,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       if(error){setUploading(false);alert('Upload failed: '+error.message);return;}
       const {data:ud}=supabase.storage.from('attachments').getPublicUrl(path);
       const publicUrl = ud?.publicUrl || ud?.data?.publicUrl || '';
-      const {data:plan}=await supabase.from('precon_plans').insert([{project_id:pid,name:sheetName,file_url:publicUrl,file_type:file.type,org_id:orgId||null}]).select().single();
+      const {data:plan}=await supabase.from('precon_plans').insert([{project_id:pid,name:sheetName,file_url:publicUrl,file_type:file.type,org_id:orgId||null,render_dpi:72}]).select().single();
       if(plan){
         setPlans(prev=>[...prev.filter(p=>p.id!=='preview'),plan]);
         setSelPlan(plan);
