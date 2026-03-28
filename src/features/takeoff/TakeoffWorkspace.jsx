@@ -280,8 +280,13 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [editCat, setEditCat] = useState(null);
   const [projectCollabs, setProjectCollabs] = useState([]);
   const projectRegion = regionalData ? getRegionForState(project.state_code) : 'National';
-  const [overheadPct, setOverheadPct] = useState(0);
-  const [profitPct, setProfitPct] = useState(0);
+  const [overheadPct, setOverheadPct] = useState(project.overhead_pct || 0);
+  const [profitPct, setProfitPct] = useState(project.profit_pct || 0);
+  const [estFormat, setEstFormat] = useState(project.estimate_format || 'unit_price'); // 'unit_price' | 'detailed'
+  const [gcPct, setGcPct] = useState(project.general_conditions_pct || 0);
+  const [bondPct, setBondPct] = useState(project.bond_pct || 0);
+  const [taxPct, setTaxPct] = useState(project.tax_pct || 0);
+  const [includeBond, setIncludeBond] = useState((project.bond_pct || 0) > 0);
   const [zoom, setZoom] = useState(1);
   const [showScalePicker, setShowScalePicker] = useState(false);
   const [presetScale, setPresetScale] = useState('');
@@ -5847,15 +5852,30 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
           a.click();
         };
 
+        const saveEstSetting = async (field, val) => {
+          await supabase.from('precon_projects').update({[field]: val}).eq('id', project.id);
+        };
+
         const saveItemField = async (itemId, field, val) => {
-          const numVal = ['quantity','unit_cost','markup_pct','waste_pct'].includes(field) ? (parseFloat(val)||0) : val;
+          const numFields = ['quantity','unit_cost','markup_pct','waste_pct','material_unit_cost','labor_unit_cost','equipment_unit_cost'];
+          const numVal = numFields.includes(field) ? (parseFloat(val)||0) : val;
           const it = items.find(i=>i.id===itemId);
           if(!it) return;
           const patch = {[field]: numVal};
-          if(field==='quantity'||field==='unit_cost'||field==='waste_pct'){
+          // Recalculate total_cost when cost fields change
+          if(['quantity','unit_cost','waste_pct','material_unit_cost','labor_unit_cost','equipment_unit_cost'].includes(field)){
             const qty = field==='quantity' ? numVal : (it.quantity||0);
             const waste = field==='waste_pct' ? numVal : (it.waste_pct||0);
-            const uc = field==='unit_cost' ? numVal : (it.unit_cost||0);
+            let uc;
+            if(['material_unit_cost','labor_unit_cost','equipment_unit_cost'].includes(field)){
+              const mat = field==='material_unit_cost' ? numVal : (it.material_unit_cost||0);
+              const lab = field==='labor_unit_cost' ? numVal : (it.labor_unit_cost||0);
+              const eqp = field==='equipment_unit_cost' ? numVal : (it.equipment_unit_cost||0);
+              uc = mat + lab + eqp;
+              patch.unit_cost = uc;
+            } else {
+              uc = field==='unit_cost' ? numVal : (it.unit_cost||0);
+            }
             const effectiveQty = qty * (1 + waste/100);
             patch.total_cost = effectiveQty * uc;
           }
@@ -5923,6 +5943,17 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     background:estSubTab===tab.id?'#10B981':'#fff',
                     color:estSubTab===tab.id?'#fff':'#666'}}>
                   {tab.label}
+                </button>
+              ))}
+            </div>
+            {/* Format toggle */}
+            <div style={{display:'flex',gap:0,border:'1px solid #E0E0E0',borderRadius:4,overflow:'hidden'}}>
+              {[{id:'unit_price',label:'Unit Price'},{id:'detailed',label:'Detailed'}].map(f=>(
+                <button key={f.id} onClick={()=>{setEstFormat(f.id);saveEstSetting('estimate_format',f.id);}}
+                  style={{padding:'6px 12px',border:'none',cursor:'pointer',fontSize:11,fontWeight:500,
+                    background:estFormat===f.id?'#7B6BA4':'#fff',
+                    color:estFormat===f.id?'#fff':'#666'}}>
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -6473,18 +6504,25 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             </div>
             {/* Worksheet table */}
             <div style={{flex:1,overflowY:'auto',overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',minWidth:1000}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:estFormat==='detailed'?1200:1000}}>
                 <thead style={{position:'sticky',top:0,zIndex:2}}>
                   <tr>
                     <th style={{...thStyle,textAlign:'center',width:36}}>#</th>
                     <th style={{...thStyle,textAlign:'left'}}>Description</th>
                     <th style={{...thStyle,textAlign:'left',width:80}}>{estGroupBy==='category'?'Category':estGroupBy==='trade'?'Trade':estGroupBy==='location'?'Location':'Sheet'}</th>
-                    <th style={{...thStyle,textAlign:'right',width:90}}>Takeoff Qty</th>
-                    <th style={{...thStyle,textAlign:'center',width:50}}>Unit</th>
-                    <th style={{...thStyle,textAlign:'right',width:80}}>Unit Cost</th>
-                    <th style={{...thStyle,textAlign:'right',width:100}}>Extended Cost</th>
-                    <th style={{...thStyle,textAlign:'right',width:80}}>Markup %</th>
-                    <th style={{...thStyle,textAlign:'right',width:100}}>Total</th>
+                    <th style={{...thStyle,textAlign:'right',width:70}}>Qty</th>
+                    <th style={{...thStyle,textAlign:'center',width:40}}>Unit</th>
+                    {estFormat==='detailed'?(<>
+                      <th style={{...thStyle,textAlign:'right',width:80}}>Mat $/u</th>
+                      <th style={{...thStyle,textAlign:'right',width:80}}>Lab $/u</th>
+                      <th style={{...thStyle,textAlign:'right',width:80}}>Eqp $/u</th>
+                      <th style={{...thStyle,textAlign:'right',width:90}}>Extended</th>
+                    </>):(<>
+                      <th style={{...thStyle,textAlign:'right',width:80}}>Unit Cost</th>
+                      <th style={{...thStyle,textAlign:'right',width:100}}>Extended</th>
+                      <th style={{...thStyle,textAlign:'right',width:80}}>Markup %</th>
+                      <th style={{...thStyle,textAlign:'right',width:100}}>Total</th>
+                    </>)}
                     <th style={{...thStyle,width:32}}/>
                   </tr>
                 </thead>
@@ -6497,7 +6535,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     <React.Fragment key={grp.key}>
                       {estGroupBy!=='none'&&(
                         <tr style={{cursor:'pointer'}} onClick={()=>setCollapsedEstGroups(prev=>({...prev,[grp.key]:!prev[grp.key]}))}>
-                          <td colSpan={10} style={{background:`${grp.color}10`,padding:'8px 12px',fontSize:12,fontWeight:700,color:grp.color,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${grp.color}`}}>
+                          <td colSpan={estFormat==='detailed'?10:11} style={{background:`${grp.color}10`,padding:'8px 12px',fontSize:12,fontWeight:700,color:grp.color,borderBottom:'1px solid #E0E0E0',borderLeft:`3px solid ${grp.color}`}}>
                             <span style={{fontSize:10,marginRight:6,color:'#999'}}>{collapsed?'▶':'▼'}</span>
                             {grp.label} <span style={{fontWeight:400,color:'#999',marginLeft:6}}>({grp.items.length})</span>
                             <span style={{float:'right',fontVariantNumeric:'tabular-nums'}}>${Math.round(grpSubtotal).toLocaleString()}</span>
@@ -6527,14 +6565,17 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                             </td>
                             <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{getDisplayQtyUnit(it).qty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                             <td style={{...editCell,textAlign:'center',color:'#666'}}>{getDisplayQtyUnit(it).unit||'—'}</td>
-                            <td style={editCell}>
-                              <input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'} onBlurCapture={e=>e.target.style.borderBottom='none'} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
-                            </td>
-                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:500}}>${Math.round(extCost).toLocaleString()}</td>
-                            <td style={editCell}>
-                              <input type="number" step="0.1" defaultValue={mkp} onBlur={e=>saveItemField(it.id,'markup_pct',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} onFocus={e=>e.target.style.borderBottom='2px solid #5B9BD5'} onBlurCapture={e=>e.target.style.borderBottom='none'} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
-                            </td>
-                            <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
+                            {estFormat==='detailed'?(<>
+                              <td style={editCell}><input type="number" step="0.01" defaultValue={(it.material_unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.material_unit_cost||0))saveItemField(it.id,'material_unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
+                              <td style={editCell}><input type="number" step="0.01" defaultValue={(it.labor_unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.labor_unit_cost||0))saveItemField(it.id,'labor_unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
+                              <td style={editCell}><input type="number" step="0.01" defaultValue={(it.equipment_unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.equipment_unit_cost||0))saveItemField(it.id,'equipment_unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
+                              <td style={{...editCell,textAlign:'right',fontWeight:500,fontVariantNumeric:'tabular-nums'}}>${Math.round(extCost).toLocaleString()}</td>
+                            </>):(<>
+                              <td style={editCell}><input type="number" step="0.01" defaultValue={(it.unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.unit_cost||0))saveItemField(it.id,'unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
+                              <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:500}}>${Math.round(extCost).toLocaleString()}</td>
+                              <td style={editCell}><input type="number" step="0.1" defaultValue={mkp} onBlur={e=>saveItemField(it.id,'markup_pct',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
+                              <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
+                            </>)}
                             <td style={{...editCell,textAlign:'center'}}>
                               <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
                             </td>
@@ -6558,16 +6599,62 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 {wsItems.length>0&&(
                   <tfoot>
                     <tr style={{background:'#f5f5f5'}}>
-                      <td colSpan={6} style={{padding:'12px',fontSize:13,fontWeight:700,color:'#333'}}>TOTAL</td>
-                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
-                      <td style={{padding:'12px'}}/>
-                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td>
+                      <td colSpan={estFormat==='detailed'?8:6} style={{padding:'12px',fontSize:13,fontWeight:700,color:'#333'}}>TOTAL</td>
+                      <td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:estFormat==='detailed'?'#333':'#333',fontVariantNumeric:'tabular-nums'}}>${extendedCost.toLocaleString()}</td>
+                      {estFormat!=='detailed'&&<><td style={{padding:'12px'}}/><td style={{padding:'12px',textAlign:'right',fontSize:14,fontWeight:700,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>${sellingPrice.toLocaleString()}</td></>}
                       <td/>
                     </tr>
                   </tfoot>
                 )}
               </table>
               {wsItems.length===0&&<div style={{textAlign:'center',padding:60,color:'#999',fontSize:13}}>No takeoff items yet</div>}
+
+              {/* Detailed Estimate Summary */}
+              {estFormat==='detailed'&&wsItems.length>0&&(()=>{
+                const materialTotal=allItems.reduce((s,i)=>s+((i.quantity||0)*(i.material_unit_cost||0)),0);
+                const laborTotal=allItems.reduce((s,i)=>s+((i.quantity||0)*(i.labor_unit_cost||0)),0);
+                const equipTotal=allItems.reduce((s,i)=>s+((i.quantity||0)*(i.equipment_unit_cost||0)),0);
+                const directCosts=materialTotal+laborTotal+equipTotal;
+                const taxAmt=materialTotal*(taxPct/100);
+                const gcAmt=directCosts*(gcPct/100);
+                const subWithGC=directCosts+taxAmt+gcAmt;
+                const ohAmt=subWithGC*(overheadPct/100);
+                const prAmt=subWithGC*(profitPct/100);
+                const subMarkup=subWithGC+ohAmt+prAmt;
+                const bondAmt=includeBond?subMarkup*(bondPct/100):0;
+                const grand=subMarkup+bondAmt;
+                const fmt=v=>'$'+Math.round(v).toLocaleString();
+                const rowS={display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 0',fontSize:13};
+                const pctInput=(val,set,field)=>(
+                  <div style={{display:'flex',alignItems:'center',gap:4}}>
+                    <input type="number" step="0.5" value={val} onChange={e=>{const v=parseFloat(e.target.value)||0;set(v);saveEstSetting(field,v);}}
+                      style={{width:48,border:'1px solid #E5E7EB',borderRadius:3,padding:'2px 4px',fontSize:12,textAlign:'right',outline:'none'}}/>
+                    <span style={{fontSize:11,color:'#999'}}>%</span>
+                  </div>
+                );
+                return(
+                <div style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:8,margin:'16px 16px 0',padding:20,maxWidth:420}}>
+                  <div style={{fontSize:14,fontWeight:700,color:'#333',marginBottom:12}}>Estimate Summary</div>
+                  <div style={rowS}><span>Total Material</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(materialTotal)}</span></div>
+                  <div style={rowS}><span>Total Labor</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(laborTotal)}</span></div>
+                  <div style={rowS}><span>Total Equipment</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(equipTotal)}</span></div>
+                  <div style={{...rowS,fontWeight:700,borderTop:'1px solid #E5E7EB',paddingTop:8,marginTop:4}}><span>Subtotal (Direct Costs)</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(directCosts)}</span></div>
+                  <div style={rowS}><span style={{display:'flex',alignItems:'center',gap:8}}>Tax on Materials {pctInput(taxPct,setTaxPct,'tax_pct')}</span><span style={{fontVariantNumeric:'tabular-nums',color:'#666'}}>{fmt(taxAmt)}</span></div>
+                  <div style={rowS}><span style={{display:'flex',alignItems:'center',gap:8}}>General Conditions {pctInput(gcPct,setGcPct,'general_conditions_pct')}</span><span style={{fontVariantNumeric:'tabular-nums',color:'#666'}}>{fmt(gcAmt)}</span></div>
+                  <div style={{...rowS,fontWeight:600,borderTop:'1px solid #E5E7EB',paddingTop:8,marginTop:4}}><span>Subtotal with GC</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(subWithGC)}</span></div>
+                  <div style={rowS}><span style={{display:'flex',alignItems:'center',gap:8}}>Overhead {pctInput(overheadPct,setOverheadPct,'overhead_pct')}</span><span style={{fontVariantNumeric:'tabular-nums',color:'#666'}}>{fmt(ohAmt)}</span></div>
+                  <div style={rowS}><span style={{display:'flex',alignItems:'center',gap:8}}>Profit {pctInput(profitPct,setProfitPct,'profit_pct')}</span><span style={{fontVariantNumeric:'tabular-nums',color:'#666'}}>{fmt(prAmt)}</span></div>
+                  <div style={{...rowS,fontWeight:700,borderTop:'1px solid #E5E7EB',paddingTop:8,marginTop:4}}><span>Total Bid Price</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(subMarkup)}</span></div>
+                  <div style={rowS}>
+                    <span style={{display:'flex',alignItems:'center',gap:8}}>
+                      <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer'}}><input type="checkbox" checked={includeBond} onChange={e=>{setIncludeBond(e.target.checked);if(!e.target.checked)setBondPct(0);}} style={{accentColor:'#10B981'}}/> Bond</label>
+                      {includeBond&&pctInput(bondPct,setBondPct,'bond_pct')}
+                    </span>
+                    <span style={{fontVariantNumeric:'tabular-nums',color:'#666'}}>{fmt(bondAmt)}</span>
+                  </div>
+                  <div style={{...rowS,fontWeight:700,fontSize:16,borderTop:'2px solid #10B981',paddingTop:10,marginTop:6,color:'#10B981'}}><span>Grand Total</span><span style={{fontVariantNumeric:'tabular-nums'}}>{fmt(grand)}</span></div>
+                </div>);
+              })()}
             </div>
 
             {/* Bottom summary bar */}
