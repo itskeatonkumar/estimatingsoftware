@@ -351,7 +351,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [showSheetsDD, setShowSheetsDD] = useState(false);
   const [showScalePanel, setShowScalePanel] = useState(false);
   const [customScaleInput, setCustomScaleInput] = useState('');
-  const [openTabs, setOpenTabs] = useState([]); // plan IDs open as browser tabs
+  const [openTabs, setOpenTabs] = useState(() => {
+    try { const s = sessionStorage.getItem('openTabs_'+project.id); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameData, setRenameData] = useState([]);
   const planDragRef = useRef(null);
   const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs' | 'library'
@@ -454,10 +458,22 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       const pl=p||[];
       const validItems=(i||[]).filter(it=>it.plan_id!=null);
       setPlans(pl); setItems(validItems);
-      if(pl.length>0){setSelPlan(pl[0]); if(pl[0].scale_px_per_ft) setScale(pl[0].scale_px_per_ft);}
+      if(pl.length>0){
+        // Restore active tab from session, or use first plan
+        const savedActiveId = sessionStorage.getItem('activeTab_'+project.id);
+        const restored = savedActiveId ? pl.find(p => String(p.id) === savedActiveId) : null;
+        const first = restored || pl[0];
+        setSelPlan(first);
+        if(first.scale_px_per_ft) setScale(first.scale_px_per_ft);
+        if(restored) setShowOverview(false);
+      }
       setLoading(false);
     });
   },[project.id]);
+
+  // Persist open tabs + active tab to sessionStorage
+  useEffect(()=>{ try { sessionStorage.setItem('openTabs_'+project.id, JSON.stringify(openTabs)); } catch {} },[openTabs, project.id]);
+  useEffect(()=>{ if(selPlan?.id) try { sessionStorage.setItem('activeTab_'+project.id, String(selPlan.id)); } catch {} },[selPlan?.id, project.id]);
 
   // Load dynamic categories + regional pricing + collaborators
   useEffect(()=>{
@@ -3874,6 +3890,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                 }} style={{padding:'6px 8px',borderRadius:6,border:'1px solid rgba(168,85,247,0.4)',background:'rgba(168,85,247,0.08)',color:'#7B6BA4',cursor:'pointer',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}>
                   {namingAll?<span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>◌</span>:'✦'}
                 </button>
+                <button onClick={()=>{setRenameData(plans.map(p=>({id:p.id,current:p.name,newName:p.name})));setShowRenameModal(true);}} disabled={plans.length===0}
+                  style={{padding:'6px 8px',borderRadius:6,border:`1px solid ${t.border}`,background:'none',color:t.text3,cursor:'pointer',fontSize:11,fontWeight:600,flexShrink:0}} title="Bulk rename sheets">
+                  ✏
+                </button>
                 <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.zip" style={{display:'none'}} onChange={e=>{const f=Array.from(e.target.files);e.target.value='';handleMultiUpload(f);}}/>
 
               </div>
@@ -5568,6 +5588,61 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             onStartUpload={executeManagerUpload}
             onClose={() => setUploadManagerFiles(null)}
           />
+        )}
+
+        {/* Bulk Rename Modal */}
+        {showRenameModal&&(
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}}
+            onClick={()=>setShowRenameModal(false)}>
+            <div style={{background:'#fff',borderRadius:12,width:'90vw',maxWidth:700,maxHeight:'85vh',display:'flex',flexDirection:'column',overflow:'hidden'}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{padding:'14px 24px',borderBottom:'1px solid #E5E7EB',display:'flex',alignItems:'center',flexShrink:0}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700,color:'#1A1A1A'}}>Rename Sheets</div>
+                  <div style={{fontSize:11,color:'#9CA3AF',marginTop:1}}>
+                    {renameData.filter(r=>r.newName!==r.current).length} of {renameData.length} changed
+                  </div>
+                </div>
+                <button onClick={()=>setShowRenameModal(false)} style={{background:'none',border:'none',color:'#9CA3AF',cursor:'pointer',fontSize:18}}>&times;</button>
+              </div>
+              <div style={{flex:1,overflow:'auto',padding:'0'}}>
+                <div style={{display:'grid',gridTemplateColumns:'36px 1fr 1fr',gap:0,padding:'6px 16px',borderBottom:'1px solid #E5E7EB',position:'sticky',top:0,background:'#F9FAFB',zIndex:1}}>
+                  <div style={{fontSize:9,color:'#9CA3AF',fontWeight:700}}>#</div>
+                  <div style={{fontSize:9,color:'#9CA3AF',fontWeight:700}}>CURRENT NAME</div>
+                  <div style={{fontSize:9,color:'#9CA3AF',fontWeight:700}}>NEW NAME</div>
+                </div>
+                {renameData.map((r,i)=>(
+                  <div key={r.id} style={{display:'grid',gridTemplateColumns:'36px 1fr 1fr',gap:0,padding:'4px 16px',alignItems:'center',borderBottom:'1px solid #F3F4F6',background:r.newName!==r.current?'#F0FDF4':'#fff'}}>
+                    <span style={{fontSize:10,color:'#bbb'}}>{i+1}</span>
+                    <span style={{fontSize:12,color:'#6B7280',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingRight:8}}>{r.current}</span>
+                    <input value={r.newName} onChange={e=>{const v=e.target.value;setRenameData(prev=>prev.map((x,j)=>j===i?{...x,newName:v}:x));}}
+                      style={{fontSize:12,color:'#1A1A1A',border:'1px solid #E5E7EB',borderRadius:4,padding:'3px 6px',outline:'none',width:'100%',boxSizing:'border-box',
+                        borderColor:r.newName!==r.current?'#10B981':'#E5E7EB'}}/>
+                  </div>
+                ))}
+              </div>
+              <div style={{padding:'10px 24px',borderTop:'1px solid #E5E7EB',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                <button onClick={()=>setRenameData(prev=>prev.map(r=>({...r,newName:r.current})))}
+                  style={{padding:'6px 12px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:5,cursor:'pointer',fontSize:11}}>Reset</button>
+                <div style={{flex:1}}/>
+                <button onClick={()=>setShowRenameModal(false)}
+                  style={{padding:'6px 14px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:5,cursor:'pointer',fontSize:12}}>Cancel</button>
+                <button onClick={async()=>{
+                  const changed=renameData.filter(r=>r.newName.trim()&&r.newName!==r.current);
+                  if(!changed.length){setShowRenameModal(false);return;}
+                  for(const r of changed){
+                    await supabase.from('precon_plans').update({name:r.newName.trim()}).eq('id',r.id);
+                  }
+                  setPlans(prev=>prev.map(p=>{const r=changed.find(c=>c.id===p.id);return r?{...p,name:r.newName.trim()}:p;}));
+                  if(selPlan){const r=changed.find(c=>c.id===selPlan.id);if(r)setSelPlan(prev=>({...prev,name:r.newName.trim()}));}
+                  setShowRenameModal(false);
+                }} disabled={renameData.filter(r=>r.newName!==r.current).length===0}
+                  style={{padding:'6px 16px',background:renameData.some(r=>r.newName!==r.current)?'#10B981':'#E5E7EB',border:'none',color:renameData.some(r=>r.newName!==r.current)?'#fff':'#9CA3AF',borderRadius:5,cursor:'pointer',fontSize:12,fontWeight:600}}>
+                  Apply {renameData.filter(r=>r.newName!==r.current).length} Changes
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ── Right Tool Bar ── */}
