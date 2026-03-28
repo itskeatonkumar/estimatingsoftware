@@ -25,7 +25,7 @@ function TrialBanner() {
           const daysLeft = Math.ceil((new Date(data.trial_ends_at) - Date.now()) / (1000 * 60 * 60 * 24));
           setTrial({ daysLeft: Math.max(0, daysLeft), expired: daysLeft <= 0, customerId: data.stripe_customer_id });
         }
-      });
+      }).catch(() => {});
   }, [orgId]);
 
   if (!trial || dismissed) return null;
@@ -122,12 +122,15 @@ function AppShell() {
   // Settings
   if (hash === '/settings') return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: t.bg, color: t.text }}>
-      <OrgSettings user={user} onBack={() => { window.location.hash = ''; setHash(''); }} />
+      <ErrorBoundary feature="Settings">
+        <OrgSettings user={user} onBack={() => { window.location.hash = ''; setHash(''); }} />
+      </ErrorBoundary>
     </div>
   );
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: t.bg, color: t.text }}>
+      {!navigator.onLine && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '6px 16px', textAlign: 'center', fontSize: 12, flexShrink: 0 }}>You're offline. Changes won't save until you're back online.</div>}
       <TrialBanner />
       {selProject ? (
         <ErrorBoundary feature="Takeoff Workspace">

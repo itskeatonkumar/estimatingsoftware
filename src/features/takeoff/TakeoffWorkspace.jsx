@@ -4261,9 +4261,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                         sort_order: items.length,
                         org_id: orgId||null,
                       };
-                      console.log('inserting takeoff:', payload);
                       const {data, error} = await supabase.from('takeoff_items').insert([payload]).select().single();
-                      console.log('result:', data, error);
                       if(error){ alert('Error creating takeoff: '+error.message); setCreatingTO(false); return; }
                       if(data){
                         setItems(prev=>[...prev,data]);

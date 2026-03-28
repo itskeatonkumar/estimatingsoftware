@@ -26,18 +26,16 @@ export default function OrgSettings({ user, onBack }) {
     if (!orgId) return;
     // Load org
     supabase.from('organizations').select('*').eq('id', orgId).single()
-      .then(({data}) => { if(data){setOrg(data);setOrgName(data.name||'');} });
+      .then(({data}) => { if(data){setOrg(data);setOrgName(data.name||'');} }).catch(()=>{});
     // Load members
     supabase.from('memberships').select('user_id, role, created_at, profiles:user_id(id, email, full_name)')
-      .eq('org_id', orgId).then(({data}) => {
-        if(data) setMembers(data);
-      });
+      .eq('org_id', orgId).then(({data}) => { if(data) setMembers(data); }).catch(()=>{});
     // Load invites
     supabase.from('invitations').select('*').eq('org_id', orgId).is('accepted_at', null)
-      .order('created_at',{ascending:false}).then(({data}) => setInvites(data||[]));
+      .order('created_at',{ascending:false}).then(({data}) => setInvites(data||[])).catch(()=>{});
     // Load company profiles
     supabase.from('company_profiles').select('*').eq('org_id', orgId).order('is_default',{ascending:false})
-      .then(({data}) => setCompanyProfiles(data||[]));
+      .then(({data}) => setCompanyProfiles(data||[])).catch(()=>{});
   }, [orgId, user?.id]);
 
   const isOwnerOrAdmin = myRole === 'owner' || myRole === 'admin';
