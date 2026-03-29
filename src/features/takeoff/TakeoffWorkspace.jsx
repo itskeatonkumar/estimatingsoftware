@@ -2351,14 +2351,49 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       const cleaned = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/, '').trim();
       const parsed = JSON.parse(cleaned);
       if (!Array.isArray(parsed) || !parsed.length) { alert('No scope items found.'); setAiScopeLoading2(false); return; }
-      setAiScopeItems(parsed.map(it => ({ ...it, checked: true })));
+      // Stamp originals for tracking edits
+      const stamped = parsed.map(it => ({ ...it, checked: true, wasEdited: false, wasAdded: false,
+        originalDescription: it.description, originalCategory: it.category, originalUnit: it.unit }));
+      setAiScopeItems(stamped);
+      // Log AI suggestion (silent)
+      try { await supabase.from('ml_training_data').insert([{
+        org_id: orgId || null, type: 'ai_takeoff_suggestion',
+        data: { project_id: project.id, sheet_count: allPlans.length, suggested_item_count: parsed.length, suggested_items: parsed }
+      }]); } catch {}
     } catch (e) { alert('AI scope failed: ' + e.message); }
     setAiScopeLoading2(false);
   };
 
   const addAiScopeItems = async () => {
-    const checked = (aiScopeItems || []).filter(it => it.checked);
+    const all = aiScopeItems || [];
+    const checked = all.filter(it => it.checked);
     if (!checked.length) return;
+
+    // Log corrections (silent)
+    const removed = all.filter(i => !i.checked && !i.wasAdded);
+    const edited = checked.filter(i => i.wasEdited);
+    const added = checked.filter(i => i.wasAdded);
+    const origCount = all.filter(i => !i.wasAdded).length;
+    try { await supabase.from('ml_training_data').insert([{
+      org_id: orgId || null, type: 'ai_takeoff_correction',
+      data: {
+        project_id: project.id,
+        total_suggested: origCount,
+        total_accepted: checked.filter(i => !i.wasAdded).length,
+        total_removed: removed.length,
+        total_edited: edited.length,
+        total_added: added.length,
+        accuracy_rate: origCount > 0 ? checked.filter(i => !i.wasAdded).length / origCount : 0,
+        corrections: edited.map(i => ({
+          ai_description: i.originalDescription, user_description: i.description,
+          ai_category: i.originalCategory, user_category: i.category,
+          ai_unit: i.originalUnit, user_unit: i.unit,
+        })),
+        false_positives: removed.map(i => ({ description: i.description, category: i.category })),
+        false_negatives: added.map(i => ({ description: i.description, category: i.category, unit: i.unit })),
+      }
+    }]); } catch {}
+
     const pid = project.id;
     const costs = getUnitCosts();
     const toInsert = checked.map((it, i) => {
@@ -5693,29 +5728,38 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                           <input type="checkbox" checked={it.checked} onChange={()=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,checked:!x.checked}:x))} style={{accentColor:'#10B981'}}/>
                         </td>
                         <td style={{padding:'6px 12px',color:'#1A1A1A'}}>
-                          <input value={it.description} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,description:e.target.value}:x))}
-                            style={{border:'none',outline:'none',width:'100%',fontSize:12,color:'#1A1A1A',background:'transparent'}}/>
+                          <input value={it.description} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,description:e.target.value,wasEdited:true}:x))}
+                            style={{border:'none',outline:'none',width:'100%',fontSize:12,color:it.wasAdded?'#7B6BA4':it.wasEdited?'#3B82F6':'#1A1A1A',background:'transparent'}}/>
                         </td>
                         <td style={{padding:'6px 12px'}}>
-                          <select value={it.category} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,category:e.target.value}:x))}
+                          <select value={it.category} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,category:e.target.value,wasEdited:true}:x))}
                             style={{border:'1px solid #E5E7EB',borderRadius:3,padding:'2px 4px',fontSize:11,color:'#333',background:'#fff',outline:'none',width:'100%'}}>
                             {TAKEOFF_CATS.map(c=><option key={c.id} value={c.label}>{c.label}</option>)}
                           </select>
                         </td>
                         <td style={{padding:'6px 12px',textAlign:'center'}}>
-                          <select value={it.unit} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,unit:e.target.value}:x))}
+                          <select value={it.unit} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,unit:e.target.value,wasEdited:true}:x))}
                             style={{border:'1px solid #E5E7EB',borderRadius:3,padding:'2px 4px',fontSize:11,color:'#333',background:'#fff',outline:'none'}}>
                             {['SF','LF','CY','EA','SY','TON','LS'].map(u=><option key={u} value={u}>{u}</option>)}
                           </select>
                         </td>
-                        <td style={{padding:'6px 12px',fontSize:10,color:'#9CA3AF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.source_sheet||'—'}</td>
+                        <td style={{padding:'6px 12px',fontSize:10,color:it.wasAdded?'#7B6BA4':it.wasEdited?'#3B82F6':'#9CA3AF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                          {it.wasAdded?'Manual':it.wasEdited?'Edited':(it.source_sheet||'\u2014')}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {/* Add item AI missed */}
+                <div style={{padding:'8px 16px',borderTop:'1px solid #F3F4F6'}}>
+                  <button onClick={()=>setAiScopeItems(prev=>[...prev,{description:'',category:TAKEOFF_CATS[0]?.label||'Other',unit:'SF',source_sheet:'',spec_text:'',checked:true,wasEdited:false,wasAdded:true,originalDescription:'',originalCategory:'',originalUnit:''}])}
+                    style={{background:'none',border:'1px dashed #7B6BA4',color:'#7B6BA4',padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,width:'100%'}}>
+                    + Add item AI missed
+                  </button>
+                </div>
               </div>
               <div style={{padding:'10px 24px',borderTop:'1px solid #E5E7EB',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                <span style={{fontSize:11,color:'#9CA3AF'}}>Quantities are 0 — measure them after adding.</span>
+                <span style={{fontSize:11,color:'#9CA3AF'}}>Quantities are 0 — measure after adding. Edits improve future AI accuracy.</span>
                 <div style={{flex:1}}/>
                 <button onClick={()=>setAiScopeItems(null)} style={{padding:'6px 14px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:5,cursor:'pointer',fontSize:12}}>Cancel</button>
                 <button onClick={addAiScopeItems} disabled={!aiScopeItems.some(i=>i.checked)}
