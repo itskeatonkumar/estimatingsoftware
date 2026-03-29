@@ -155,6 +155,8 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [uploading, setUploading] = useState(false);
   const uploadCancelRef = useRef(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [aiScopeItems, setAiScopeItems] = useState(null); // [{description,category,unit,source_sheet,spec_text,checked}]
+  const [aiScopeLoading2, setAiScopeLoading2] = useState(false);
   const [aiCredits, setAiCredits] = useState(null); // {available, monthly, used, purchased, reset_at}
   const [showCreditsDD, setShowCreditsDD] = useState(false);
   const [showSheetSelector, setShowSheetSelector] = useState(false);
@@ -2325,6 +2327,57 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     setAnalyzing(false);
   };
 
+  // AI Scope: analyze ALL sheets' OCR text to generate takeoff items
+  const runAIScope = async () => {
+    setAiScopeLoading2(true);
+    try {
+      const { data: allPlans } = await supabase.from('precon_plans').select('id, name, ocr_text')
+        .eq('project_id', project.id).not('ocr_text', 'is', null);
+      if (!allPlans?.length) { alert('No sheets with text found. Upload plans first.'); setAiScopeLoading2(false); return; }
+
+      const planText = allPlans.map(p => `--- Sheet: ${p.name} ---\n${(p.ocr_text || '').slice(0, 2000)}`).join('\n\n').slice(0, 50000);
+      const catList = TAKEOFF_CATS.map(c => c.label).join(', ');
+
+      const resp = await fetch('/api/claude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 4000,
+          messages: [{ role: 'user', content: `You are a construction estimator analyzing OCR text from plan sheets. Identify every scope of work item that needs estimating.\n\nFor each item return:\n- description: specific work item\n- category: one of [${catList}]\n- unit: SF, LF, CY, EA, SY, TON, or LS\n- source_sheet: which sheet(s)\n- spec_text: exact spec from plans\n\nLook for: material callouts, structural notes, MEP equipment, finish specs, demolition, site work.\n\nReturn ONLY a JSON array:\n[{"description":"...","category":"...","unit":"...","source_sheet":"...","spec_text":"..."}]\n\nBe thorough — include every scope item.\n\nOCR TEXT:\n${planText}` }]
+        })
+      });
+      if (!resp.ok) { alert('AI request failed: ' + resp.status); setAiScopeLoading2(false); return; }
+      const j = await resp.json();
+      const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim();
+      const cleaned = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed) || !parsed.length) { alert('No scope items found.'); setAiScopeLoading2(false); return; }
+      setAiScopeItems(parsed.map(it => ({ ...it, checked: true })));
+    } catch (e) { alert('AI scope failed: ' + e.message); }
+    setAiScopeLoading2(false);
+  };
+
+  const addAiScopeItems = async () => {
+    const checked = (aiScopeItems || []).filter(it => it.checked);
+    if (!checked.length) return;
+    const pid = project.id;
+    const costs = getUnitCosts();
+    const toInsert = checked.map((it, i) => {
+      const catDef = TAKEOFF_CATS.find(c => c.label === it.category || c.id === it.category) || TAKEOFF_CATS[TAKEOFF_CATS.length - 1];
+      const uc = (costs[catDef.id]?.mat || 0) + (costs[catDef.id]?.lab || 0) || catDef.defaultCost;
+      const mt = { SF: 'area', LF: 'linear', CY: 'area', EA: 'count', SY: 'area', TON: 'manual', LS: 'manual' }[it.unit] || 'manual';
+      return {
+        project_id: pid, plan_id: null, category: catDef.id, description: it.description,
+        quantity: 0, unit: it.unit || catDef.unit, unit_cost: uc, total_cost: 0,
+        measurement_type: mt, points: null, color: catDef.color, ai_generated: true,
+        sort_order: items.length + i, org_id: orgId || null,
+      };
+    });
+    const { data, error } = await supabase.from('takeoff_items').insert(toInsert).select();
+    if (error) { alert('Failed: ' + error.message); return; }
+    if (data) { setItems(prev => [...prev, ...data]); setLeftTab('takeoffs'); }
+    setAiScopeItems(null);
+  };
+
   const applyAssembly = async (assemblyItems) => {
     const pid = project.id;
     const toInsert = assemblyItems.map((it,i)=>({...it,project_id:pid,plan_id:selPlan?.id,measurement_type:'manual',points:null,color:TAKEOFF_CATS.find(c=>c.id===it.category)?.color||'#555',ai_generated:false,sort_order:items.length+i,org_id:orgId||null}));
@@ -4338,6 +4391,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
                     cursor:'pointer',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:3,flexShrink:0,whiteSpace:'nowrap'}}>
                   + New Takeoff
                 </button>
+                {!isViewer && plans.some(p => p.ocr_text) && (
+                  <button onClick={runAIScope} disabled={aiScopeLoading2}
+                    style={{background:'#fff',border:'1px solid #7B6BA4',color:'#7B6BA4',padding:'6px 10px',borderRadius:4,cursor:aiScopeLoading2?'default':'pointer',fontSize:11,fontWeight:600,flexShrink:0,whiteSpace:'nowrap',opacity:aiScopeLoading2?0.5:1}}>
+                    {aiScopeLoading2 ? 'Analyzing...' : '\u2726 AI Scope'}
+                  </button>
+                )}
                 <button onClick={()=>setShowCatManager(true)} title="Manage Categories"
                   style={{background:'none',border:`1px solid ${t.border}`,color:t.text2,padding:'6px 8px',borderRadius:4,cursor:'pointer',fontSize:11,flexShrink:0,display:'flex',alignItems:'center',gap:3}}>
                   <span style={{fontSize:13}}>&#9881;</span> Categories
@@ -5595,6 +5654,77 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             onStartUpload={executeManagerUpload}
             onClose={() => setUploadManagerFiles(null)}
           />
+        )}
+
+        {/* AI Scope Review Modal */}
+        {aiScopeItems && (
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}}
+            onClick={()=>setAiScopeItems(null)}>
+            <div style={{background:'#fff',borderRadius:12,width:'92vw',maxWidth:800,maxHeight:'85vh',display:'flex',flexDirection:'column',overflow:'hidden'}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{padding:'14px 24px',borderBottom:'1px solid #E5E7EB',display:'flex',alignItems:'center',flexShrink:0}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700,color:'#1A1A1A'}}>AI Scope Items</div>
+                  <div style={{fontSize:11,color:'#9CA3AF',marginTop:1}}>
+                    {aiScopeItems.filter(i=>i.checked).length} of {aiScopeItems.length} selected
+                    {' \u00B7 '}
+                    {[...new Set(aiScopeItems.filter(i=>i.checked).map(i=>i.category))].length} categories
+                  </div>
+                </div>
+                <button onClick={()=>setAiScopeItems(prev=>prev.map(i=>({...i,checked:true})))} style={{fontSize:10,color:'#10B981',background:'none',border:'none',cursor:'pointer',fontWeight:600,marginRight:8}}>All</button>
+                <button onClick={()=>setAiScopeItems(prev=>prev.map(i=>({...i,checked:false})))} style={{fontSize:10,color:'#6B7280',background:'none',border:'none',cursor:'pointer',marginRight:12}}>None</button>
+                <button onClick={()=>setAiScopeItems(null)} style={{background:'none',border:'none',color:'#9CA3AF',cursor:'pointer',fontSize:18}}>&times;</button>
+              </div>
+              <div style={{flex:1,overflowY:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead style={{position:'sticky',top:0,background:'#F9FAFB',zIndex:1}}>
+                    <tr>
+                      <th style={{padding:'8px 12px',textAlign:'center',width:30,fontSize:10,color:'#9CA3AF'}}></th>
+                      <th style={{padding:'8px 12px',textAlign:'left',fontSize:10,color:'#9CA3AF',fontWeight:600}}>DESCRIPTION</th>
+                      <th style={{padding:'8px 12px',textAlign:'left',width:100,fontSize:10,color:'#9CA3AF',fontWeight:600}}>CATEGORY</th>
+                      <th style={{padding:'8px 12px',textAlign:'center',width:50,fontSize:10,color:'#9CA3AF',fontWeight:600}}>UNIT</th>
+                      <th style={{padding:'8px 12px',textAlign:'left',width:120,fontSize:10,color:'#9CA3AF',fontWeight:600}}>SOURCE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aiScopeItems.map((it,i) => (
+                      <tr key={i} style={{borderBottom:'1px solid #F3F4F6',background:it.checked?'#fff':'#FAFAFA'}}>
+                        <td style={{padding:'6px 12px',textAlign:'center'}}>
+                          <input type="checkbox" checked={it.checked} onChange={()=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,checked:!x.checked}:x))} style={{accentColor:'#10B981'}}/>
+                        </td>
+                        <td style={{padding:'6px 12px',color:'#1A1A1A'}}>
+                          <input value={it.description} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,description:e.target.value}:x))}
+                            style={{border:'none',outline:'none',width:'100%',fontSize:12,color:'#1A1A1A',background:'transparent'}}/>
+                        </td>
+                        <td style={{padding:'6px 12px'}}>
+                          <select value={it.category} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,category:e.target.value}:x))}
+                            style={{border:'1px solid #E5E7EB',borderRadius:3,padding:'2px 4px',fontSize:11,color:'#333',background:'#fff',outline:'none',width:'100%'}}>
+                            {TAKEOFF_CATS.map(c=><option key={c.id} value={c.label}>{c.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={{padding:'6px 12px',textAlign:'center'}}>
+                          <select value={it.unit} onChange={e=>setAiScopeItems(prev=>prev.map((x,j)=>j===i?{...x,unit:e.target.value}:x))}
+                            style={{border:'1px solid #E5E7EB',borderRadius:3,padding:'2px 4px',fontSize:11,color:'#333',background:'#fff',outline:'none'}}>
+                            {['SF','LF','CY','EA','SY','TON','LS'].map(u=><option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </td>
+                        <td style={{padding:'6px 12px',fontSize:10,color:'#9CA3AF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.source_sheet||'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{padding:'10px 24px',borderTop:'1px solid #E5E7EB',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                <span style={{fontSize:11,color:'#9CA3AF'}}>Quantities are 0 — measure them after adding.</span>
+                <div style={{flex:1}}/>
+                <button onClick={()=>setAiScopeItems(null)} style={{padding:'6px 14px',border:'1px solid #E5E7EB',background:'#fff',color:'#6B7280',borderRadius:5,cursor:'pointer',fontSize:12}}>Cancel</button>
+                <button onClick={addAiScopeItems} disabled={!aiScopeItems.some(i=>i.checked)}
+                  style={{padding:'6px 16px',background:aiScopeItems.some(i=>i.checked)?'#10B981':'#E5E7EB',border:'none',color:aiScopeItems.some(i=>i.checked)?'#fff':'#9CA3AF',borderRadius:5,cursor:'pointer',fontSize:12,fontWeight:600}}>
+                  Add {aiScopeItems.filter(i=>i.checked).length} to Takeoff
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Bulk Rename Modal */}
