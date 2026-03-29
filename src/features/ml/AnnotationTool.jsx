@@ -181,9 +181,28 @@ export default function AnnotationTool() {
     setPendingBox(null);
   };
 
+  const [toast, setToast] = useState(null);
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
+
   const deleteAnnotation = async (id) => {
     await supabase.from('ml_annotations').delete().eq('id', id);
     setAnnotations(prev => prev.filter(a => a.id !== id));
+    showToast('Annotation removed');
+  };
+
+  const undoLast = () => {
+    if (pendingBox) { setPendingBox(null); showToast('Box cancelled'); return; }
+    if (annotations.length > 0) {
+      const last = annotations[annotations.length - 1];
+      deleteAnnotation(last.id);
+    }
+  };
+
+  const clearAllAnnotations = async () => {
+    if (!selPlan || !annotations.length) return;
+    await supabase.from('ml_annotations').delete().eq('plan_id', selPlan.id);
+    setAnnotations([]);
+    showToast(`Cleared ${annotations.length} annotations`);
   };
 
   const nextUnannotated = () => {
@@ -199,7 +218,7 @@ export default function AnnotationTool() {
       if (e.key === 't' || e.key === 'T') setMode('title_block');
       if (e.key === 's' || e.key === 'S') setMode('scale_bar');
       if (e.key === 'n' || e.key === 'N') nextUnannotated();
-      if (e.key === 'z' || e.key === 'Z') { setPendingBox(null); }
+      if (e.key === 'z' || e.key === 'Z') undoLast();
       if (e.key === 'p' || e.key === 'P') {
         const idx = plans.findIndex(p => p.id === selPlan?.id);
         if (idx > 0) setSelPlan(plans[idx - 1]);
@@ -308,7 +327,7 @@ export default function AnnotationTool() {
 
         {/* Image area */}
         <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#0a0a0a', cursor: spaceHeld || isPanning ? 'grab' : 'crosshair' }}
-          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onContextMenu={e => e.preventDefault()}>
           {selPlan ? (
             <div style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: '0 0', position: 'absolute', top: 0, left: 0 }}>
               <img ref={imgRef} src={selPlan.file_url} alt="" onLoad={onImgLoad}
@@ -316,10 +335,15 @@ export default function AnnotationTool() {
               {/* Saved annotations (in image-pixel coords via normalized * natW/H) */}
               {annotations.map(a => {
                 const b = a.bounding_box;
+                const c = TYPE_COLOR[a.annotation_type] || '#10B981';
                 return (
-                  <div key={a.id} style={{ position: 'absolute', left: b.x * imgNat.w, top: b.y * imgNat.h, width: b.width * imgNat.w, height: b.height * imgNat.h,
-                    border: `${2/zoom}px solid ${TYPE_COLOR[a.annotation_type] || '#10B981'}`, borderRadius: 2, pointerEvents: 'none' }}>
-                    <div style={{ position: 'absolute', top: -14/zoom, left: 0, fontSize: 9/zoom, background: TYPE_COLOR[a.annotation_type] || '#10B981', color: '#fff', padding: `${1/zoom}px ${4/zoom}px`, borderRadius: 2, whiteSpace: 'nowrap', transformOrigin: 'top left' }}>
+                  <div key={a.id}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); deleteAnnotation(a.id); }}
+                    style={{ position: 'absolute', left: b.x * imgNat.w, top: b.y * imgNat.h, width: b.width * imgNat.w, height: b.height * imgNat.h,
+                      border: `${2/zoom}px solid ${c}`, borderRadius: 2, pointerEvents: 'auto', cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.background = c + '20'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <div style={{ position: 'absolute', top: -14/zoom, left: 0, fontSize: 9/zoom, background: c, color: '#fff', padding: `${1/zoom}px ${4/zoom}px`, borderRadius: 2, whiteSpace: 'nowrap', transformOrigin: 'top left', pointerEvents: 'none' }}>
                       {TYPE_LABEL[a.annotation_type] || a.annotation_type}
                     </div>
                   </div>
@@ -393,10 +417,20 @@ export default function AnnotationTool() {
         )}
       </div>
 
+      {/* Toast */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#222', border: '1px solid #444', color: '#ddd', padding: '6px 16px', borderRadius: 6, fontSize: 12, zIndex: 400, pointerEvents: 'none' }}>
+          {toast}
+        </div>
+      )}
+
       {/* RIGHT PANEL */}
       <div style={{ width: 250, borderLeft: '1px solid #333', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid #333', fontSize: 12, fontWeight: 600 }}>
-          Annotations {annotations.length > 0 && <span style={{ color: '#10B981' }}>({annotations.length})</span>}
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid #333', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <span style={{ flex: 1 }}>Annotations {annotations.length > 0 && <span style={{ color: '#10B981' }}>({annotations.length})</span>}</span>
+          {annotations.length > 0 && (
+            <button onClick={clearAllAnnotations} style={{ background: 'none', border: 'none', color: '#C0504D', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>Clear all</button>
+          )}
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {annotations.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: '#555', fontSize: 11 }}>No annotations yet.<br />Draw a box on the plan.</div>}
