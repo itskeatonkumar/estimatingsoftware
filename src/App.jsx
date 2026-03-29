@@ -9,6 +9,7 @@ import OnboardingPage from './features/auth/OnboardingPage.jsx';
 import ProjectList from './features/takeoff/ProjectList.jsx';
 import TakeoffWorkspace from './features/takeoff/TakeoffWorkspace.jsx';
 import OrgSettings from './features/settings/OrgSettings.jsx';
+import AnnotationTool from './features/ml/AnnotationTool.jsx';
 
 function TrialBanner() {
   const { orgId } = useOrg();
@@ -117,6 +118,13 @@ function AppShell() {
         <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading workspace...</div>
       )}
     </div>
+  );
+
+  // ML Annotation tool — super admin only
+  if (hash === '/annotate' && isSuperAdmin) return (
+    <ErrorBoundary feature="Annotation Tool">
+      <AnnotationTool />
+    </ErrorBoundary>
   );
 
   // Settings
