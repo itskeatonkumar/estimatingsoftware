@@ -2312,9 +2312,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         const uc = (costs[it.category]?.mat||0) + (costs[it.category]?.lab||0) || catDef.defaultCost;
         return {
           project_id:pid, plan_id:selPlan?.id, category:catDef.id, description:it.description,
-          quantity:it.measurement_type==='count'?(it.estimated_count||0):0,
+          quantity:0,
           unit:it.unit||catDef.unit, unit_cost:uc,
-          total_cost:it.measurement_type==='count'?(it.estimated_count||0)*uc:0,
+          total_cost:0,
           measurement_type:it.measurement_type||'manual', points:null,
           color:TO_COLORS[i%TO_COLORS.length], ai_generated:true, sort_order:items.length+i,
           org_id:orgId||null,
@@ -2342,7 +2342,30 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514', max_tokens: 4000,
-          messages: [{ role: 'user', content: `You are a construction estimator analyzing OCR text from plan sheets. Identify every scope of work item that needs estimating.\n\nFor each item return:\n- description: specific work item\n- category: one of [${catList}]\n- unit: SF, LF, CY, EA, SY, TON, or LS\n- source_sheet: which sheet(s)\n- spec_text: exact spec from plans\n\nLook for: material callouts, structural notes, MEP equipment, finish specs, demolition, site work.\n\nReturn ONLY a JSON array:\n[{"description":"...","category":"...","unit":"...","source_sheet":"...","spec_text":"..."}]\n\nBe thorough — include every scope item.\n\nOCR TEXT:\n${planText}` }]
+          messages: [{ role: 'user', content: `You are a construction estimator analyzing OCR text extracted from plan sheets. Identify every scope of work item that needs estimating.
+
+CRITICAL: Descriptions MUST include EXACT specifications from the plans. Do NOT generalize.
+
+WRONG (too generic): "Concrete slab", "Column footing", "CMU wall", "Rebar"
+RIGHT (with specs): "4" concrete slab on grade w/ #4 rebar @ 12" O.C. each way, 3000 PSI", "Exterior column footing 4'x4'x12" with (4) #5 rebar each way", "8" CMU wall, fully grouted with #5 vertical @ 32" O.C."
+
+Include ALL details from the OCR text: dimensions, material specs (PSI, CMU size, rebar size), spacing (O.C.), reinforcement details, location context (exterior/interior/at grade), type qualifiers (continuous/isolated/strip), finish or treatment.
+
+For each item return:
+- description: the specific work item WITH exact specs from the plans
+- category: one of [${catList}]
+- unit: SF, LF, CY, EA, SY, TON, or LS
+- quantity: always 0 (estimator measures manually)
+- source_sheet: which sheet(s) this was found on
+- spec_text: the raw OCR text that describes this item
+
+Return ONLY a JSON array, no markdown:
+[{"description":"4\\" concrete slab on grade with #4 rebar @ 12\\" O.C. each way, 3000 PSI","category":"Concrete","unit":"SF","quantity":0,"source_sheet":"S1","spec_text":"4\\" CONC. SLAB ON GRADE W/ #4 @ 12\\" O.C. E.W."}]
+
+Be thorough — include every scope item. Pull exact specs from the text. Do not simplify.
+
+OCR TEXT:
+${planText}` }]
         })
       });
       if (!resp.ok) { alert('AI request failed: ' + resp.status); setAiScopeLoading2(false); return; }
