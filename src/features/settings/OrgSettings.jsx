@@ -328,6 +328,12 @@ export default function OrgSettings({ user, onBack }) {
         {tab==='billing'&&(
           <div>
             <h2 style={{fontSize:16,fontWeight:600,color:'#1A1A1A',margin:'0 0 20px'}}>Billing</h2>
+            {org?.free_forever ? (
+              <div style={{background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:24}}>
+                <div style={{fontSize:18,fontWeight:700,color:'#10B981',marginBottom:8}}>Free Plan (Internal)</div>
+                <div style={{fontSize:13,color:'#6B7280'}}>This organization has free access. No subscription required.</div>
+              </div>
+            ) : (
             <div style={{background:'#fff',border:'1px solid #E5E7EB',borderRadius:8,padding:24,marginBottom:16}}>
               <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
                 <div style={{fontSize:18,fontWeight:700,color:'#1A1A1A'}}>ScopeTakeoff {org?.plan==='enterprise'?'Enterprise':org?.plan==='pro'?'Pro':'Free'}</div>
@@ -373,6 +379,7 @@ export default function OrgSettings({ user, onBack }) {
               </div>}
               {!canManageBilling(myRole) && <div style={{fontSize:12,color:'#9CA3AF'}}>Only the organization owner can manage billing.</div>}
             </div>
+            )}
           </div>
         )}
       </div>

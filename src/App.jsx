@@ -18,9 +18,10 @@ function TrialBanner() {
 
   useEffect(() => {
     if (!orgId) return;
-    supabase.from('organizations').select('plan, trial_ends_at, subscription_status, stripe_customer_id').eq('id', orgId).single()
+    supabase.from('organizations').select('plan, trial_ends_at, subscription_status, stripe_customer_id, free_forever').eq('id', orgId).single()
       .then(({ data }) => {
         if (!data) return;
+        if (data.free_forever) { setTrial(null); return; } // Free forever — no trial banner
         if (data.subscription_status === 'active') { setTrial(null); return; }
         if (data.plan === 'trial' || data.subscription_status === 'trialing') {
           const daysLeft = Math.ceil((new Date(data.trial_ends_at) - Date.now()) / (1000 * 60 * 60 * 24));

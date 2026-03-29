@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
     const sessionParams = {
       payment_method_types: ['card'],
+      payment_method_collection: 'always',
       line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: seats || 1 }],
       mode: 'subscription',
       subscription_data: {
