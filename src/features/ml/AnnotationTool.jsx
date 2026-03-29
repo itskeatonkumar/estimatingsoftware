@@ -20,6 +20,13 @@ export default function AnnotationTool() {
   const [pendingBox, setPendingBox] = useState(null); // {x, y, w, h} in image px
   const [labelForm, setLabelForm] = useState({});
   const [imgNat, setImgNat] = useState({ w: 1, h: 1 });
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [fitZoom, setFitZoom] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState(null);
+  const [spaceHeld, setSpaceHeld] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState(null);
   const imgRef = useRef(null);
@@ -55,40 +62,95 @@ export default function AnnotationTool() {
       .then(({ data }) => setAnnotations(data || [])).catch(() => {});
   }, [selPlan?.id]);
 
-  // Image load handler
+  // Image load — compute fit zoom
   const onImgLoad = () => {
     const img = imgRef.current;
-    if (img) setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
+    const ctr = containerRef.current;
+    if (!img || !ctr) return;
+    const nat = { w: img.naturalWidth, h: img.naturalHeight };
+    setImgNat(nat);
+    const cw = ctr.clientWidth - 40, ch = ctr.clientHeight - 40;
+    const fit = Math.min(cw / nat.w, ch / nat.h, 1);
+    setFitZoom(fit); setZoom(fit); setPanX((cw - nat.w * fit) / 2 + 20); setPanY((ch - nat.h * fit) / 2 + 20);
   };
 
-  // Mouse handlers for drawing boxes
-  const getRelPos = (e) => {
-    const img = imgRef.current;
-    if (!img) return { x: 0, y: 0 };
-    const r = img.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  // Reset zoom when plan changes
+  useEffect(() => { if (selPlan) { setZoom(1); setPanX(0); setPanY(0); } }, [selPlan?.id]);
+
+  // Space key for pan mode
+  useEffect(() => {
+    const dn = (e) => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); setSpaceHeld(true); } };
+    const up = (e) => { if (e.code === 'Space') setSpaceHeld(false); };
+    window.addEventListener('keydown', dn); window.addEventListener('keyup', up);
+    return () => { window.removeEventListener('keydown', dn); window.removeEventListener('keyup', up); };
+  }, []);
+
+  // Screen coords → image pixel coords (accounting for zoom + pan)
+  const screenToImg = (e) => {
+    const ctr = containerRef.current;
+    if (!ctr) return { x: 0, y: 0 };
+    const r = ctr.getBoundingClientRect();
+    return { x: (e.clientX - r.left - panX) / zoom, y: (e.clientY - r.top - panY) / zoom };
   };
 
+  // Scroll-to-zoom toward cursor
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+    setZoom(prev => {
+      const nz = Math.min(5, Math.max(fitZoom * 0.5, prev * delta));
+      const ctr = containerRef.current;
+      if (!ctr) return nz;
+      const r = ctr.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const scale = nz / prev;
+      setPanX(px => mx - (mx - px) * scale);
+      setPanY(py => my - (my - py) * scale);
+      return nz;
+    });
+  }, [fitZoom]);
+
+  // Attach wheel listener (passive:false required for preventDefault)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  // Mouse handlers — pan vs draw
   const onMouseDown = (e) => {
+    if (!selPlan) return;
     if (pendingBox) return;
-    const p = getRelPos(e);
+    if (spaceHeld || e.button === 1) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+      return;
+    }
+    if (e.button !== 0) return;
+    const p = screenToImg(e);
     setDrawing({ startX: p.x, startY: p.y, curX: p.x, curY: p.y });
   };
   const onMouseMove = (e) => {
+    if (isPanning && panStart) {
+      setPanX(e.clientX - panStart.x);
+      setPanY(e.clientY - panStart.y);
+      return;
+    }
     if (!drawing) return;
-    const p = getRelPos(e);
-    setDrawing(prev => ({ ...prev, curX: p.x, curY: p.y }));
+    const p = screenToImg(e);
+    setDrawing(prev => prev ? { ...prev, curX: p.x, curY: p.y } : null);
   };
   const onMouseUp = () => {
+    if (isPanning) { setIsPanning(false); setPanStart(null); return; }
     if (!drawing) return;
     const x = Math.min(drawing.startX, drawing.curX);
     const y = Math.min(drawing.startY, drawing.curY);
     const w = Math.abs(drawing.curX - drawing.startX);
     const h = Math.abs(drawing.curY - drawing.startY);
     setDrawing(null);
-    if (w < 10 || h < 10) return; // too small
+    if (w < 5 || h < 5) return;
     setPendingBox({ x, y, w, h });
-    // Pre-fill label from plan name
     const parts = (selPlan?.name || '').split(' - ');
     setLabelForm({ sheet_number: parts[0] || '', sheet_name: parts[1] || '', scale: '', symbol_type: 'door' });
   };
@@ -96,14 +158,12 @@ export default function AnnotationTool() {
   // Save annotation
   const saveAnnotation = async (type, label) => {
     if (!pendingBox || !selPlan) return;
-    const img = imgRef.current;
-    const dispW = img?.clientWidth || imgNat.w;
-    const dispH = img?.clientHeight || imgNat.h;
+    // Boxes are in image pixel coords — normalize to 0-1
     const bbox = {
-      x: pendingBox.x / dispW,
-      y: pendingBox.y / dispH,
-      width: pendingBox.w / dispW,
-      height: pendingBox.h / dispH,
+      x: pendingBox.x / imgNat.w,
+      y: pendingBox.y / imgNat.h,
+      width: pendingBox.w / imgNat.w,
+      height: pendingBox.h / imgNat.h,
     };
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase.from('ml_annotations').insert([{
@@ -247,42 +307,48 @@ export default function AnnotationTool() {
         </div>
 
         {/* Image area */}
-        <div ref={containerRef} style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: '#0a0a0a' }}
-          onMouseDown={selPlan ? onMouseDown : undefined} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+        <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#0a0a0a', cursor: spaceHeld || isPanning ? 'grab' : 'crosshair' }}
+          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
           {selPlan ? (
-            <div style={{ position: 'relative', display: 'inline-block' }}>
+            <div style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: '0 0', position: 'absolute', top: 0, left: 0 }}>
               <img ref={imgRef} src={selPlan.file_url} alt="" onLoad={onImgLoad}
-                style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 140px)', display: 'block', userSelect: 'none', pointerEvents: 'none' }} draggable={false} />
-              {/* Saved annotations */}
+                style={{ display: 'block', userSelect: 'none', pointerEvents: 'none' }} draggable={false} />
+              {/* Saved annotations (in image-pixel coords via normalized * natW/H) */}
               {annotations.map(a => {
                 const b = a.bounding_box;
-                const img = imgRef.current;
-                if (!img) return null;
-                const dw = img.clientWidth, dh = img.clientHeight;
                 return (
-                  <div key={a.id} style={{ position: 'absolute', left: b.x * dw, top: b.y * dh, width: b.width * dw, height: b.height * dh,
-                    border: `2px solid ${TYPE_COLOR[a.annotation_type] || '#10B981'}`, borderRadius: 2, pointerEvents: 'none' }}>
-                    <div style={{ position: 'absolute', top: -16, left: 0, fontSize: 9, background: TYPE_COLOR[a.annotation_type] || '#10B981', color: '#fff', padding: '1px 4px', borderRadius: 2, whiteSpace: 'nowrap' }}>
+                  <div key={a.id} style={{ position: 'absolute', left: b.x * imgNat.w, top: b.y * imgNat.h, width: b.width * imgNat.w, height: b.height * imgNat.h,
+                    border: `${2/zoom}px solid ${TYPE_COLOR[a.annotation_type] || '#10B981'}`, borderRadius: 2, pointerEvents: 'none' }}>
+                    <div style={{ position: 'absolute', top: -14/zoom, left: 0, fontSize: 9/zoom, background: TYPE_COLOR[a.annotation_type] || '#10B981', color: '#fff', padding: `${1/zoom}px ${4/zoom}px`, borderRadius: 2, whiteSpace: 'nowrap', transformOrigin: 'top left' }}>
                       {TYPE_LABEL[a.annotation_type] || a.annotation_type}
                     </div>
                   </div>
                 );
               })}
-              {/* Drawing box */}
+              {/* Drawing box (image-pixel coords) */}
               {drawing && (
                 <div style={{ position: 'absolute',
                   left: Math.min(drawing.startX, drawing.curX), top: Math.min(drawing.startY, drawing.curY),
                   width: Math.abs(drawing.curX - drawing.startX), height: Math.abs(drawing.curY - drawing.startY),
-                  border: '2px dashed #10B981', background: 'rgba(16,185,129,0.08)', pointerEvents: 'none' }} />
+                  border: `${2/zoom}px dashed #10B981`, background: 'rgba(16,185,129,0.08)', pointerEvents: 'none' }} />
               )}
-              {/* Pending box */}
+              {/* Pending box (image-pixel coords) */}
               {pendingBox && (
                 <div style={{ position: 'absolute', left: pendingBox.x, top: pendingBox.y, width: pendingBox.w, height: pendingBox.h,
-                  border: `2px solid ${TYPE_COLOR[mode]}`, background: `${TYPE_COLOR[mode]}15`, pointerEvents: 'none' }} />
+                  border: `${2/zoom}px solid ${TYPE_COLOR[mode]}`, background: `${TYPE_COLOR[mode]}15`, pointerEvents: 'none' }} />
               )}
             </div>
           ) : (
-            <div style={{ color: '#555', fontSize: 14 }}>Select a plan to start annotating</div>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: 14 }}>Select a plan to start annotating</div>
+          )}
+          {/* Zoom controls */}
+          {selPlan && (
+            <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 4, alignItems: 'center', zIndex: 10 }}>
+              <button onClick={() => setZoom(z => Math.max(fitZoom * 0.5, z / 1.3))} style={{ width: 28, height: 28, background: '#222', border: '1px solid #444', color: '#ddd', borderRadius: 4, cursor: 'pointer', fontSize: 14 }}>&minus;</button>
+              <span style={{ fontSize: 11, color: '#888', minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(5, z * 1.3))} style={{ width: 28, height: 28, background: '#222', border: '1px solid #444', color: '#ddd', borderRadius: 4, cursor: 'pointer', fontSize: 14 }}>+</button>
+              <button onClick={onImgLoad} style={{ padding: '4px 8px', background: '#222', border: '1px solid #444', color: '#888', borderRadius: 4, cursor: 'pointer', fontSize: 10 }}>Fit</button>
+            </div>
           )}
         </div>
 
