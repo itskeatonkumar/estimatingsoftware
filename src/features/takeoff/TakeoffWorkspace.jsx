@@ -478,7 +478,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       if(e2) console.error('[load] items error:', e2);
       console.log('[load] plans:', (p||[]).length, 'items:', (i||[]).length, 'plans with ocr_text:', (p||[]).filter(x=>x.ocr_text).length);
       const pl=p||[];
-      const validItems=(i||[]).filter(it=>it.plan_id!=null);
+      const validItems=(i||[]).filter(it=>it.plan_id!=null || it.measurement_type==='manual');
       setPlans(pl); setItems(validItems);
       if(pl.length>0){
         // Restore active tab from session, or use first plan
@@ -4557,7 +4557,7 @@ ${planText}` }]
                             })();
                             const {qty, unit:displayUnit} = getDisplayQtyUnit(item);
                             const itemColor = item.color||cat.color;
-                            const typeIcon = {area:'⬟',linear:'╱',count:'✓'}[item.measurement_type]||'✎';
+                            const typeIcon = {area:'⬟',linear:'╱',count:'✓',manual:'✎'}[item.measurement_type]||'✎';
                             const planName = planMap.get(item.plan_id)?.name||'';
                             return(
                               <div key={item.id}
@@ -4632,6 +4632,18 @@ ${planText}` }]
                     </div>
                   );
                 })}
+                {/* Add manual item at bottom of category list */}
+                {!isViewer&&(
+                  <div style={{padding:'10px 12px',borderTop:`1px solid ${t.border}`}}>
+                    <button onClick={async()=>{
+                      const payload={project_id:project.id,plan_id:null,category:'other',description:'',quantity:1,unit:'LS',unit_cost:0,total_cost:0,measurement_type:'manual',points:null,color:'#8E9AAF',ai_generated:false,sort_order:items.length,org_id:orgId||null};
+                      const {data}=await supabase.from('takeoff_items').insert([payload]).select().single();
+                      if(data){setItems(prev=>[...prev,data]);setEditItem(data);}
+                    }} style={{width:'100%',background:'none',border:`1px dashed ${t.border}`,color:t.text3,padding:'6px 0',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+                      <span style={{fontSize:12}}>✎</span> + Manual Item
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             );
@@ -6065,7 +6077,7 @@ ${planText}` }]
       {rightTab==='estimate'&&(()=>{
         // Use snapshot data if viewing a saved version, otherwise live items
         const activeVer = activeVersion ? estVersions.find(v=>String(v.id)===String(activeVersion)) : null;
-        const allItems = activeVer ? (Array.isArray(activeVer.items_snapshot)?activeVer.items_snapshot:[]) : items.filter(i=>i.plan_id!=null);
+        const allItems = activeVer ? (Array.isArray(activeVer.items_snapshot)?activeVer.items_snapshot:[]) : items.filter(i=>i.plan_id!=null || i.measurement_type==='manual');
         const allCatGroups=TAKEOFF_CATS.map(cat=>{
           const its=allItems.filter(i=>i.category===cat.id);
           return its.length?{...cat,items:its,subtotal:its.reduce((s,i)=>s+(i.total_cost||0),0)}:null;
@@ -6144,6 +6156,37 @@ ${planText}` }]
           await supabase.from('takeoff_items').update(patch).eq('id', itemId);
           setItems(prev=>prev.map(i=>i.id===itemId?{...i,...patch}:i));
           setEstSaving(null);
+        };
+
+        const MANUAL_PRESETS = [
+          {desc:'General Conditions',unit:'LS',cat:'other'},
+          {desc:'Mobilization / Demobilization',unit:'LS',cat:'other'},
+          {desc:'Travel Expense',unit:'LS',cat:'other'},
+          {desc:'Permits & Fees',unit:'LS',cat:'other'},
+          {desc:'Temporary Facilities',unit:'LS',cat:'other'},
+          {desc:'Cleanup & Dumpsters',unit:'LS',cat:'other'},
+          {desc:'Equipment Rental',unit:'DAY',cat:'other'},
+          {desc:'Safety / OSHA Compliance',unit:'LS',cat:'other'},
+          {desc:'Supervision / Project Management',unit:'LS',cat:'other'},
+          {desc:'Layout & Survey',unit:'LS',cat:'other'},
+          {desc:'Bond Premium',unit:'LS',cat:'other'},
+          {desc:'Insurance',unit:'LS',cat:'other'},
+          {desc:'Winter Conditions / Weather Protection',unit:'LS',cat:'other'},
+          {desc:'Overtime Premium',unit:'HR',cat:'other'},
+          {desc:'Small Tools & Consumables',unit:'LS',cat:'other'},
+        ];
+
+        const addManualItem = async (desc='', unit='LS', cat='other') => {
+          const payload = {
+            project_id: project.id, plan_id: null, category: cat,
+            description: desc, quantity: 1, unit, unit_cost: 0, total_cost: 0,
+            measurement_type: 'manual', points: null, color: '#8E9AAF',
+            ai_generated: false, sort_order: items.length, org_id: orgId||null,
+          };
+          const {data,error} = await supabase.from('takeoff_items').insert([payload]).select().single();
+          if(error){alert('Failed to add item: '+error.message);return null;}
+          if(data) setItems(prev=>[...prev,data]);
+          return data;
         };
 
         return(
@@ -6775,6 +6818,7 @@ ${planText}` }]
                               <div style={{display:'flex',alignItems:'center',gap:8}}>
                                 <div style={{width:8,height:8,borderRadius:2,background:it.color||cat.color,flexShrink:0}}/>
                                 <input defaultValue={it.description||''} onBlur={e=>{if(e.target.value!==it.description)saveItemField(it.id,'description',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,cursor:'text'}}/>
+                                {it.measurement_type==='manual'&&<span style={{fontSize:8,color:'#8E9AAF',background:'#8E9AAF18',border:'1px solid #8E9AAF40',padding:'1px 5px',borderRadius:3,fontWeight:700,flexShrink:0,letterSpacing:0.3}}>MANUAL</span>}
                               </div>
                             </td>
                             <td style={{...editCell,fontSize:11,color:'#666'}}>
@@ -6782,8 +6826,18 @@ ${planText}` }]
                                 <input defaultValue={estGroupBy==='trade'?(it.trade||''):(it.location||'')} onBlur={e=>saveItemField(it.id,estGroupBy,e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,fontSize:11,color:'#666'}} placeholder="—"/>
                               ):grpLabel}
                             </td>
-                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{getDisplayQtyUnit(it).qty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                            <td style={{...editCell,textAlign:'center',color:'#666'}}>{getDisplayQtyUnit(it).unit||'—'}</td>
+                            <td style={{...editCell,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>
+                              {it.measurement_type==='manual'
+                                ? <input type="number" step="any" defaultValue={it.quantity||1} onBlur={e=>saveItemField(it.id,'quantity',e.target.value)} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/>
+                                : getDisplayQtyUnit(it).qty.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                            </td>
+                            <td style={{...editCell,textAlign:'center',color:'#666'}}>
+                              {it.measurement_type==='manual'
+                                ? <select defaultValue={it.unit||'LS'} onChange={e=>saveItemField(it.id,'unit',e.target.value)} style={{background:'transparent',border:'none',outline:'none',fontSize:11,color:'#666',cursor:'pointer',textAlign:'center',padding:0}}>
+                                    {['LS','EA','SF','LF','CY','HR','DAY','TON','SQ','MO'].map(u=><option key={u} value={u}>{u}</option>)}
+                                  </select>
+                                : (getDisplayQtyUnit(it).unit||'—')}
+                            </td>
                             {estFormat==='detailed'?(<>
                               <td style={editCell}><input type="number" step="0.01" defaultValue={(it.material_unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.material_unit_cost||0))saveItemField(it.id,'material_unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
                               <td style={editCell}><input type="number" step="0.01" defaultValue={(it.labor_unit_cost||0).toFixed(2)} onBlur={e=>{if(parseFloat(e.target.value)!==(it.labor_unit_cost||0))saveItemField(it.id,'labor_unit_cost',e.target.value);}} onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}} style={{...editInput,textAlign:'right',fontVariantNumeric:'tabular-nums'}}/></td>
@@ -6814,6 +6868,23 @@ ${planText}` }]
                     </React.Fragment>
                     );
                   })}
+                  {/* Add manual line item row */}
+                  {!activeVer&&(
+                    <tr>
+                      <td colSpan={estFormat==='detailed'?10:11} style={{padding:'8px 12px',borderBottom:'1px solid #E0E0E0'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <button onClick={()=>addManualItem()} style={{background:'none',border:'1px dashed #10B981',color:'#10B981',padding:'5px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontWeight:600}}>+ Add Line Item</button>
+                          <div style={{position:'relative'}}>
+                            <select onChange={async e=>{if(!e.target.value)return;const p=MANUAL_PRESETS[Number(e.target.value)];if(p)await addManualItem(p.desc,p.unit,p.cat);e.target.value='';}}
+                              style={{padding:'5px 10px',border:'1px solid #E0E0E0',borderRadius:4,fontSize:11,color:'#666',background:'#fff',cursor:'pointer',outline:'none'}}>
+                              <option value="">Common Items...</option>
+                              {MANUAL_PRESETS.map((p,i)=><option key={i} value={i}>{p.desc} ({p.unit})</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
                 {wsItems.length>0&&(
                   <tfoot>
