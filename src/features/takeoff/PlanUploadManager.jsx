@@ -64,10 +64,11 @@ async function renderPageThumbnail(lib, file, pageNum) {
 
 async function batchNamePages(crops) {
   if (!crops.length) return [];
+  const pageNums = crops.map(c => c.pageNum);
   const content = [];
   crops.forEach((crop, i) => {
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: crop.b64 } });
-    content.push({ type: 'text', text: `Image ${i + 1}: Page ${crop.pageNum}` });
+    content.push({ type: 'text', text: `Image ${i + 1}: This is page ${crop.pageNum} of the plan set` });
   });
   content.push({ type: 'text', text: `You are looking at ${crops.length} full-page thumbnails from construction plan sheets. For each image, find the title block (usually bottom-right or right side) and read the SHEET NUMBER and SHEET NAME.
 
@@ -79,10 +80,12 @@ IMPORTANT:
 - If you cannot see a clear title block with a sheet number in the image, return null for that page's number. Do NOT guess.
 - Some pages may be specs, cover sheets, or non-standard layouts — these should get null.
 
-Return ONLY a JSON array, no markdown:
-[{"page":1,"number":"A1.0","name":"FLOOR PLAN"},{"page":2,"number":"S-1","name":"FOUNDATION PLAN"}]` });
+Return the results in the SAME ORDER as the images. The page numbers are: ${pageNums.join(', ')}
 
-  console.log('[OCR] Sending batch of', crops.length, 'pages to AI');
+Return ONLY a JSON array, no markdown:
+[{"page":${pageNums[0]},"number":"A1.0","name":"FLOOR PLAN"}${pageNums.length > 1 ? `,{"page":${pageNums[1]},"number":"S-1","name":"FOUNDATION PLAN"}` : ''}]` });
+
+  console.log('[OCR] Sending batch of', crops.length, 'pages:', pageNums.join(','));
   const data = await callClaude({
     model: 'claude-haiku-4-5-20251001', max_tokens: 2000,
     messages: [{ role: 'user', content }]
@@ -327,11 +330,14 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
         while (retries > 0) {
           try {
             const results = await batchNamePages(crops);
-            for (const r of results) {
-              if (!r.number) continue;
-              const crop = crops.find(c => c.pageNum === r.page);
+            // Map by array index (order matches), NOT by result.page
+            for (let ri = 0; ri < results.length; ri++) {
+              const r = results[ri];
+              if (!r?.number) continue;
+              const crop = crops[ri]; // same index = same page
               if (!crop) continue;
               const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
+              console.log('[OCR] Named page', crop.pageNum, '->', fullName);
               setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
               namedSoFar++;
             }
