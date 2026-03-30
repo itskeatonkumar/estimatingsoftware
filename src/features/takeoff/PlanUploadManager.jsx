@@ -44,29 +44,21 @@ async function renderPageThumbnail(lib, file, pageNum) {
   const buf = await file.arrayBuffer();
   const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
   const page = await doc.getPage(pageNum);
+  const vp = page.getViewport({ scale: 0.5 });
 
-  // Render full page at 0.75x — readable text, ~150-300KB JPEG
-  let scale = 0.75;
-  let vp = page.getViewport({ scale });
   const canvas = document.createElement('canvas');
   canvas.width = vp.width; canvas.height = vp.height;
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-  let b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+  const b64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 
-  // If over 1MB, re-render smaller
-  if (b64.length > 1024 * 1024) {
-    console.log('[OCR] Page', pageNum, 'too large at 0.75x, re-rendering at 0.5x');
-    canvas.width = 0; canvas.height = 0;
-    scale = 0.5;
-    vp = page.getViewport({ scale });
-    canvas.width = vp.width; canvas.height = vp.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-    b64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-  }
-
-  console.log('[OCR] Page', pageNum, 'image size:', Math.round(b64.length / 1024), 'KB');
+  // Free memory immediately
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   canvas.width = 0; canvas.height = 0;
+  try { page.cleanup(); } catch {}
+
+  console.log('[OCR] Page', pageNum, 'thumbnail:', Math.round(b64.length / 1024), 'KB');
   return b64;
 }
 
@@ -296,44 +288,70 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
     setParsing(false);
   };
 
-  // AI naming — full page thumbnails to Claude Haiku, batch of 2
+  // AI naming — render pages ONE AT A TIME to avoid OOM, send in batches of 2
   const runAiNaming = async (targets) => {
     setNaming(true);
     const lib = await ensurePdfLib();
     if (!lib) { setNaming(false); return; }
+    let namedSoFar = 0;
     const BATCH = 2;
-    for (let b = 0; b < targets.length; b += BATCH) {
-      const batch = targets.slice(b, b + BATCH);
-      setParseStatus(`AI naming ${b + 1}-${Math.min(b + BATCH, targets.length)} of ${targets.length}...`);
+    try {
+      for (let b = 0; b < targets.length; b += BATCH) {
+        const batch = targets.slice(b, b + BATCH);
 
-      let retries = 2;
-      while (retries > 0) {
-        try {
-          const crops = [];
-          for (const p of batch) {
-            try {
-              const file = p.pdfFile || p.rawFile;
-              const b64 = await renderPageThumbnail(lib, file, p.pageNum || 1);
-              crops.push({ pageNum: p.pageNum || 1, b64, id: p.id });
-            } catch (err) { console.error('[OCR] Failed to render page', p.pageNum, err); }
+        // Render pages sequentially (not Promise.all) to limit memory
+        const crops = [];
+        for (const p of batch) {
+          setParseStatus(`AI naming: rendering page ${b + crops.length + 1} of ${targets.length} (${namedSoFar} named)...`);
+          try {
+            const file = p.pdfFile || p.rawFile;
+            const b64 = await renderPageThumbnail(lib, file, p.pageNum || 1);
+            crops.push({ pageNum: p.pageNum || 1, b64, id: p.id });
+          } catch (err) {
+            const msg = err?.message || '';
+            if (msg.includes('Array buffer') || msg.includes('allocation')) {
+              console.warn('[OCR] Page', p.pageNum, 'too large for memory, skipping');
+            } else {
+              console.error('[OCR] Page', p.pageNum, 'render failed:', msg);
+            }
           }
-          const results = await batchNamePages(crops);
-          for (const r of results) {
-            if (!r.number) continue;
-            const crop = crops.find(c => c.pageNum === r.page);
-            if (!crop) continue;
-            const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
-            setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
-          }
-          break; // success
-        } catch (e) {
-          retries--;
-          console.error('[ai-name] batch failed, retries left:', retries, e);
-          if (retries > 0) await new Promise(r => setTimeout(r, 2000));
+          // Brief pause between renders to let GC run
+          await new Promise(r => setTimeout(r, 50));
         }
+
+        if (!crops.length) continue;
+
+        // Send batch to AI with retry
+        setParseStatus(`AI naming: reading ${crops.length} pages... (${namedSoFar} named so far)`);
+        let retries = 2;
+        while (retries > 0) {
+          try {
+            const results = await batchNamePages(crops);
+            for (const r of results) {
+              if (!r.number) continue;
+              const crop = crops.find(c => c.pageNum === r.page);
+              if (!crop) continue;
+              const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
+              setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
+              namedSoFar++;
+            }
+            break;
+          } catch (e) {
+            retries--;
+            console.error('[ai-name] batch failed, retries left:', retries, e);
+            if (retries > 0) await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+
+        // Free base64 strings and pause between batches
+        crops.length = 0;
+        await new Promise(r => setTimeout(r, 500));
       }
-      if (b + BATCH < targets.length) await new Promise(r => setTimeout(r, 300));
+    } catch (err) {
+      console.error('[OCR] AI naming crashed:', err);
+      // Progress so far is already saved via setPages calls
     }
+    setParseStatus(`AI naming complete: ${namedSoFar} sheets named`);
     setNaming(false);
   };
 
