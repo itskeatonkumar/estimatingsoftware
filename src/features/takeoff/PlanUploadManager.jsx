@@ -188,19 +188,86 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
     const namedSoFar = names.filter(Boolean).length;
     console.log(`[OCR] After metadata: ${namedSoFar}/${numPages} named`);
 
-    // ═══ Grab OCR text for each page (used by Plan Chat + AI Takeoff, NOT for naming) ═══
+    // ═══ METHOD 3: Grab OCR text + smart label-based sheet naming ═══
+    const SHEET_LABELS = ['SHEET NO','SHEET NO.','SHEET NUMBER','SHEET #','DWG NO','DWG NO.','DWG.','DWG #','DRAWING NO','DRAWING NO.','SHT NO','SHT NO.','SHT.','SHT #'];
+    const SHEET_PAT = /^[A-Z]{0,5}[-.]?\d{1,4}([.-]\d{1,3})?$/;
+    const LABEL_INLINE = /(?:SHEET|SHT|DWG|DRAWING)\s*(?:NO|NUMBER|#)?\.?\s*:?\s+([A-Z]{0,5}[-.]?\d{1,4}[.-]?\d{0,3})/i;
+    const REJECT_VALS = new Set(['CHICK','SHEET','SCALE','DATE','DRAWN','CHECK','ISSUE','BLOCK','STORE','PLAN','WALL','FLOOR','AREA','LEVEL','TOTAL','STEEL','WOOD','DOOR','ROOF','SITE','FIRE','LIFE','NORTH','SOUTH','EAST','WEST']);
     const ocrTexts = new Array(numPages).fill('');
+    let textNameCount = 0;
+
     for (let i = 0; i < numPages; i++) {
       const prefix = statusPrefix || file.name;
-      setParseStatus(`${prefix} \u2014 reading text page ${i + 1} of ${numPages}`);
+      setParseStatus(`${prefix} \u2014 scanning page ${i + 1} of ${numPages}`);
       setParsePct(Math.round(((i + 1) / numPages) * 100));
       try {
         const page = await doc.getPage(i + 1);
         const tc = await page.getTextContent();
+        const vp = page.getViewport({ scale: 1 });
         ocrTexts[i] = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
+
+        // Smart label-based sheet naming for unnamed pages
+        if (!names[i]) {
+          const items = tc.items.map(it => ({
+            str: (it.str||'').trim(), x: it.transform?.[4]||0, y: it.transform?.[5]||0,
+            fs: it.transform ? Math.sqrt(it.transform[0]**2 + it.transform[1]**2) : 0,
+            w: it.width || (it.str||'').length * 6,
+          })).filter(it => it.str.length > 0);
+
+          let found = null;
+
+          // Strategy 1: Find a "SHEET NO." label and read the value next to it
+          for (const item of items) {
+            if (found) break;
+            const upper = item.str.toUpperCase();
+
+            // Check inline: "SHEET NO: A-101"
+            const inlineMatch = item.str.match(LABEL_INLINE);
+            if (inlineMatch && !REJECT_VALS.has(inlineMatch[1].toUpperCase())) {
+              found = inlineMatch[1]; break;
+            }
+
+            // Check if this text IS a label
+            const isLabel = SHEET_LABELS.some(l => upper === l || upper.startsWith(l + ':') || upper.startsWith(l + ' '));
+            if (!isLabel) continue;
+
+            // Look for nearby sheet-number-pattern text
+            const nearby = items.filter(o => {
+              if (o === item || !SHEET_PAT.test(o.str) || REJECT_VALS.has(o.str.toUpperCase())) return false;
+              const dx = o.x - (item.x + item.w);
+              const dy = Math.abs(o.y - item.y);
+              const isRight = o.x > item.x && dx < 200 && dx > -20 && dy < 15;
+              const isBelow = dy < 30 && dy > 2 && Math.abs(o.x - item.x) < 100;
+              return isRight || isBelow;
+            }).sort((a, b) => {
+              const dA = Math.sqrt((a.x - item.x)**2 + (a.y - item.y)**2);
+              const dB = Math.sqrt((b.x - item.x)**2 + (b.y - item.y)**2);
+              return dA - dB;
+            });
+
+            if (nearby.length > 0) {
+              console.log(`[OCR] p${i+1}: label "${item.str}" -> "${nearby[0].str}"`);
+              found = nearby[0].str;
+            }
+          }
+
+          // Strategy 2: Bottom-right large-font fallback (strict)
+          if (!found) {
+            const brCandidates = items
+              .filter(it => it.x > vp.width * 0.65 && it.y < vp.height * 0.30 && SHEET_PAT.test(it.str) && !REJECT_VALS.has(it.str.toUpperCase()) && /\d/.test(it.str))
+              .sort((a, b) => b.fs - a.fs);
+            if (brCandidates.length > 0) {
+              console.log(`[OCR] p${i+1}: bottom-right fallback -> "${brCandidates[0].str}"`);
+              found = brCandidates[0].str;
+            }
+          }
+
+          if (found) { names[i] = found; sources[i] = 'ocr'; textNameCount++; }
+        }
       } catch { /* ok */ }
       if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
+    if (textNameCount) console.log(`[OCR] Smart text extraction: ${textNameCount} additional names`);
 
     // AI Vision is opt-in — user clicks "AI Name" button after preview
 
@@ -386,7 +453,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'ai-vision': { c: '#7B6BA4', l: 'AI Vision' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'ocr': { c: '#3B82F6', l: 'OCR' }, 'ai-vision': { c: '#7B6BA4', l: 'AI Vision' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
