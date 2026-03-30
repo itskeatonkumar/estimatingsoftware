@@ -1402,8 +1402,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         if(!item) return;
         const shapes = Array.isArray(item.points[0]) ? item.points : [item.points];
         if(shapes.length<=1){
-          // Delete the whole item
+          // Delete the whole item — preserve panel structure
           setItems(prev=>prev.filter(i=>i.id!==itemId));
+          if(String(activeCondId)===String(itemId)){setActiveCondId(null);setTool('select');setActivePts([]);}
+          setLeftTab('takeoffs'); setTakeoffStep(null);
           supabase.from('takeoff_items').delete().eq('id',itemId).select().then(({data:del,error})=>{ if(error) console.error('eraser del',error); else if(!del||del.length===0) console.warn('eraser: RLS blocked delete for',itemId); });
         } else {
           // Remove just this shape
@@ -2469,6 +2471,8 @@ ${planText}` }]
     setItems(prev=>prev.filter(i=>i.id!==id));
     // Clear active condition if the deleted item was armed
     if(String(activeCondId)===String(id)){setActiveCondId(null);setTool('select');setActivePts([]);}
+    // Preserve panel structure after deletion
+    setLeftTab('takeoffs'); setTakeoffStep(null);
   };
 
   const pushToSOV = async () => {
@@ -2629,6 +2633,8 @@ ${planText}` }]
       if(kept.length === 0){
         console.log('[deleteSelectedShapes] deleting entire item', id);
         setItems(prev => prev.filter(i => String(i.id) !== String(id)));
+        if(String(activeCondId)===String(id)){setActiveCondId(null);setTool('select');setActivePts([]);}
+        setLeftTab('takeoffs'); setTakeoffStep(null);
         supabase.from('takeoff_items').delete().eq('id', id).select().then(({ data:del, error }) => {
           if(error) console.error('[deleteSelectedShapes] supabase delete error:', error);
           else if(!del||del.length===0) console.warn('[deleteSelectedShapes] RLS blocked delete for', id);
@@ -6793,7 +6799,7 @@ ${planText}` }]
                               <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
                             </>)}
                             <td style={{...editCell,textAlign:'center'}}>
-                              <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));if(String(activeCondId)===String(it.id)){setActiveCondId(null);setTool('select');setActivePts([]);}}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
+                              <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));if(String(activeCondId)===String(it.id)){setActiveCondId(null);setTool('select');setActivePts([]);}setLeftTab('takeoffs');setTakeoffStep(null);}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
                             </td>
                           </tr>
                         );
@@ -7126,6 +7132,9 @@ ${planText}` }]
         if(type==='delete'){
           setItems(prev=>prev.filter(i=>i.id!==editItem.id));
           if(String(activeCondId)===String(editItem.id)){setActiveCondId(null);setTool('select');setActivePts([]);}
+          // Preserve panel structure — keep left panel on takeoffs tab
+          setLeftTab('takeoffs');
+          setTakeoffStep(null);
         }
         else if(type===true){setItems(prev=>[...prev.filter(i=>i.id!==data.id),data]);}
         else{setItems(prev=>prev.map(i=>i.id===data.id?data:i));}
