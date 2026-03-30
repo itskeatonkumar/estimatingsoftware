@@ -759,12 +759,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     // Cache PDF.js docs by file to avoid re-parsing per page
     const docCache = new Map();
 
-    const getPdfDoc = async (file) => {
-      const key = file.name + '_' + file.size;
+    const getPdfDoc = async (fileOrBuf, file) => {
+      const key = file ? (file.name + '_' + file.size) : ('buf_' + (fileOrBuf?.byteLength || 0));
       if (docCache.has(key)) return docCache.get(key);
       const lib = await ensurePdfLib();
       if (!lib) return null;
-      const buf = await file.arrayBuffer();
+      const buf = fileOrBuf instanceof ArrayBuffer ? fileOrBuf : await fileOrBuf.arrayBuffer();
       const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
       docCache.set(key, doc);
       return doc;
@@ -789,9 +789,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         }
         const targetFid = folderIds[f.folder] || null;
 
-        if(f.pdfFile && f.pageNum){
+        if((f.pdfFile || f.pdfBuffer) && f.pageNum){
           // Render page at 1x scale (fast) — full-res render happens when user opens it
-          const doc = await getPdfDoc(f.pdfFile);
+          const doc = await getPdfDoc(f.pdfBuffer || f.pdfFile, f.pdfFile);
           if(!doc) throw new Error('Could not load PDF');
           const page = await doc.getPage(f.pageNum);
           const viewport = page.getViewport({scale:1.0});
@@ -846,13 +846,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       }
     };
 
-    // Upload in parallel batches of 3
-    const PARALLEL = 3;
-    const todo = checkedFiles.filter(f => !cancelRef.current);
-    for(let i=0; i<todo.length; i+=PARALLEL){
+    // Upload sequentially to avoid memory pressure and File handle expiry
+    for(const f of checkedFiles){
       if(cancelRef.current) break;
-      const batch = todo.slice(i, i+PARALLEL);
-      await Promise.all(batch.map(f => uploadOne(f)));
+      await uploadOne(f);
     }
     stopKeepAlive();
     setUploadTargetFolder(null);

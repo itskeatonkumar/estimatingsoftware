@@ -40,8 +40,8 @@ async function callClaude(body, retries = 3) {
 }
 
 // ── Full-page thumbnail + AI vision for sheet naming ──────────
-async function renderPageThumbnail(lib, file, pageNum) {
-  const buf = await file.arrayBuffer();
+async function renderPageThumbnail(lib, bufOrFile, pageNum) {
+  const buf = bufOrFile instanceof ArrayBuffer ? bufOrFile : await bufOrFile.arrayBuffer();
   const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
   const page = await doc.getPage(pageNum);
   const vp = page.getViewport({ scale: 0.5 });
@@ -130,9 +130,11 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
     const fallback = { id: `${folderName}_${file.name}`, name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim(), checked: true, autoNamed: false, source: 'filename', folder: folderName, rawFile: file, ocrText: '' };
     if (!lib) return [fallback];
 
+    // Read buffer ONCE upfront and store it — File handles may expire after long AI naming
     const buf = await file.arrayBuffer();
+    const storedBuf = buf.slice(0); // detached copy that survives GC
     let doc;
-    try { doc = await lib.getDocument({ data: buf.slice(0) }).promise; }
+    try { doc = await lib.getDocument({ data: storedBuf.slice(0) }).promise; }
     catch { return [fallback]; }
 
     const numPages = doc.numPages;
@@ -282,6 +284,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
         name: finalName, checked: true, autoNamed: !!names[i], source: finalSource,
         folder: folderName, pageNum: numPages > 1 ? i + 1 : undefined,
         pdfFile: numPages > 1 ? file : undefined, rawFile: numPages === 1 ? file : undefined,
+        pdfBuffer: numPages > 1 ? storedBuf : undefined, // stored buffer survives File handle expiry
         ocrText: ocrTexts[i],
       });
     }
@@ -354,8 +357,8 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, ai
         for (const p of batch) {
           setParseStatus(`AI naming: rendering page ${b + crops.length + 1} of ${targets.length} (${namedSoFar} named)...`);
           try {
-            const file = p.pdfFile || p.rawFile;
-            const b64 = await renderPageThumbnail(lib, file, p.pageNum || 1);
+            const src = p.pdfBuffer || p.pdfFile || p.rawFile;
+            const b64 = await renderPageThumbnail(lib, src, p.pageNum || 1);
             crops.push({ pageNum: p.pageNum || 1, b64, id: p.id });
           } catch (err) {
             const msg = err?.message || '';
