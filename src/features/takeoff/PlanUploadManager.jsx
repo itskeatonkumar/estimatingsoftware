@@ -39,46 +39,54 @@ async function callClaude(body, retries = 3) {
   }
 }
 
-// ── Sheet name extraction ──────────────────────────────────────
-const SHEET_RE = /^[A-Z]{1,5}\d{0,3}[.-]?\d{0,3}$/;
+// ── Title block crop + AI vision for sheet naming ─────────────
+async function cropTitleBlock(lib, file, pageNum) {
+  const buf = await file.arrayBuffer();
+  const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
+  const page = await doc.getPage(pageNum);
+  const vp = page.getViewport({ scale: 1.0 });
 
-// Extract sheet number by searching the ENTIRE page and scoring candidates
-function extractSheetNumber(textItems, w, h) {
-  const items = [];
-  for (const it of textItems) {
-    const str = it.str?.trim();
-    if (!str || !it.transform) continue;
-    const fs = Math.sqrt(it.transform[0] ** 2 + it.transform[1] ** 2);
-    if (fs < 1) continue;
-    items.push({ str, x: it.transform[4], y: it.transform[5], fs });
-  }
-  if (!items.length) return null;
+  // Crop bottom-right 30% width × 25% height (where title blocks live)
+  const cropW = Math.floor(vp.width * 0.30);
+  const cropH = Math.floor(vp.height * 0.25);
+  const cropX = vp.width - cropW;
+  const cropY = vp.height - cropH;
 
-  // Find ALL text matching sheet number pattern on the entire page
-  const candidates = items
-    .map(it => ({ ...it, cleaned: it.str.replace(/\s+/g, '') }))
-    .filter(it => it.cleaned.length >= 2 && it.cleaned.length <= 10 && SHEET_RE.test(it.cleaned));
+  const canvas = document.createElement('canvas');
+  canvas.width = cropW; canvas.height = cropH;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(-cropX, -cropY);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-  if (!candidates.length) return null;
+  const b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+  canvas.width = 0; canvas.height = 0; // free memory
+  return b64;
+}
 
-  // Score each candidate
-  const scored = candidates.map(it => {
-    let score = 0;
-    // Font size — larger is better (sheet numbers are prominent)
-    score += it.fs * 2;
-    // Position: prefer bottom-right (PDF coords: y=0 bottom, x=0 left)
-    const xr = it.x / w, yr = it.y / h;
-    if (xr > 0.7) score += 20; else if (xr > 0.5) score += 10;
-    if (yr < 0.3) score += 20; else if (yr < 0.5) score += 10;
-    // Bonus: has both letters AND numbers (real sheet refs like FP1, A1.0)
-    if (/[A-Z]/.test(it.cleaned) && /\d/.test(it.cleaned)) score += 15;
-    // Penalize: short text in the middle of the page (grid bubbles)
-    if (it.cleaned.length <= 2 && xr > 0.2 && xr < 0.8 && yr > 0.2 && yr < 0.8) score -= 50;
-    return { ...it, score };
+async function batchNamePages(crops) {
+  const content = [];
+  crops.forEach((crop, i) => {
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: crop.b64 } });
+    content.push({ type: 'text', text: `Image ${i + 1}: Page ${crop.pageNum}` });
   });
+  content.push({ type: 'text', text: `You are looking at ${crops.length} title block crops from construction plan sheets. For each image, read the SHEET NUMBER and SHEET NAME from the title block.
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.cleaned || null;
+The sheet number is typically the most prominent text in the title block (e.g., A1.0, S-1, FP1, C150, BASR2, L-101).
+The sheet name/description is usually near the sheet number (e.g., FLOOR PLAN, FOUNDATION PLAN, SITE PLAN).
+
+IMPORTANT: Do NOT use the project name, company name, city, or address as the sheet number. The sheet number is a SHORT alphanumeric code.
+
+Return ONLY a JSON array, no markdown:
+[{"page":1,"number":"A1.0","name":"FLOOR PLAN"},{"page":2,"number":"S-1","name":"FOUNDATION PLAN"}]
+
+If you cannot determine the sheet number for a page, use null for number.` });
+
+  const data = await callClaude({
+    model: 'claude-haiku-4-5-20251001', max_tokens: 2000,
+    messages: [{ role: 'user', content }]
+  });
+  const text = data?.content?.map(c => c.text || '').join('') || '';
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -165,51 +173,62 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     const namedSoFar = names.filter(Boolean).length;
     console.log(`[OCR] After metadata: ${namedSoFar}/${numPages} named`);
 
-    // ═══ METHOD 3: TEXT EXTRACTION (fallback for unnamed pages) ═══
-    const result = [];
+    // ═══ METHOD 3: Grab OCR text + collect unnamed pages for AI vision ═══
+    const ocrTexts = new Array(numPages).fill('');
     for (let i = 0; i < numPages; i++) {
       const prefix = statusPrefix || file.name;
-      setParseStatus(`${prefix} \u2014 page ${i + 1} of ${numPages}`);
+      setParseStatus(`${prefix} \u2014 reading page ${i + 1} of ${numPages}`);
       setParsePct(Math.round(((i + 1) / numPages) * 100));
+      try {
+        const page = await doc.getPage(i + 1);
+        const tc = await page.getTextContent();
+        ocrTexts[i] = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
+      } catch { /* ok */ }
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
+    }
 
-      let ocrText = '';
-      if (!names[i]) {
-        // Only do text extraction for pages not named by metadata
+    // ═══ METHOD 4: AI VISION on title block crops (for unnamed pages) ═══
+    const unnamed = [];
+    for (let i = 0; i < numPages; i++) { if (!names[i]) unnamed.push(i); }
+
+    if (unnamed.length > 0) {
+      const BATCH = 8;
+      for (let b = 0; b < unnamed.length; b += BATCH) {
+        const batch = unnamed.slice(b, b + BATCH);
+        setParseStatus(`${statusPrefix || file.name} \u2014 AI reading title blocks ${b + 1}-${Math.min(b + BATCH, unnamed.length)} of ${unnamed.length}...`);
+        setParsePct(Math.round(((namedSoFar + b) / numPages) * 100));
         try {
-          const page = await doc.getPage(i + 1);
-          const tc = await page.getTextContent();
-          const vp = page.getViewport({ scale: 1 });
-          ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
-          const sheetNum = extractSheetNumber(tc.items, vp.width, vp.height);
-          if (sheetNum) { names[i] = sheetNum; sources[i] = 'sheet-num'; }
-        } catch { /* text extraction failed */ }
-      } else {
-        // Still grab OCR text for sheet index detection
-        try {
-          const page = await doc.getPage(i + 1);
-          const tc = await page.getTextContent();
-          ocrText = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
-        } catch { /* ok */ }
+          const crops = await Promise.all(batch.map(async idx => {
+            const b64 = await cropTitleBlock(lib, file, idx + 1);
+            return { pageNum: idx + 1, b64 };
+          }));
+          const results = await batchNamePages(crops);
+          for (const r of results) {
+            if (r.number) {
+              const idx = r.page - 1;
+              names[idx] = r.name ? `${r.number} - ${r.name}` : r.number;
+              sources[idx] = 'ai-vision';
+            }
+          }
+        } catch (err) { console.warn('[OCR] AI batch failed:', err); }
+        if (b + BATCH < unnamed.length) await new Promise(r => setTimeout(r, 500));
       }
+      console.log(`[OCR] After AI vision: ${names.filter(Boolean).length}/${numPages} named`);
+    }
 
+    // Build result array
+    const result = [];
+    for (let i = 0; i < numPages; i++) {
       const baseName = numPages === 1 ? file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() : null;
       const finalName = names[i] || baseName || `Page ${i + 1} of ${numPages}`;
       const finalSource = names[i] ? sources[i] : (baseName ? 'filename' : 'not found');
-
       result.push({
         id: `${folderName}_${file.name}_p${i + 1}`,
-        name: finalName,
-        checked: true,
-        autoNamed: !!names[i],
-        source: finalSource,
-        folder: folderName,
-        pageNum: numPages > 1 ? i + 1 : undefined,
-        pdfFile: numPages > 1 ? file : undefined,
-        rawFile: numPages === 1 ? file : undefined,
-        ocrText,
+        name: finalName, checked: true, autoNamed: !!names[i], source: finalSource,
+        folder: folderName, pageNum: numPages > 1 ? i + 1 : undefined,
+        pdfFile: numPages > 1 ? file : undefined, rawFile: numPages === 1 ? file : undefined,
+        ocrText: ocrTexts[i],
       });
-
-      if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
 
     console.log('[OCR] Final:', result.filter(r => r.autoNamed).length + '/' + numPages, 'named');
@@ -264,42 +283,31 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setParsing(false);
   };
 
-  // Re-scan unnamed pages with improved extraction (free)
-  // AI naming — send title block crop to Claude for full sheet number + description
+  // AI naming — batch title block crops to Claude Haiku
   const runAiNaming = async (targets) => {
     setNaming(true);
     const lib = await ensurePdfLib();
     if (!lib) { setNaming(false); return; }
-    for (let i = 0; i < targets.length; i++) {
-      const p = targets[i];
-      setParseStatus(`AI naming ${i + 1}/${targets.length}`);
+    const BATCH = 8;
+    for (let b = 0; b < targets.length; b += BATCH) {
+      const batch = targets.slice(b, b + BATCH);
+      setParseStatus(`AI reading title blocks ${b + 1}-${Math.min(b + BATCH, targets.length)} of ${targets.length}...`);
       try {
-        const file = p.pdfFile || p.rawFile;
-        const buf = await file.arrayBuffer();
-        const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
-        const page = await doc.getPage(p.pageNum || 1);
-        const vp = page.getViewport({ scale: 1.5 });
-        const canvas = document.createElement('canvas');
-        canvas.width = vp.width; canvas.height = vp.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-        const cw = Math.floor(canvas.width * 0.5), ch = Math.floor(canvas.height * 0.38);
-        const crop = document.createElement('canvas');
-        const sc = Math.min(1, 1000 / cw);
-        crop.width = Math.floor(cw * sc); crop.height = Math.floor(ch * sc);
-        crop.getContext('2d').drawImage(canvas, canvas.width - cw, canvas.height - ch, cw, ch, 0, 0, crop.width, crop.height);
-        const b64 = crop.toDataURL('image/jpeg', 0.85).split(',')[1];
-        const j = await callClaude({
-          model: 'claude-haiku-4-5-20251001', max_tokens: 60,
-          messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-            { type: 'text', text: 'Read the title block of this construction plan sheet. Return ONLY the sheet number and full sheet name in this exact format:\nSHEET_NUM - SHEET NAME\nExamples: A1.0 - FLOOR PLAN, S2.1 - FOUNDATION PLAN, C3.0 - GRADING PLAN\nIf you cannot determine it, return UNKNOWN' }
-          ] }]
-        });
-        const raw = (j?.content?.find(b => b.type === 'text')?.text || '').trim().replace(/^["'`*\s]+|["'`*\s]+$/g, '');
-        if (raw && !raw.includes('UNKNOWN') && raw.length >= 3 && /[A-Za-z]/.test(raw)) {
-          setPages(prev => prev.map(pp => pp.id === p.id ? { ...pp, name: raw, autoNamed: true, source: 'ai' } : pp));
+        const crops = await Promise.all(batch.map(async p => {
+          const file = p.pdfFile || p.rawFile;
+          const b64 = await cropTitleBlock(lib, file, p.pageNum || 1);
+          return { pageNum: p.pageNum || 1, b64, id: p.id };
+        }));
+        const results = await batchNamePages(crops);
+        for (const r of results) {
+          if (!r.number) continue;
+          const crop = crops.find(c => c.pageNum === r.page);
+          if (!crop) continue;
+          const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
+          setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
         }
-      } catch (e) { console.warn('[ai-name]', e); }
+      } catch (e) { console.warn('[ai-name] batch failed:', e); }
+      if (b + BATCH < targets.length) await new Promise(r => setTimeout(r, 500));
     }
     setNaming(false);
   };
@@ -342,7 +350,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'sheet-num': { c: '#3B82F6', l: 'Sheet #' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'ai-vision': { c: '#7B6BA4', l: 'AI Vision' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
