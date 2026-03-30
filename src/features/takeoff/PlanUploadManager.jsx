@@ -41,40 +41,45 @@ async function callClaude(body, retries = 3) {
   }
 }
 
-// ── Title block crop + AI vision for sheet naming ─────────────
-async function cropTitleBlock(lib, file, pageNum) {
+// ── Full-page thumbnail + AI vision for sheet naming ──────────
+async function renderPageThumbnail(lib, file, pageNum) {
   const buf = await file.arrayBuffer();
   const doc = await lib.getDocument({ data: buf.slice(0) }).promise;
   const page = await doc.getPage(pageNum);
-  const vp = page.getViewport({ scale: 1.0 });
 
-  // Crop full-width bottom 20% of the page — catches title blocks on left or right
-  const cropW = vp.width;
-  const cropH = Math.floor(vp.height * 0.20);
-  const cropX = 0;
-  const cropY = vp.height - cropH;
-
-  // Scale down to max 1200px wide for small JPEG
-  const sc = Math.min(1, 1200 / cropW);
+  // Render full page at 0.75x — readable text, ~150-300KB JPEG
+  let scale = 0.75;
+  let vp = page.getViewport({ scale });
   const canvas = document.createElement('canvas');
-  canvas.width = Math.floor(cropW * sc); canvas.height = Math.floor(cropH * sc);
-  const ctx = canvas.getContext('2d');
-  ctx.scale(sc, sc);
-  ctx.translate(-cropX, -cropY);
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  canvas.width = vp.width; canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
 
-  const b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-  canvas.width = 0; canvas.height = 0; // free memory
+  let b64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+
+  // If over 1MB, re-render smaller
+  if (b64.length > 1024 * 1024) {
+    console.log('[OCR] Page', pageNum, 'too large at 0.75x, re-rendering at 0.5x');
+    canvas.width = 0; canvas.height = 0;
+    scale = 0.5;
+    vp = page.getViewport({ scale });
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    b64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+  }
+
+  console.log('[OCR] Page', pageNum, 'image size:', Math.round(b64.length / 1024), 'KB');
+  canvas.width = 0; canvas.height = 0;
   return b64;
 }
 
 async function batchNamePages(crops) {
+  if (!crops.length) return [];
   const content = [];
   crops.forEach((crop, i) => {
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: crop.b64 } });
     content.push({ type: 'text', text: `Image ${i + 1}: Page ${crop.pageNum}` });
   });
-  content.push({ type: 'text', text: `You are looking at ${crops.length} title block crops from construction plan sheets. For each image, read the SHEET NUMBER and SHEET NAME from the title block.
+  content.push({ type: 'text', text: `You are looking at ${crops.length} full-page thumbnails from construction plan sheets. For each image, find the title block (usually bottom-right or right side) and read the SHEET NUMBER and SHEET NAME.
 
 The sheet number is typically the most prominent text in the title block (e.g., A1.0, S-1, FP1, C150, BASR2, L-101).
 The sheet name/description is usually near the sheet number (e.g., FLOOR PLAN, FOUNDATION PLAN, SITE PLAN).
@@ -87,12 +92,19 @@ IMPORTANT:
 Return ONLY a JSON array, no markdown:
 [{"page":1,"number":"A1.0","name":"FLOOR PLAN"},{"page":2,"number":"S-1","name":"FOUNDATION PLAN"}]` });
 
+  console.log('[OCR] Sending batch of', crops.length, 'pages to AI');
   const data = await callClaude({
     model: 'claude-haiku-4-5-20251001', max_tokens: 2000,
     messages: [{ role: 'user', content }]
   });
   const text = data?.content?.map(c => c.text || '').join('') || '';
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  console.log('[OCR] AI response:', text.slice(0, 500));
+  try {
+    return JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch (e) {
+    console.error('[OCR] Failed to parse AI response:', text);
+    return [];
+  }
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -293,31 +305,43 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setParsing(false);
   };
 
-  // AI naming — batch title block crops to Claude Haiku
+  // AI naming — full page thumbnails to Claude Haiku, batch of 2
   const runAiNaming = async (targets) => {
     setNaming(true);
     const lib = await ensurePdfLib();
     if (!lib) { setNaming(false); return; }
-    const BATCH = 8;
+    const BATCH = 2;
     for (let b = 0; b < targets.length; b += BATCH) {
       const batch = targets.slice(b, b + BATCH);
-      setParseStatus(`AI reading title blocks ${b + 1}-${Math.min(b + BATCH, targets.length)} of ${targets.length}...`);
-      try {
-        const crops = await Promise.all(batch.map(async p => {
-          const file = p.pdfFile || p.rawFile;
-          const b64 = await cropTitleBlock(lib, file, p.pageNum || 1);
-          return { pageNum: p.pageNum || 1, b64, id: p.id };
-        }));
-        const results = await batchNamePages(crops);
-        for (const r of results) {
-          if (!r.number) continue;
-          const crop = crops.find(c => c.pageNum === r.page);
-          if (!crop) continue;
-          const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
-          setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
+      setParseStatus(`AI naming ${b + 1}-${Math.min(b + BATCH, targets.length)} of ${targets.length}...`);
+
+      let retries = 2;
+      while (retries > 0) {
+        try {
+          const crops = [];
+          for (const p of batch) {
+            try {
+              const file = p.pdfFile || p.rawFile;
+              const b64 = await renderPageThumbnail(lib, file, p.pageNum || 1);
+              crops.push({ pageNum: p.pageNum || 1, b64, id: p.id });
+            } catch (err) { console.error('[OCR] Failed to render page', p.pageNum, err); }
+          }
+          const results = await batchNamePages(crops);
+          for (const r of results) {
+            if (!r.number) continue;
+            const crop = crops.find(c => c.pageNum === r.page);
+            if (!crop) continue;
+            const fullName = r.name ? `${r.number} - ${r.name}` : r.number;
+            setPages(prev => prev.map(pp => pp.id === crop.id ? { ...pp, name: fullName, autoNamed: true, source: 'ai-vision' } : pp));
+          }
+          break; // success
+        } catch (e) {
+          retries--;
+          console.error('[ai-name] batch failed, retries left:', retries, e);
+          if (retries > 0) await new Promise(r => setTimeout(r, 2000));
         }
-      } catch (e) { console.warn('[ai-name] batch failed:', e); }
-      if (b + BATCH < targets.length) await new Promise(r => setTimeout(r, 500));
+      }
+      if (b + BATCH < targets.length) await new Promise(r => setTimeout(r, 300));
     }
     setNaming(false);
   };
@@ -326,7 +350,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const aiNameUnnamed = async () => {
     const targets = pages.filter(p => p.source === 'not found' && (p.pdfFile || p.rawFile));
     if (!targets.length) { alert('All pages are already named.'); return; }
-    const creditsNeeded = Math.ceil(targets.length / 8); // 1 credit per batch of 8
+    const creditsNeeded = Math.ceil(targets.length / 2); // 1 credit per batch of 2
     if (!confirm(`Use AI Vision to name ${targets.length} sheet${targets.length > 1 ? 's' : ''}?\nThis uses ~${creditsNeeded} AI credit${creditsNeeded > 1 ? 's' : ''}.`)) return;
     await runAiNaming(targets);
     // Log usage
@@ -413,7 +437,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
             {totalUnnamed > 0 && (
               <button onClick={aiNameUnnamed} disabled={naming}
                 style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: naming ? 0.6 : 1 }}>
-                {naming ? parseStatus : `\u2726 AI Name (${totalUnnamed} unnamed) \u2014 ~${Math.ceil(totalUnnamed / 8)} credits`}
+                {naming ? parseStatus : `\u2726 AI Name (${totalUnnamed} unnamed) \u2014 ~${Math.ceil(totalUnnamed / 2)} credits`}
               </button>
             )}
             <span style={{ fontSize: 10, color: '#bbb' }}>Click any name to edit</span>
