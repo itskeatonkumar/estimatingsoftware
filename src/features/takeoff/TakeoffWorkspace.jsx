@@ -1402,11 +1402,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         if(!item) return;
         const shapes = Array.isArray(item.points[0]) ? item.points : [item.points];
         if(shapes.length<=1){
-          // Delete the whole item — preserve panel structure
-          setItems(prev=>prev.filter(i=>i.id!==itemId));
-          if(String(activeCondId)===String(itemId)){setActiveCondId(null);setTool('select');setActivePts([]);}
-          setLeftTab('takeoffs'); setTakeoffStep(null);
-          supabase.from('takeoff_items').delete().eq('id',itemId).select().then(({data:del,error})=>{ if(error) console.error('eraser del',error); else if(!del||del.length===0) console.warn('eraser: RLS blocked delete for',itemId); });
+          // Clear measurement but keep the takeoff line item
+          const total_cost=computeTotalCost(item, 0);
+          setItems(prev=>prev.map(i=>i.id===itemId?{...i,points:[],quantity:0,total_cost}:i));
+          supabase.from('takeoff_items').update({points:[],quantity:0,total_cost}).eq('id',itemId).then(({error})=>{ if(error) console.error('eraser clear',error); });
         } else {
           // Remove just this shape
           const newShapes=shapes.filter((_,i)=>i!==shapeIdx);
@@ -2631,14 +2630,12 @@ ${planText}` }]
       console.log('[deleteSelectedShapes] item', id, 'shapes count:', shapes.length, 'removing idxs:', idxs);
       const kept = shapes.filter((_, i) => !idxs.includes(i));
       if(kept.length === 0){
-        console.log('[deleteSelectedShapes] deleting entire item', id);
-        setItems(prev => prev.filter(i => String(i.id) !== String(id)));
-        if(String(activeCondId)===String(id)){setActiveCondId(null);setTool('select');setActivePts([]);}
-        setLeftTab('takeoffs'); setTakeoffStep(null);
-        supabase.from('takeoff_items').delete().eq('id', id).select().then(({ data:del, error }) => {
-          if(error) console.error('[deleteSelectedShapes] supabase delete error:', error);
-          else if(!del||del.length===0) console.warn('[deleteSelectedShapes] RLS blocked delete for', id);
-          else console.log('[deleteSelectedShapes] supabase delete OK for', id);
+        // Clear measurement but keep the takeoff line item
+        console.log('[deleteSelectedShapes] clearing measurement for item', id);
+        const total_cost=computeTotalCost(item, 0);
+        setItems(prev => prev.map(i => String(i.id) === String(id) ? {...i, points:[], quantity:0, total_cost} : i));
+        supabase.from('takeoff_items').update({ points:[], quantity:0, total_cost }).eq('id', id).then(({ error }) => {
+          if(error) console.error('[deleteSelectedShapes] supabase clear error:', error);
         });
       } else {
         console.log('[deleteSelectedShapes] trimming item', id, 'kept shapes:', kept.length);
