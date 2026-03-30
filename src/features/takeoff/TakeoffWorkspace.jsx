@@ -361,6 +361,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [openTabs, setOpenTabs] = useState(() => {
     try { const s = sessionStorage.getItem('openTabs_'+project.id); return s ? JSON.parse(s) : []; } catch { return []; }
   });
+  const [draggedTabIdx, setDraggedTabIdx] = useState(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(()=>{
+    try { return parseInt(localStorage.getItem('leftPanelWidth')||'280'); } catch { return 280; }
+  });
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameData, setRenameData] = useState([]);
   const planDragRef = useRef(null);
@@ -380,6 +385,16 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   useEffect(() => {
     try { localStorage.setItem(`markups_${project.id}`, JSON.stringify(markups)); } catch {}
   }, [markups, project.id]);
+
+  // ── Left panel resize handler ──
+  useEffect(()=>{
+    if(!isResizingLeft) return;
+    const onMove=(e)=>{setLeftPanelWidth(Math.min(500,Math.max(200,e.clientX)));};
+    const onUp=()=>{setIsResizingLeft(false);try{localStorage.setItem('leftPanelWidth',String(leftPanelWidth));}catch{}};
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+    return()=>{document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);};
+  },[isResizingLeft,leftPanelWidth]);
 
   // ── Always-current refs: assigned synchronously each render (correct React pattern) ──
   // avoids TDZ crash that useEffect([dep]) would cause when refs precede state declarations
@@ -1114,7 +1129,11 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         if(match){
           const pxPerFt=(planDpi*12)/match.ratio;
           setScale(pxPerFt); setPresetScale(match.label);
-          if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+          if(selPlan?.id&&selPlan.id!=='preview'){
+            await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+            setSelPlan(prev=>({...prev,scale_px_per_ft:pxPerFt}));
+            setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,scale_px_per_ft:pxPerFt}:p));
+          }
           alert('✓ Scale detected: '+match.label);
         } else {
           alert('Detected scale "'+parsed.scale+'" — select it manually from the dropdown.');
@@ -3929,7 +3948,14 @@ ${planText}` }]
       {mainView==='workspace'&&<div style={{display:'flex',flex:1,overflow:'hidden'}}>
 
         {/* ── Left Panel ── */}
-        <div style={{width:280,flexShrink:0,display:'flex',flexDirection:'column',borderRight:`1px solid ${t.border}`,background:t.bg2,overflow:'hidden'}}>
+        <div style={{width:leftPanelWidth,minWidth:200,maxWidth:500,flexShrink:0,display:'flex',flexDirection:'column',borderRight:`1px solid ${t.border}`,background:t.bg2,overflow:'hidden',position:'relative'}}>
+
+          {/* Resize handle on right edge */}
+          <div onMouseDown={(e)=>{e.preventDefault();setIsResizingLeft(true);}}
+            style={{position:'absolute',right:0,top:0,bottom:0,width:4,cursor:'col-resize',
+              background:isResizingLeft?'#10B981':'transparent',transition:'background 0.15s',zIndex:10}}
+            onMouseEnter={(e)=>{if(!isResizingLeft)e.currentTarget.style.background='#d1d5db';}}
+            onMouseLeave={(e)=>{if(!isResizingLeft)e.currentTarget.style.background='transparent';}}/>
 
           {/* Left panel tab strip */}
           <div style={{display:'flex',alignItems:'stretch',borderBottom:`1px solid ${t.border}`,flexShrink:0,height:36}}>
@@ -4470,17 +4496,11 @@ ${planText}` }]
 
               {/* Category > Items tree */}
               <div style={{flex:1,overflowY:'auto'}}>
-                {!hasAny&&(
-                  <div style={{textAlign:'center',padding:'40px 16px',color:t.text4,fontSize:11,lineHeight:1.8}}>
-                    No takeoffs yet.<br/>Click <strong style={{color:t.text}}>New Takeoff</strong> to get started.
-                  </div>
-                )}
-
                 {catGroups.map(({cat, items:catItems})=>{
-                  // Always show all categories (collapsed if empty), but hide empties when searching
+                  // Hide empties only when searching
                   if(toSearch && catItems.length===0) return null;
                   const catKey = 'cat_'+cat.id;
-                  const catCollapsed = collapsedPlans?.[catKey] ?? (catItems.length===0);
+                  const catCollapsed = collapsedPlans?.[catKey] ?? false;
                   const catCost = catItems.reduce((s,i)=>s+(i.total_cost||0),0);
 
                   return(
@@ -4513,6 +4533,9 @@ ${planText}` }]
                       {/* ── Items ── */}
                       {!catCollapsed&&(
                         <div>
+                          {catItems.length===0&&(
+                            <div style={{padding:'8px 24px',fontSize:10,color:t.text4,fontStyle:'italic'}}>No items</div>
+                          )}
                           {catItems.map(item=>{
                             const isActive = item._siblings
                               ? item._siblings.some(s=>s.id===activeCondId)
@@ -4718,19 +4741,33 @@ ${planText}` }]
               <span style={{fontSize:11}}>&#9638;</span>
               <span style={{fontSize:11,fontWeight:showOverview?600:400,color:showOverview?t.text:t.text3}}>Overview</span>
             </div>
-            {openTabs.map(tabId=>{
+            {openTabs.map((tabId,tabIdx)=>{
               const p = planMap.get(tabId);
               if(!p) return null;
               const isActive = selPlan?.id===tabId;
               const cnt = planItemCountMap.get(tabId)||0;
               return(
                 <div key={tabId}
+                  draggable
+                  onDragStart={(e)=>{setDraggedTabIdx(tabIdx);e.dataTransfer.effectAllowed='move';}}
+                  onDragOver={(e)=>{e.preventDefault();e.dataTransfer.dropEffect='move';}}
+                  onDrop={(e)=>{
+                    e.preventDefault();
+                    if(draggedTabIdx==null||draggedTabIdx===tabIdx) return;
+                    const newTabs=[...openTabs];
+                    const [moved]=newTabs.splice(draggedTabIdx,1);
+                    newTabs.splice(tabIdx,0,moved);
+                    setOpenTabs(newTabs);
+                    setDraggedTabIdx(null);
+                  }}
+                  onDragEnd={()=>setDraggedTabIdx(null)}
                   onClick={()=>{setShowOverview(false);setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else{setScale(null);setPresetScale('');}}}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',
-                    borderRight:`1px solid ${t.border}`,cursor:'pointer',flexShrink:0,minWidth:100,maxWidth:180,
+                    borderRight:`1px solid ${t.border}`,cursor:'grab',flexShrink:0,minWidth:100,maxWidth:180,
                     background:(!showOverview&&isActive)?t.bg:'transparent',
                     borderBottom:(!showOverview&&isActive)?`2px solid #10B981`:'2px solid transparent',
-                    boxSizing:'border-box',position:'relative'}}>
+                    boxSizing:'border-box',position:'relative',
+                    opacity:draggedTabIdx===tabIdx?0.5:1}}>
                   <span style={{fontSize:11,fontWeight:isActive?600:400,color:isActive?t.text:t.text3,
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>
                     {p.name||`Sheet ${plans.indexOf(p)+1}`}
@@ -5578,7 +5615,11 @@ ${planText}` }]
                             const pxPerFt = (planDpi*12)/( ft*12 );
                             const label = `1"=${ft}ft`;
                             setScale(pxPerFt); setPresetScale(label);
-                            if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                            if(selPlan?.id&&selPlan.id!=='preview'){
+                              await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                              setSelPlan(prev=>({...prev,scale_px_per_ft:pxPerFt}));
+                              setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,scale_px_per_ft:pxPerFt}:p));
+                            }
                             setShowScalePanel(false); setCustomScaleInput('');
                           }}
                         />
@@ -5589,7 +5630,11 @@ ${planText}` }]
                           const pxPerFt = (planDpi*12)/( ft*12 );
                           const label = `1"=${ft}ft`;
                           setScale(pxPerFt); setPresetScale(label);
-                          if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                          if(selPlan?.id&&selPlan.id!=='preview'){
+                            await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                            setSelPlan(prev=>({...prev,scale_px_per_ft:pxPerFt}));
+                            setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,scale_px_per_ft:pxPerFt}:p));
+                          }
                           setShowScalePanel(false); setCustomScaleInput('');
                         }} disabled={!customScaleInput||parseFloat(customScaleInput)<=0}
                           style={{background:'#10B981',border:'none',color:'#fff',borderRadius:4,padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:700,flexShrink:0,opacity:customScaleInput&&parseFloat(customScaleInput)>0?1:0.4}}>
@@ -5615,7 +5660,11 @@ ${planText}` }]
                         <button key={s.label} onClick={async()=>{
                           const pxPerFt=(planDpi*12)/s.ratio;
                           setScale(pxPerFt); setPresetScale(s.label);
-                          if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                          if(selPlan?.id&&selPlan.id!=='preview'){
+                            await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                            setSelPlan(prev=>({...prev,scale_px_per_ft:pxPerFt}));
+                            setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,scale_px_per_ft:pxPerFt}:p));
+                          }
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
                           color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
@@ -5628,7 +5677,11 @@ ${planText}` }]
                         <button key={s.label} onClick={async()=>{
                           const pxPerFt=(planDpi*12)/s.ratio;
                           setScale(pxPerFt); setPresetScale(s.label);
-                          if(selPlan?.id&&selPlan.id!=='preview') await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                          if(selPlan?.id&&selPlan.id!=='preview'){
+                            await supabase.from('precon_plans').update({scale_px_per_ft:pxPerFt}).eq('id',selPlan.id);
+                            setSelPlan(prev=>({...prev,scale_px_per_ft:pxPerFt}));
+                            setPlans(prev=>prev.map(p=>p.id===selPlan.id?{...p,scale_px_per_ft:pxPerFt}:p));
+                          }
                           setShowScalePanel(false);
                         }} style={{width:'100%',background:presetScale===s.label?'rgba(16,185,129,0.15)':'none',border:'none',
                           color:presetScale===s.label?'#10B981':'rgba(255,255,255,0.7)',
