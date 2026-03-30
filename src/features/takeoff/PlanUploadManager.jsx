@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase.js';
-import { useOrg } from '../../lib/OrgContext.jsx';
 
 const SPEC_KEYWORDS = ['spec','addend','bid','contract','geotech','report','appendix','exhibit','submittal','schedule','narrative'];
 function isSpecFolder(name) { return SPEC_KEYWORDS.some(kw => (name||'').toLowerCase().includes(kw)); }
@@ -108,8 +106,7 @@ Return ONLY a JSON array, no markdown:
 }
 
 // ── Component ──────────────────────────────────────────────────
-export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) {
-  const { orgId } = useOrg();
+export default function PlanUploadManager({ rawFiles, onStartUpload, onClose, aiCreditHook }) {
   const [pages, setPages] = useState([]);
   const [folders, setFolders] = useState([]);
   const [selFolder, setSelFolder] = useState(null);
@@ -122,17 +119,11 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const [results, setResults] = useState({ success: 0, failed: 0, errors: [] });
   const [editingId, setEditingId] = useState(null);
   const [naming, setNaming] = useState(false);
-  const [aiCreditsUsed, setAiCreditsUsed] = useState(0);
   const cancelRef = useRef(false);
 
-  // Load AI credits used this month
-  useEffect(() => {
-    if (!orgId) return;
-    const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
-    supabase.from('ai_usage').select('credits_used').eq('org_id', orgId).gte('created_at', start.toISOString())
-      .then(({ data }) => { if (data) setAiCreditsUsed(data.reduce((s, r) => s + (r.credits_used || 0), 0)); })
-      .catch(() => {});
-  }, [orgId]);
+  const aiAvailable = aiCreditHook?.available ?? 999;
+  const aiIsUnlimited = aiCreditHook?.isUnlimited ?? true;
+  const aiCreditColor = aiCreditHook?.creditColor ?? '#6B7280';
 
   useEffect(() => {
     if (rawFiles?.length) parseInput(rawFiles);
@@ -350,16 +341,14 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const aiNameUnnamed = async () => {
     const targets = pages.filter(p => p.source === 'not found' && (p.pdfFile || p.rawFile));
     if (!targets.length) { alert('All pages are already named.'); return; }
-    const creditsNeeded = Math.ceil(targets.length / 2); // 1 credit per batch of 2
+    const creditsNeeded = Math.ceil(targets.length / 2);
+    if (!aiIsUnlimited && !aiCreditHook?.canUse(creditsNeeded)) {
+      alert(`Not enough AI credits. You need ~${creditsNeeded} but have ${aiAvailable} remaining this month.`);
+      return;
+    }
     if (!confirm(`Use AI Vision to name ${targets.length} sheet${targets.length > 1 ? 's' : ''}?\nThis uses ~${creditsNeeded} AI credit${creditsNeeded > 1 ? 's' : ''}.`)) return;
     await runAiNaming(targets);
-    // Log usage
-    if (orgId) {
-      try {
-        await supabase.from('ai_usage').insert([{ org_id: orgId, credits_used: creditsNeeded, usage_type: 'sheet_naming', created_at: new Date().toISOString() }]);
-        setAiCreditsUsed(prev => prev + creditsNeeded);
-      } catch (e) { console.warn('[ai-credits] log failed:', e); }
-    }
+    if (aiCreditHook?.logUsage) await aiCreditHook.logUsage(creditsNeeded, 'sheet_naming');
   };
 
 
@@ -434,12 +423,15 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         {step === 'preview' && (<>
           {/* Action bar */}
           <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#FAFAFA', flexWrap: 'wrap' }}>
-            {totalUnnamed > 0 && (
-              <button onClick={aiNameUnnamed} disabled={naming}
-                style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: naming ? 0.6 : 1 }}>
-                {naming ? parseStatus : `\u2726 AI Name (${totalUnnamed} unnamed) \u2014 ~${Math.ceil(totalUnnamed / 2)} credits`}
-              </button>
-            )}
+            {totalUnnamed > 0 && (()=>{
+              const creditsNeeded = Math.ceil(totalUnnamed / 2);
+              const hasCredits = aiIsUnlimited || aiCreditHook?.canUse(creditsNeeded);
+              return(
+              <button onClick={aiNameUnnamed} disabled={naming || !hasCredits}
+                style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: (naming || !hasCredits) ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: (naming || !hasCredits) ? 0.5 : 1 }}>
+                {naming ? parseStatus : `\u2726 AI Name (${totalUnnamed} unnamed) \u2014 ~${creditsNeeded} credits`}
+              </button>);
+            })()}
             <span style={{ fontSize: 10, color: '#bbb' }}>Click any name to edit</span>
             <div style={{ flex: 1 }} />
             <button onClick={() => { setPages(p => p.map(x => ({ ...x, checked: true }))); setFolders(f => f.map(x => ({ ...x, checked: true }))); }}
@@ -506,7 +498,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
               <input type="checkbox" checked={skipDuplicates} onChange={e => setSkipDuplicates(e.target.checked)} style={{ accentColor: '#10B981' }} />
               <span style={{ fontSize: 11, color: '#555' }}>Skip duplicates</span>
             </label>
-            {aiCreditsUsed > 0 && <span style={{ fontSize: 10, color: '#9CA3AF' }}>AI credits this month: {aiCreditsUsed}</span>}
+            {!aiIsUnlimited && <span style={{ fontSize: 10, color: aiCreditColor }}>{aiAvailable} / {aiCreditHook?.monthly ?? '—'} credits remaining</span>}
             <div style={{ flex: 1 }} />
             <button onClick={onClose} style={{ padding: '6px 14px', border: '1px solid #E5E7EB', background: '#fff', color: '#6B7280', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
             <button onClick={startUpload} disabled={selectedCount === 0}

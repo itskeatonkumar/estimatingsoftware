@@ -12,6 +12,7 @@ import PlanChat from "./PlanChat.jsx";
 import PlanUploadManager from "./PlanUploadManager.jsx";
 import { loadRegionalPricing, getRegionForState, getRegionalCost, getDefaultCostForCategory } from "../../lib/regionalPricing.js";
 import { postProcessOcrItems, parseScaleString } from "../../lib/pdfParsing.js";
+import useAICredits from "../../hooks/useAICredits.js";
 
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}) : '';
 
@@ -157,7 +158,10 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiScopeItems, setAiScopeItems] = useState(null); // [{description,category,unit,source_sheet,spec_text,checked}]
   const [aiScopeLoading2, setAiScopeLoading2] = useState(false);
-  const [aiCredits, setAiCredits] = useState(null); // {available, monthly, used, purchased, reset_at}
+  const aiCreditHook = useAICredits(orgId);
+  const aiCredits = aiCreditHook.credits;
+  const setAiCredits = aiCreditHook.setCredits;
+  const [_aiCreditsLegacy, _setAiCreditsLegacy] = useState(null); // unused, kept for compat
   const [showCreditsDD, setShowCreditsDD] = useState(false);
   const [showSheetSelector, setShowSheetSelector] = useState(false);
   const [selectedSheets, setSelectedSheets] = useState(new Set());
@@ -516,13 +520,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       .then(({data})=>{if(data) setProjectCollabs(data);}).catch(()=>{});
   },[]);
 
-  // Load AI credits on mount (skip silently if org tables don't exist)
-  useEffect(()=>{
-    supabase.rpc('get_ai_credits').then(({data,error})=>{
-      if(!error && data) setAiCredits(data);
-      else setAiCredits({available:999,monthly:999,used:0,purchased:0,reset_at:null});
-    });
-  },[]);
+  // AI credits loaded by useAICredits hook
 
   // Helper: save planSets to localStorage
   const savePlanSets = (sets) => {
@@ -3577,8 +3575,8 @@ ${planText}` }]
           <div style={{position:'relative'}}>
             <button onClick={()=>setShowCreditsDD(p=>!p)}
               style={{background:'none',border:`1px solid ${t.border}`,borderRadius:4,padding:'3px 8px',cursor:'pointer',
-                display:'flex',alignItems:'center',gap:4,fontSize:11,color:'#7B6BA4'}}>
-              <span>✦</span> {aiCredits?.available ?? '—'} credits
+                display:'flex',alignItems:'center',gap:4,fontSize:11,color:aiCreditHook.creditColor}}>
+              <span>✦</span> {aiCreditHook.isUnlimited ? '∞' : (aiCredits?.available ?? '—')} credits
             </button>
             {showCreditsDD&&<>
               <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowCreditsDD(false)}/>
@@ -5785,6 +5783,7 @@ ${planText}` }]
             rawFiles={uploadManagerFiles}
             onStartUpload={executeManagerUpload}
             onClose={() => setUploadManagerFiles(null)}
+            aiCreditHook={aiCreditHook}
           />
         )}
 
