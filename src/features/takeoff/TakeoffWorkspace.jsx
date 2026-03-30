@@ -4438,6 +4438,7 @@ ${planText}` }]
               const catItems = filteredItems.filter(i=>i.category===cat.id);
               return {cat, items:catItems};
             });
+            const hasAnyItems = catGroups.some(g=>g.items.length>0);
             return(
             <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
               {/* Active measuring banner */}
@@ -4496,11 +4497,16 @@ ${planText}` }]
 
               {/* Category > Items tree */}
               <div style={{flex:1,overflowY:'auto'}}>
+                {!hasAnyItems&&!toSearch&&(
+                  <div style={{textAlign:'center',padding:'24px 16px 16px',color:t.text4,fontSize:11,lineHeight:1.8}}>
+                    No takeoffs yet.<br/>Click <strong style={{color:'#10B981'}}>+ New Takeoff</strong> to get started.
+                  </div>
+                )}
                 {catGroups.map(({cat, items:catItems})=>{
                   // Hide empties only when searching
                   if(toSearch && catItems.length===0) return null;
                   const catKey = 'cat_'+cat.id;
-                  const catCollapsed = collapsedPlans?.[catKey] ?? false;
+                  const catCollapsed = collapsedPlans?.[catKey] ?? (catItems.length===0);
                   const catCost = catItems.reduce((s,i)=>s+(i.total_cost||0),0);
 
                   return(
