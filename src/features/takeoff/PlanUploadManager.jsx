@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../../lib/supabase.js';
+import { useOrg } from '../../lib/OrgContext.jsx';
 
 const SPEC_KEYWORDS = ['spec','addend','bid','contract','geotech','report','appendix','exhibit','submittal','schedule','narrative'];
 function isSpecFolder(name) { return SPEC_KEYWORDS.some(kw => (name||'').toLowerCase().includes(kw)); }
@@ -46,15 +48,18 @@ async function cropTitleBlock(lib, file, pageNum) {
   const page = await doc.getPage(pageNum);
   const vp = page.getViewport({ scale: 1.0 });
 
-  // Crop bottom-right 30% width × 25% height (where title blocks live)
-  const cropW = Math.floor(vp.width * 0.30);
-  const cropH = Math.floor(vp.height * 0.25);
-  const cropX = vp.width - cropW;
+  // Crop full-width bottom 20% of the page — catches title blocks on left or right
+  const cropW = vp.width;
+  const cropH = Math.floor(vp.height * 0.20);
+  const cropX = 0;
   const cropY = vp.height - cropH;
 
+  // Scale down to max 1200px wide for small JPEG
+  const sc = Math.min(1, 1200 / cropW);
   const canvas = document.createElement('canvas');
-  canvas.width = cropW; canvas.height = cropH;
+  canvas.width = Math.floor(cropW * sc); canvas.height = Math.floor(cropH * sc);
   const ctx = canvas.getContext('2d');
+  ctx.scale(sc, sc);
   ctx.translate(-cropX, -cropY);
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
@@ -74,12 +79,13 @@ async function batchNamePages(crops) {
 The sheet number is typically the most prominent text in the title block (e.g., A1.0, S-1, FP1, C150, BASR2, L-101).
 The sheet name/description is usually near the sheet number (e.g., FLOOR PLAN, FOUNDATION PLAN, SITE PLAN).
 
-IMPORTANT: Do NOT use the project name, company name, city, or address as the sheet number. The sheet number is a SHORT alphanumeric code.
+IMPORTANT:
+- Do NOT use the project name, company name, city, or address as the sheet number. The sheet number is a SHORT alphanumeric code.
+- If you cannot see a clear title block with a sheet number in the image, return null for that page's number. Do NOT guess.
+- Some pages may be specs, cover sheets, or non-standard layouts — these should get null.
 
 Return ONLY a JSON array, no markdown:
-[{"page":1,"number":"A1.0","name":"FLOOR PLAN"},{"page":2,"number":"S-1","name":"FOUNDATION PLAN"}]
-
-If you cannot determine the sheet number for a page, use null for number.` });
+[{"page":1,"number":"A1.0","name":"FLOOR PLAN"},{"page":2,"number":"S-1","name":"FOUNDATION PLAN"}]` });
 
   const data = await callClaude({
     model: 'claude-haiku-4-5-20251001', max_tokens: 2000,
@@ -91,6 +97,7 @@ If you cannot determine the sheet number for a page, use null for number.` });
 
 // ── Component ──────────────────────────────────────────────────
 export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) {
+  const { orgId } = useOrg();
   const [pages, setPages] = useState([]);
   const [folders, setFolders] = useState([]);
   const [selFolder, setSelFolder] = useState(null);
@@ -103,7 +110,17 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const [results, setResults] = useState({ success: 0, failed: 0, errors: [] });
   const [editingId, setEditingId] = useState(null);
   const [naming, setNaming] = useState(false);
+  const [aiCreditsUsed, setAiCreditsUsed] = useState(0);
   const cancelRef = useRef(false);
+
+  // Load AI credits used this month
+  useEffect(() => {
+    if (!orgId) return;
+    const start = new Date(); start.setDate(1); start.setHours(0,0,0,0);
+    supabase.from('ai_usage').select('credits_used').eq('org_id', orgId).gte('created_at', start.toISOString())
+      .then(({ data }) => { if (data) setAiCreditsUsed(data.reduce((s, r) => s + (r.credits_used || 0), 0)); })
+      .catch(() => {});
+  }, [orgId]);
 
   useEffect(() => {
     if (rawFiles?.length) parseInput(rawFiles);
@@ -187,34 +204,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
       if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
 
-    // ═══ METHOD 4: AI VISION on title block crops (for unnamed pages) ═══
-    const unnamed = [];
-    for (let i = 0; i < numPages; i++) { if (!names[i]) unnamed.push(i); }
-
-    if (unnamed.length > 0) {
-      const BATCH = 8;
-      for (let b = 0; b < unnamed.length; b += BATCH) {
-        const batch = unnamed.slice(b, b + BATCH);
-        setParseStatus(`${statusPrefix || file.name} \u2014 AI reading title blocks ${b + 1}-${Math.min(b + BATCH, unnamed.length)} of ${unnamed.length}...`);
-        setParsePct(Math.round(((namedSoFar + b) / numPages) * 100));
-        try {
-          const crops = await Promise.all(batch.map(async idx => {
-            const b64 = await cropTitleBlock(lib, file, idx + 1);
-            return { pageNum: idx + 1, b64 };
-          }));
-          const results = await batchNamePages(crops);
-          for (const r of results) {
-            if (r.number) {
-              const idx = r.page - 1;
-              names[idx] = r.name ? `${r.number} - ${r.name}` : r.number;
-              sources[idx] = 'ai-vision';
-            }
-          }
-        } catch (err) { console.warn('[OCR] AI batch failed:', err); }
-        if (b + BATCH < unnamed.length) await new Promise(r => setTimeout(r, 500));
-      }
-      console.log(`[OCR] After AI vision: ${names.filter(Boolean).length}/${numPages} named`);
-    }
+    // AI Vision is opt-in — user clicks "AI Name" button after preview
 
     // Build result array
     const result = [];
@@ -312,12 +302,20 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     setNaming(false);
   };
 
-  // AI name unnamed only
+  // AI name unnamed only — opt-in with credit tracking
   const aiNameUnnamed = async () => {
-    const targets = pages.filter(p => p.source === 'not found' && p.checked && (p.pdfFile || p.rawFile));
-    if (!targets.length) { alert('All selected pages are already named.'); return; }
-    if (!confirm(`Use AI to name ${targets.length} unnamed sheet${targets.length > 1 ? 's' : ''}?\nThis uses ${targets.length} AI credit${targets.length > 1 ? 's' : ''}.`)) return;
+    const targets = pages.filter(p => p.source === 'not found' && (p.pdfFile || p.rawFile));
+    if (!targets.length) { alert('All pages are already named.'); return; }
+    const creditsNeeded = Math.ceil(targets.length / 8); // 1 credit per batch of 8
+    if (!confirm(`Use AI Vision to name ${targets.length} sheet${targets.length > 1 ? 's' : ''}?\nThis uses ~${creditsNeeded} AI credit${creditsNeeded > 1 ? 's' : ''}.`)) return;
     await runAiNaming(targets);
+    // Log usage
+    if (orgId) {
+      try {
+        await supabase.from('ai_usage').insert([{ org_id: orgId, credits_used: creditsNeeded, usage_type: 'sheet_naming', created_at: new Date().toISOString() }]);
+        setAiCreditsUsed(prev => prev + creditsNeeded);
+      } catch (e) { console.warn('[ai-credits] log failed:', e); }
+    }
   };
 
 
@@ -332,6 +330,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   const selectedCount = pages.filter(p => p.checked).length;
   const namedCount = pages.filter(p => p.source !== 'not found').length;
   const unnamedCount = pages.filter(p => p.source === 'not found' && p.checked).length;
+  const totalUnnamed = pages.filter(p => p.source === 'not found' && (p.pdfFile || p.rawFile)).length;
   const folderPages = selFolder ? pages.filter(p => p.folder === selFolder) : [];
 
   const startUpload = () => {
@@ -391,16 +390,16 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
         {step === 'preview' && (<>
           {/* Action bar */}
           <div style={{ padding: '6px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#FAFAFA', flexWrap: 'wrap' }}>
-            {unnamedCount > 0 && (
+            {totalUnnamed > 0 && (
               <button onClick={aiNameUnnamed} disabled={naming}
-                style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 11, fontWeight: 600 }}>
-                {naming ? parseStatus : `AI Name (${unnamedCount} unnamed)`}
+                style={{ padding: '4px 10px', border: '1px solid #7B6BA4', background: '#F5F3FF', color: '#7B6BA4', borderRadius: 4, cursor: naming ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, opacity: naming ? 0.6 : 1 }}>
+                {naming ? parseStatus : `\u2726 AI Name (${totalUnnamed} unnamed) \u2014 ~${Math.ceil(totalUnnamed / 8)} credits`}
               </button>
             )}
             <span style={{ fontSize: 10, color: '#bbb' }}>Click any name to edit</span>
             <div style={{ flex: 1 }} />
             <button onClick={() => { setPages(p => p.map(x => ({ ...x, checked: true }))); setFolders(f => f.map(x => ({ ...x, checked: true }))); }}
-              style={{ fontSize: 10, color: '#10B981', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>All</button>
+              style={{ fontSize: 10, color: '#10B981', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Select All</button>
             <button onClick={() => { setPages(p => p.map(x => ({ ...x, checked: false }))); setFolders(f => f.map(x => ({ ...x, checked: false }))); }}
               style={{ fontSize: 10, color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer' }}>None</button>
           </div>
@@ -463,6 +462,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
               <input type="checkbox" checked={skipDuplicates} onChange={e => setSkipDuplicates(e.target.checked)} style={{ accentColor: '#10B981' }} />
               <span style={{ fontSize: 11, color: '#555' }}>Skip duplicates</span>
             </label>
+            {aiCreditsUsed > 0 && <span style={{ fontSize: 10, color: '#9CA3AF' }}>AI credits this month: {aiCreditsUsed}</span>}
             <div style={{ flex: 1 }} />
             <button onClick={onClose} style={{ padding: '6px 14px', border: '1px solid #E5E7EB', background: '#fff', color: '#6B7280', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
             <button onClick={startUpload} disabled={selectedCount === 0}
