@@ -2467,6 +2467,8 @@ ${planText}` }]
     const {error}=await supabase.from('takeoff_items').delete().eq('id',id).select();
     if(error){console.error('deleteItem error:',error);alert('Delete failed: '+error.message);return;}
     setItems(prev=>prev.filter(i=>i.id!==id));
+    // Clear active condition if the deleted item was armed
+    if(String(activeCondId)===String(id)){setActiveCondId(null);setTool('select');setActivePts([]);}
   };
 
   const pushToSOV = async () => {
@@ -4436,8 +4438,6 @@ ${planText}` }]
               const catItems = filteredItems.filter(i=>i.category===cat.id);
               return {cat, items:catItems};
             });
-            const hasAny = catGroups.some(g=>g.items.length>0);
-
             return(
             <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
               {/* Active measuring banner */}
@@ -6787,7 +6787,7 @@ ${planText}` }]
                               <td style={{...editCell,textAlign:'right',fontWeight:600,color:'#10B981',fontVariantNumeric:'tabular-nums'}}>{isSaving?'…':'$'+Math.round(total).toLocaleString()}</td>
                             </>)}
                             <td style={{...editCell,textAlign:'center'}}>
-                              <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
+                              <button onClick={async()=>{if(!window.confirm('Delete '+it.description+'?'))return;await supabase.from('takeoff_items').delete().eq('id',it.id).select();setItems(prev=>prev.filter(i=>i.id!==it.id));if(String(activeCondId)===String(it.id)){setActiveCondId(null);setTool('select');setActivePts([]);}}} style={{background:'none',border:'none',color:'#ccc',cursor:'pointer',fontSize:12}}>&#10005;</button>
                             </td>
                           </tr>
                         );
@@ -7117,7 +7117,10 @@ ${planText}` }]
         </div>
       )}
       {editItem&&<TakeoffItemModal item={editItem} onSave={(data,type)=>{
-        if(type==='delete'){setItems(prev=>prev.filter(i=>i.id!==editItem.id));}
+        if(type==='delete'){
+          setItems(prev=>prev.filter(i=>i.id!==editItem.id));
+          if(String(activeCondId)===String(editItem.id)){setActiveCondId(null);setTool('select');setActivePts([]);}
+        }
         else if(type===true){setItems(prev=>[...prev.filter(i=>i.id!==data.id),data]);}
         else{setItems(prev=>prev.map(i=>i.id===data.id?data:i));}
         setEditItem(null);
