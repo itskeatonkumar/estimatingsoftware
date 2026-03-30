@@ -190,19 +190,39 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
     const namedSoFar = names.filter(Boolean).length;
     console.log(`[OCR] After metadata: ${namedSoFar}/${numPages} named`);
 
-    // ═══ METHOD 3: Grab OCR text + collect unnamed pages for AI vision ═══
+    // ═══ METHOD 3: Text extraction — grab OCR text + try sheet number pattern match ═══
+    const SHEET_RE = /^[A-Z]{1,5}[-]?\d{1,4}([.-]\d{1,3})?$/;
+    const REJECT = new Set(['SHEET','SCALE','DATE','DRAWN','CHECK','ISSUE','BLOCK','CHICK','STORE','PLAN','FLOOR','AREA','LEVEL','NORTH','SOUTH','EAST','WEST','TOTAL','STEEL','WOOD','WALL','DOOR','ROOF','SITE','FIRE','LIFE']);
     const ocrTexts = new Array(numPages).fill('');
+    let textCount = 0;
     for (let i = 0; i < numPages; i++) {
       const prefix = statusPrefix || file.name;
-      setParseStatus(`${prefix} \u2014 reading page ${i + 1} of ${numPages}`);
+      setParseStatus(`${prefix} \u2014 scanning page ${i + 1} of ${numPages}`);
       setParsePct(Math.round(((i + 1) / numPages) * 100));
       try {
         const page = await doc.getPage(i + 1);
         const tc = await page.getTextContent();
+        const vp = page.getViewport({ scale: 1 });
         ocrTexts[i] = tc.items.map(it => it.str || '').join(' ').slice(0, 5000);
+
+        // Try strict sheet number extraction for unnamed pages
+        if (!names[i]) {
+          const minX = vp.width * 0.65;
+          const maxY = vp.height * 0.35; // PDF coords: y=0 is bottom
+          const candidates = tc.items
+            .map(it => ({ str: (it.str||'').trim(), x: it.transform?.[4]||0, y: it.transform?.[5]||0, fs: it.transform ? Math.sqrt(it.transform[0]**2 + it.transform[1]**2) : 0 }))
+            .filter(it => it.str.length >= 2 && it.str.length <= 12 && it.x > minX && it.y < maxY && SHEET_RE.test(it.str) && !REJECT.has(it.str.toUpperCase()));
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => b.fs - a.fs);
+            names[i] = candidates[0].str;
+            sources[i] = 'sheet-num';
+            textCount++;
+          }
+        }
       } catch { /* ok */ }
       if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
     }
+    if (textCount) console.log(`[OCR] Text extraction: ${textCount} additional names`);
 
     // AI Vision is opt-in — user clicks "AI Name" button after preview
 
@@ -349,7 +369,7 @@ export default function PlanUploadManager({ rawFiles, onStartUpload, onClose }) 
   };
 
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
-  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'ai-vision': { c: '#7B6BA4', l: 'AI Vision' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
+  const SRC = { 'pdf-label': { c: '#10B981', l: 'PDF' }, 'bookmark': { c: '#10B981', l: 'Bookmark' }, 'sheet-num': { c: '#3B82F6', l: 'Sheet #' }, 'ai-vision': { c: '#7B6BA4', l: 'AI Vision' }, 'ai': { c: '#7B6BA4', l: 'AI' }, 'manual': { c: '#1A1A1A', l: 'Manual' }, 'filename': { c: '#6B7280', l: 'File' }, 'not found': { c: '#D1D5DB', l: 'Not found' } };
 
   // ── PARSING SCREEN ──
   if (parsing) return (
