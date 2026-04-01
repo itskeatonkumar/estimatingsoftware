@@ -373,6 +373,9 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameData, setRenameData] = useState([]);
   const planDragRef = useRef(null);
+  const tabBarRef = useRef(null);
+  const [clickCycleKey, setClickCycleKey] = useState(null); // shapeKey of last click for cycling
+  const clickCycleRef = useRef(0); // cycle index
   const [planDragOver, setPlanDragOver] = useState(null);
   const [leftTab, setLeftTab] = useState('takeoffs'); // 'plans' | 'takeoffs' | 'library'
   const [showOverview, setShowOverview] = useState(true); // plan overview grid
@@ -497,8 +500,12 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     });
   },[project.id]);
 
-  // Persist open tabs + active tab to sessionStorage
-  useEffect(()=>{ try { sessionStorage.setItem('openTabs_'+project.id, JSON.stringify(openTabs)); } catch {} },[openTabs, project.id]);
+  // Persist open tabs + active tab to sessionStorage; auto-scroll tab bar
+  useEffect(()=>{
+    try { sessionStorage.setItem('openTabs_'+project.id, JSON.stringify(openTabs)); } catch {}
+    // Scroll tab bar to show newest tab
+    if(tabBarRef.current) setTimeout(()=>{ tabBarRef.current.scrollLeft = tabBarRef.current.scrollWidth; }, 50);
+  },[openTabs, project.id]);
   useEffect(()=>{ if(selPlan?.id) try { sessionStorage.setItem('activeTab_'+project.id, String(selPlan.id)); } catch {} },[selPlan?.id, project.id]);
 
   // Load dynamic categories + regional pricing + collaborators
@@ -551,6 +558,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
   // Helper: get effective display quantity and unit for an item
   // Linear items with height → SF (LF × height = SF wall area)
   // DB stores raw LF — height conversion is display-time only
+  // TODO: Per-takeoff multiplier for grouped items (e.g. striping where all items share a multiplier)
   const getDisplayQtyUnit = (item) => {
     let rawQty = (item.quantity || 0) * (item.multiplier || 1);
     const mt = item.measurement_type;
@@ -1340,10 +1348,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     }
     if(mt==='linear' && pts.length>=2){
       appendMeasurement(activeCondId, pts);
-      setActivePts([]);
+      setActivePts([]); setArcPending(false); setArchCtrlPending(false);
     } else if(mt==='area' && pts.filter(p=>!p._ctrl).length>=3){
       appendMeasurement(activeCondId, pts);
-      setActivePts([]); setArchCtrlPending(false);
+      setActivePts([]); setArcPending(false); setArchCtrlPending(false);
     }
   };
 
@@ -2731,9 +2739,16 @@ ${planText}` }]
   const renderMeasurements=()=>{
     if(!selPlan?.id) return [];
     const sw=2/zoom, fs=10/zoom, r=5/zoom, rSm=3/zoom, padH=9/zoom;
-    return items
-      .filter(it=> it.points?.length && (it.plan_id===selPlan.id || normalizeShapes(it.points).some(sh=>sh[0]?._planId===selPlan.id)))
-      .flatMap(it=>{
+    // Sort so selected shapes render last (on top in SVG)
+    const sortedItems = items
+      .filter(it=> it.points?.length && (it.plan_id===selPlan.id || normalizeShapes(it.points).some(sh=>sh[0]?._planId===selPlan.id)));
+    const hasSelection = selectedShapes.size > 0;
+    const ordered = hasSelection ? [...sortedItems].sort((a,b)=>{
+      const aS = [...selectedShapes].some(k=>k.startsWith(String(a.id)+'::')) ? 1 : 0;
+      const bS = [...selectedShapes].some(k=>k.startsWith(String(b.id)+'::')) ? 1 : 0;
+      return aS - bS;
+    }) : sortedItems;
+    return ordered.flatMap(it=>{
         const allShapes = normalizeShapes(it.points);
         // Filter to shapes belonging to this plan (by _planId tag, or if item's plan_id matches)
         const shapes = allShapes.filter(sh => {
@@ -2771,9 +2786,11 @@ ${planText}` }]
               if(e.ctrlKey||e.metaKey){
                 setSelectedShapes(prev=>{ const n=new Set(prev); n.has(shapeKey)?n.delete(shapeKey):n.add(shapeKey); return n; });
               } else if(selectedShapes.has(shapeKey)){
-                // Already part of multi-selection — keep the group selected
+                // Already selected — cycle to next overlapping shape at this point
+                setClickCycleKey(shapeKey);
               } else {
                 setSelectedShapes(new Set([shapeKey]));
+                setClickCycleKey(null); clickCycleRef.current = 0;
               }
               return;
             }
@@ -3492,6 +3509,7 @@ ${planText}` }]
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden',position:'relative'}}>
+      <style>{`.hide-scrollbar::-webkit-scrollbar{display:none}`}</style>
 
       {/* ── Top Bar — STACK style ── */}
       <div style={{display:'flex',alignItems:'center',height:44,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,gap:0,padding:'0 0 0 0'}}>
@@ -4606,6 +4624,7 @@ ${planText}` }]
                                   e.stopPropagation();
                                   const p=planMap.get(item.plan_id);
                                   if(p){
+                                    setShowOverview(false);
                                     if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
                                     setSelPlan(p);
                                     if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
@@ -4746,7 +4765,8 @@ ${planText}` }]
 
           {/* ── Sheet tab bar ── */}
           <div style={{display:'flex',alignItems:'stretch',height:32,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,position:'relative'}}>
-            <div style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden'}}>
+            <div ref={tabBarRef} style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden',scrollbarWidth:'none',msOverflowStyle:'none'}}
+              className="hide-scrollbar">
             {/* Overview tab — always first */}
             <div onClick={()=>{setShowOverview(true);setSelPlan(null);}}
               style={{display:'flex',alignItems:'center',gap:5,padding:'0 14px',
