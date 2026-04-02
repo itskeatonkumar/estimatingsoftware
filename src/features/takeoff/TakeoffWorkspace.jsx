@@ -23,9 +23,9 @@ const PlanRow = React.memo(({ p, folderId, cnt, isMarked, isActive, isOpen, drag
   return (
     <div onClick={() => {
         if (!H.openTabs.includes(p.id)) H.setOpenTabs(prev => [...prev, p.id]);
-        H.setSelPlan(p); H.setShowOverview(false);
+        H.setPresetScale(''); H.setSelPlan(p); H.setShowOverview(false);
         if (p.scale_px_per_ft) H.setScale(p.scale_px_per_ft);
-        else { H.setScale(null); H.setPresetScale(''); }
+        else H.setScale(null);
         H.setLeftTab('takeoffs');
       }}
       draggable
@@ -4368,9 +4368,9 @@ ${planText}` }]
                         const p=planMap.get(Number(e.target.value));
                         if(p){
                           if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
-                          setSelPlan(p);
+                          setPresetScale(''); setSelPlan(p);
                           if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
-                          else{setScale(null);setPresetScale('');}
+                          else setScale(null);
                         }
                       }}
                       style={{width:'100%',padding:'7px 10px',border:`1px solid ${selPlan?'#10B981':t.border2}`,borderRadius:5,
@@ -4395,9 +4395,9 @@ ${planText}` }]
                         const firstPlan = openTabs.length>0 ? planMap.get(openTabs[0]) : plans[0];
                         activePlan = firstPlan || plans[0];
                         if(!openTabs.includes(activePlan.id)) setOpenTabs(prev=>[...prev, activePlan.id]);
-                        setSelPlan(activePlan);
+                        setPresetScale(''); setSelPlan(activePlan);
                         if(activePlan.scale_px_per_ft) setScale(activePlan.scale_px_per_ft);
-                        else { setScale(null); setPresetScale(''); }
+                        else setScale(null);
                       }
                       if(!activePlan){ alert('Please upload a plan first'); setCreatingTO(false); return; }
                       const catId = newTOCat;
@@ -4819,9 +4819,9 @@ ${planText}` }]
                     setOpenTabs(newTabs);
                     if(isActive){
                       const next = newTabs.length>0 ? planMap.get(newTabs[newTabs.length-1]) : null;
-                      setSelPlan(next);
+                      setPresetScale(''); setSelPlan(next);
                       if(next?.scale_px_per_ft) setScale(next.scale_px_per_ft);
-                      else { setScale(null); setPresetScale(''); }
+                      else setScale(null);
                     }
                   }} style={{background:'none',border:'none',color:t.text4,cursor:'pointer',
                     fontSize:13,padding:'0',lineHeight:1,flexShrink:0,
@@ -4924,9 +4924,9 @@ ${planText}` }]
                         setShowRefsDD(false);
                         setShowOverview(false);
                         if(!openTabs.includes(rp.id)) setOpenTabs(prev=>[...prev,rp.id]);
-                        setSelPlan(rp);
+                        setPresetScale(''); setSelPlan(rp);
                         if(rp.scale_px_per_ft) setScale(rp.scale_px_per_ft);
-                        else{setScale(null);setPresetScale('');}
+                        else setScale(null);
                       }}
                         style={{display:'block',width:'100%',textAlign:'left',padding:'8px 12px',border:'none',
                           background:'#fff',cursor:'pointer',borderBottom:'1px solid #f8f8f8'}}
@@ -5051,10 +5051,11 @@ ${planText}` }]
                       <div key={p.id}
                         onClick={()=>{
                           setShowOverview(false);
+                          setPresetScale('');
                           setSelPlan(p);
                           if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
                           if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
-                          else{setScale(null);setPresetScale('');}
+                          else setScale(null);
                         }}
                         style={{background:'#fff',border:'1px solid #E0E0E0',borderRadius:4,cursor:'pointer',overflow:'hidden',transition:'box-shadow 0.15s'}}
                         onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'}
@@ -5381,9 +5382,9 @@ ${planText}` }]
                               e.stopPropagation();
                               setShowOverview(false);
                               if(!openTabs.includes(lk.target.id)) setOpenTabs(prev=>[...prev,lk.target.id]);
-                              setSelPlan(lk.target);
+                              setPresetScale(''); setSelPlan(lk.target);
                               if(lk.target.scale_px_per_ft) setScale(lk.target.scale_px_per_ft);
-                              else{setScale(null);setPresetScale('');}
+                              else setScale(null);
                             }}>
                               <rect x={cx-pillW/2} y={cy-pillH/2} width={pillW} height={pillH} rx={3/zoom}
                                 fill="rgba(37,99,235,0.1)" stroke="rgba(37,99,235,0.25)" strokeWidth={1/zoom}/>
@@ -5768,9 +5769,9 @@ ${planText}` }]
           onOpenSheet={(p)=>{
             setShowOverview(false);
             if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
-            setSelPlan(p);
+            setPresetScale(''); setSelPlan(p);
             if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
-            else{setScale(null);setPresetScale('');}
+            else setScale(null);
           }}
           onReextract={async(plan)=>{
             if(!window.confirm(`Re-extract text from "${plan.name}" using AI? (1 credit)`)) return;
@@ -6732,7 +6733,7 @@ ${planText}` }]
                     <div key={p.id} style={{display:'flex',alignItems:'center',padding:'10px 20px',borderBottom:'1px solid #f0f0f0',cursor:'pointer'}}
                       onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
                       onMouseLeave={e=>e.currentTarget.style.background='#fff'}
-                      onClick={()=>{setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);setEstSubTab('worksheet');}}>
+                      onClick={()=>{setPresetScale('');setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else setScale(null);setEstSubTab('worksheet');}}>
                       <span style={{flex:1,fontSize:13,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||'Unnamed'}</span>
                       <span style={{fontSize:12,color:'#999',fontVariantNumeric:'tabular-nums',marginRight:16}}>{pItems.length} items</span>
                       <span style={{fontSize:13,fontWeight:600,color:'#333',fontVariantNumeric:'tabular-nums'}}>${Math.round(pTotal).toLocaleString()}</span>
