@@ -1025,8 +1025,10 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
 
   useEffect(()=>{
     if(!selPlan) return;
+    // Always clear preset label on plan switch — scaleLabel will reverse-match from px/ft
+    setPresetScale('');
     if(selPlan.scale_px_per_ft){ setScale(selPlan.scale_px_per_ft); }
-    else { setScale(null); setPresetScale(''); }
+    else { setScale(null); }
     setActiveCondId(null); setTool('select'); setActivePts([]);
     pdfDocRef.current = null;
     setPdfDoc(null);
@@ -4626,9 +4628,10 @@ ${planText}` }]
                                   if(p){
                                     setShowOverview(false);
                                     if(!openTabs.includes(p.id)) setOpenTabs(prev=>[...prev,p.id]);
+                                    setPresetScale(''); // clear stale label before switching
                                     setSelPlan(p);
                                     if(p.scale_px_per_ft) setScale(p.scale_px_per_ft);
-                                    else{setScale(null);setPresetScale('');}
+                                    else setScale(null);
                                   }
                                 }} title="Go to plan"
                                   style={{background:'none',border:'none',color:t.text4,cursor:'pointer',
@@ -4797,7 +4800,7 @@ ${planText}` }]
                     setDraggedTabIdx(null);
                   }}
                   onDragEnd={()=>setDraggedTabIdx(null)}
-                  onClick={()=>{setShowOverview(false);setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else{setScale(null);setPresetScale('');}}}
+                  onClick={()=>{setShowOverview(false);setPresetScale('');setSelPlan(p);if(p.scale_px_per_ft)setScale(p.scale_px_per_ft);else setScale(null);}}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',
                     borderRight:`1px solid ${t.border}`,cursor:'grab',flexShrink:0,minWidth:100,maxWidth:180,
                     background:(!showOverview&&isActive)?t.bg:'transparent',
