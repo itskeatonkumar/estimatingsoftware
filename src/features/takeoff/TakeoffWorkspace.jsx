@@ -3511,7 +3511,7 @@ ${planText}` }]
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden',position:'relative'}}>
-      <style>{`.hide-scrollbar::-webkit-scrollbar{display:none}`}</style>
+      <style>{`.tab-scroll::-webkit-scrollbar{height:3px}.tab-scroll::-webkit-scrollbar-track{background:transparent}.tab-scroll::-webkit-scrollbar-thumb{background:#888;border-radius:2px}.tab-scroll::-webkit-scrollbar-thumb:hover{background:#666}`}</style>
 
       {/* ── Top Bar — STACK style ── */}
       <div style={{display:'flex',alignItems:'center',height:44,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,gap:0,padding:'0 0 0 0'}}>
@@ -4768,8 +4768,8 @@ ${planText}` }]
 
           {/* ── Sheet tab bar ── */}
           <div style={{display:'flex',alignItems:'stretch',height:32,borderBottom:`1px solid ${t.border}`,background:t.bg2,flexShrink:0,position:'relative'}}>
-            <div ref={tabBarRef} style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden',scrollbarWidth:'none',msOverflowStyle:'none'}}
-              className="hide-scrollbar">
+            <div ref={tabBarRef} style={{display:'flex',alignItems:'stretch',flex:1,overflowX:'auto',overflowY:'hidden',scrollbarWidth:'thin'}}
+              className="tab-scroll">
             {/* Overview tab — always first */}
             <div onClick={()=>{setShowOverview(true);setSelPlan(null);}}
               style={{display:'flex',alignItems:'center',gap:5,padding:'0 14px',
@@ -4836,6 +4836,13 @@ ${planText}` }]
               <div style={{display:'flex',alignItems:'center',padding:'0 14px',fontSize:10,color:t.text4}}>Open a plan from Plans panel</div>
             )}
             </div>{/* end scrolling tabs */}
+            {/* Scroll arrows — only show when tabs overflow */}
+            {openTabs.length>4&&(<>
+              <button onClick={()=>{if(tabBarRef.current)tabBarRef.current.scrollBy({left:-200,behavior:'smooth'});}}
+                style={{position:'absolute',left:0,top:0,bottom:0,width:20,background:`linear-gradient(90deg,${t.bg2},transparent)`,border:'none',cursor:'pointer',color:t.text4,fontSize:11,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center'}}>‹</button>
+              <button onClick={()=>{if(tabBarRef.current)tabBarRef.current.scrollBy({left:200,behavior:'smooth'});}}
+                style={{position:'absolute',right:0,top:0,bottom:0,width:20,background:`linear-gradient(270deg,${t.bg2},transparent)`,border:'none',cursor:'pointer',color:t.text4,fontSize:11,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center'}}>›</button>
+            </>)}
             {/* Export — outside overflow div so dropdown is not clipped */}
             {selPlan&&(
               <div style={{position:'relative',flexShrink:0}}>
