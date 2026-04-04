@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ThemeProvider, useTheme } from './lib/theme.jsx';
-import { supabase } from './lib/supabase.js';
+import { supabase, authFetch } from './lib/supabase.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.jsx';
 import { OrgProvider, useOrg } from './lib/OrgContext.jsx';
 import LoginScreen from './features/auth/LoginScreen.jsx';
@@ -35,7 +35,7 @@ function TrialBanner() {
     <div style={{ background: '#C0504D', color: '#fff', padding: '10px 20px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
       <span style={{ flex: 1 }}>Your free trial has ended. Subscribe to continue using ScopeTakeoff.</span>
       <button onClick={async () => {
-        const resp = await fetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seats: 1, success_url: window.location.origin + '/#/', cancel_url: window.location.origin }) });
+        const resp = await authFetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seats: 1, success_url: window.location.origin + '/#/', cancel_url: window.location.origin }) });
         const { url } = await resp.json();
         if (url) window.location.href = url;
       }} style={{ background: '#fff', color: '#C0504D', border: 'none', padding: '6px 16px', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>Subscribe Now</button>
@@ -46,7 +46,7 @@ function TrialBanner() {
     <div style={{ background: color + '15', borderBottom: `1px solid ${color}40`, padding: '6px 20px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
       <span style={{ color, flex: 1 }}>Free trial: <strong>{trial.daysLeft} day{trial.daysLeft !== 1 ? 's' : ''} remaining</strong></span>
       <button onClick={async () => {
-        const resp = await fetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seats: 1, success_url: window.location.origin + '/#/', cancel_url: window.location.origin }) });
+        const resp = await authFetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seats: 1, success_url: window.location.origin + '/#/', cancel_url: window.location.origin }) });
         const { url } = await resp.json();
         if (url) window.location.href = url;
       }} style={{ background: color, color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>Subscribe</button>

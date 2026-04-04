@@ -1,17 +1,28 @@
 /**
  * Claude API Proxy — Vercel Serverless Function
- * Place at: api/claude.js
- * 
  * Proxies requests to Anthropic's API so the API key stays server-side.
- * Used for: sheet auto-naming, AI takeoff suggestions
- * 
- * Environment variable needed:
- *   ANTHROPIC_API_KEY — your Anthropic API key (sk-ant-...)
+ * Requires a valid Supabase JWT in the Authorization header.
  */
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Auth check — require valid Supabase session
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+  if (authErr || !user) {
+    return res.status(401).json({ error: 'Invalid session' });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

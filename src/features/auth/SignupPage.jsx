@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabase.js';
+import { supabase, authFetch } from '../../lib/supabase.js';
 
 export default function SignupPage() {
   const [form, setForm] = useState({ name: '', company: '', email: '', password: '', phone: '', seats: 1 });
@@ -47,7 +47,7 @@ export default function SignupPage() {
 
         // Step 5: Redirect to Stripe Checkout
         try {
-          const resp = await fetch('/api/create-checkout', {
+          const resp = await authFetch('/api/create-checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

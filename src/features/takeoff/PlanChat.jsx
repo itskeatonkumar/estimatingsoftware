@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { supabase } from '../../lib/supabase.js';
+import { supabase, authFetch } from '../../lib/supabase.js';
 
 const SUGGESTIONS = [
   "What specs are called out on this sheet?",
@@ -135,7 +135,7 @@ export default function PlanChat({ project, plans, items, selPlan, onOpenSheet, 
         messages: [...history, { role: 'user', content: userContent }]
       };
 
-      const resp = await fetch('/api/claude', {
+      const resp = await authFetch('/api/claude', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       });

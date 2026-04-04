@@ -3,7 +3,7 @@ import { useTheme } from "../../lib/theme.jsx";
 import { TAKEOFF_CATS as STATIC_CATS, TAKEOFF_TYPES, TO_COLORS, CONSTRUCTION_SCALES, UNIT_COSTS_DEFAULT, ASSEMBLIES, COMPANIES, AI_MODEL, AI_MODEL_FAST } from "../../lib/constants.js";
 import { loadCategories, getCachedCategories, findCategory } from "../../lib/categories.js";
 import { useOrg, canEdit } from "../../lib/OrgContext.jsx";
-import { supabase } from "../../lib/supabase.js";
+import { supabase, authFetch } from "../../lib/supabase.js";
 import { calcArea, calcLinear, bezierPt, bezierLength, calcShapeArea, calcShapeLength, buildShapePath, normalizeShapes, splitShapeHoles, pointInPoly, clipPolygonToOuter, calcShapeNetArea, snapToAngle, idMatch } from "../../lib/geometry.js";
 import { TakeoffItemModal, UnitCostEditor, AssemblyPicker, BidSummaryModal, TakeoffProjectModal, AddItemInline, NewConditionRow, InlineItemEditor } from "./TakeoffComponents.jsx";
 import { generateProposalPdf } from "./proposalPdf.js";
@@ -236,7 +236,7 @@ function TakeoffWorkspace({ project, onBack, apmProjects, onExitToOps }) {
       const itemList = projItems.slice(0,30).map(i=>`- ${i.description}: ${i.quantity||0} ${i.unit}`).join('\n');
       const ocrSamples = plans.slice(0,3).map(p=>p.ocr_text?.slice(0,800)||'').filter(Boolean).join('\n---\n');
       const co = companyProfile?.name || 'Our company';
-      const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      const resp = await authFetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         model:AI_MODEL,max_tokens:1500,
         messages:[{role:'user',content:`You are a construction estimator writing a professional scope of work for a bid proposal.
 
@@ -1123,7 +1123,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     const isImg=mime.startsWith('image/');
     const block=isImg?{type:'image',source:{type:'base64',media_type:mime,data:b64}}:{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}};
     try{
-      const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+      const res=await authFetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({model:AI_MODEL,max_tokens:256,
           messages:[{role:'user',content:[block,{type:'text',text:'Look at this construction drawing. Find the scale bar or scale notation in the title block or anywhere on the drawing. Return ONLY a JSON object like: {"scale":"1\"=20ft","found":true} or {"found":false} if you cannot find one. No other text.'}]}]})});
       const json=await res.json();
@@ -1971,7 +1971,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
         out.height = Math.floor(canvasOrUrl.height * ratio);
         out.getContext('2d').drawImage(canvasOrUrl, 0, 0, out.width, out.height);
         const b64 = out.toDataURL('image/jpeg', 0.88).split(',')[1];
-        const resp = await fetch('/api/claude', {
+        const resp = await authFetch('/api/claude', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ model:AI_MODEL_FAST, max_tokens:60,
             messages:[{role:'user',content:[
@@ -2192,7 +2192,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
             const b64 = titleCrops[cropIdx];
             if(!b64) return;
             try {
-              const resp = await fetch('/api/claude', {
+              const resp = await authFetch('/api/claude', {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({
                   model:AI_MODEL_FAST, max_tokens:60,
@@ -2296,7 +2296,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
     }
 
     const catIds = TAKEOFF_CATS.map(c=>c.id).join('|');
-    const apiRes = await fetch('/api/claude',{
+    const apiRes = await authFetch('/api/claude',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:AI_MODEL, max_tokens:2000,
         messages:[{role:'user',content:[
@@ -2363,7 +2363,7 @@ Return ONLY the scope paragraph, no JSON, no markdown, no explanation.`}]
       const planText = allPlans.map(p => `--- Sheet: ${p.name} ---\n${(p.ocr_text || '').slice(0, 2000)}`).join('\n\n').slice(0, 50000);
       const catList = TAKEOFF_CATS.map(c => c.label).join(', ');
 
-      const resp = await fetch('/api/claude', {
+      const resp = await authFetch('/api/claude', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514', max_tokens: 4000,
@@ -5787,7 +5787,7 @@ ${planText}` }]
               c.width=Math.round(img.naturalWidth*ratio);c.height=Math.round(img.naturalHeight*ratio);
               c.getContext('2d').drawImage(img,0,0,c.width,c.height);
               const b64=c.toDataURL('image/jpeg',0.7).split(',')[1];
-              const apiRes=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+              const apiRes=await authFetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({model:AI_MODEL,max_tokens:4000,
                   messages:[{role:'user',content:[
                     {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},

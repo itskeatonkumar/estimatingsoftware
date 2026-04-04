@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabase.js';
+import { supabase, authFetch } from './supabase.js';
 
 /**
  * useBilling — provides current org plan, limits, and upgrade actions
@@ -75,7 +75,7 @@ export function useBilling() {
     if (!org) return;
 
     // Call your Vercel API route to create a checkout session
-    const res = await fetch('/api/create-checkout', {
+    const res = await authFetch('/api/create-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -98,7 +98,7 @@ export function useBilling() {
   async function openPortal() {
     if (!org?.stripe_customer_id) return;
 
-    const res = await fetch('/api/create-portal', {
+    const res = await authFetch('/api/create-portal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

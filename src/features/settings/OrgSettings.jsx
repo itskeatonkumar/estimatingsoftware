@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase.js';
+import { supabase, authFetch } from '../../lib/supabase.js';
 import { useOrg, canManageTeam, canManageBilling } from '../../lib/OrgContext.jsx';
 
 const ROLES = ['owner','admin','editor','viewer'];
@@ -361,7 +361,7 @@ export default function OrgSettings({ user, onBack }) {
               {canManageBilling(myRole) && <div style={{display:'flex',gap:8}}>
                 {org?.stripe_customer_id ? (
                   <button onClick={async()=>{
-                    const res=await fetch('/api/create-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:org.stripe_customer_id,return_url:window.location.href})});
+                    const res=await authFetch('/api/create-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:org.stripe_customer_id,return_url:window.location.href})});
                     const {url}=await res.json();
                     if(url)window.location.href=url;
                   }} style={{background:'#10B981',border:'none',color:'#fff',padding:'10px 20px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:500}}>
@@ -369,7 +369,7 @@ export default function OrgSettings({ user, onBack }) {
                   </button>
                 ) : (
                   <button onClick={async()=>{
-                    const res=await fetch('/api/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats:members.length||1,success_url:window.location.origin+'/#/',cancel_url:window.location.href})});
+                    const res=await authFetch('/api/create-checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats:members.length||1,success_url:window.location.origin+'/#/',cancel_url:window.location.href})});
                     const {url}=await res.json();
                     if(url)window.location.href=url;
                   }} style={{background:'#10B981',border:'none',color:'#fff',padding:'10px 20px',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:500}}>

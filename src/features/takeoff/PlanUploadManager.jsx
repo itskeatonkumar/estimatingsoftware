@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { authFetch } from '../../lib/supabase.js';
 
 const SPEC_KEYWORDS = ['spec','addend','bid','contract','geotech','report','appendix','exhibit','submittal','schedule','narrative'];
 function isSpecFolder(name) { return SPEC_KEYWORDS.some(kw => (name||'').toLowerCase().includes(kw)); }
@@ -28,7 +29,7 @@ const ensurePdfLib = () => new Promise(r => {
 // ── Claude API with retry ──────────────────────────────────────
 async function callClaude(body, retries = 3) {
   for (let i = 1; i <= retries; i++) {
-    const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await authFetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (res.ok) return await res.json();
     if ((res.status === 529 || res.status === 503 || res.status === 429) && i < retries) {
       console.log(`[claude] ${res.status}, retry ${i}/${retries} in ${i * 3}s...`);
